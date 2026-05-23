@@ -143,6 +143,21 @@
               <input type="text" id="editValue" class="form-control" autofocus>
               <div class="form-text" id="editValueHelp"></div>
           </div>
+          <div class="mb-0 d-none border rounded p-3 bg-light" id="editUploadMoveBlock">
+              <div class="small text-muted mb-2">
+                  Current storage: <code id="editUploadCurrentPath">—</code>
+              </div>
+              <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="editUploadMoveFiles" checked>
+                  <label class="form-check-label" for="editUploadMoveFiles">
+                      Move existing tenant files to the new path when saving
+                  </label>
+              </div>
+              <div class="form-text">
+                  Copies the <code>d1/</code>, <code>d2/</code>, … folders into the destination.
+                  Files that already exist at the destination are skipped. Uncheck to change the path only.
+              </div>
+          </div>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-link text-danger me-auto" id="editRevertBtn">
@@ -363,6 +378,21 @@
                             : '';
         document.getElementById('editRevertBtn').style.display =
             (cur !== null && cur !== undefined) ? '' : 'none';
+        const moveBlock = document.getElementById('editUploadMoveBlock');
+        if (moveBlock) {
+            const showMove = !tenantOnly && key === 'disk.upload_root';
+            moveBlock.classList.toggle('d-none', !showMove);
+            document.getElementById('editUploadCurrentPath').textContent = '…';
+            document.getElementById('editUploadMoveFiles').checked = true;
+            if (showMove) {
+                fetch('/api/system/disk').then(r => r.json()).then(j => {
+                    if (j.status === 'success' && j.upload_root) {
+                        document.getElementById('editUploadCurrentPath').textContent =
+                            j.upload_root.resolved_path || '—';
+                    }
+                }).catch(() => {});
+            }
+        }
         new bootstrap.Modal(document.getElementById('editSettingModal')).show();
     }
 
@@ -395,14 +425,24 @@
             bootstrap.Modal.getInstance(document.getElementById('editSettingModal')).hide();
             return;
         }
+        const body = {value: parsed, domain_id: currentScopeId};
+        if (editing.key === 'disk.upload_root' && !tenantOnly) {
+            const moveEl = document.getElementById('editUploadMoveFiles');
+            body.move_existing = !!(moveEl && moveEl.checked);
+        }
         const r = await fetch('/api/settings/' + encodeURIComponent(editing.key), {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({value: parsed, domain_id: currentScopeId}),
+            body: JSON.stringify(body),
         });
         const j = await r.json();
         if (j.status === 'success') {
             bootstrap.Modal.getInstance(document.getElementById('editSettingModal')).hide();
+            if (j.migration && j.migration.message) {
+                alert(j.message + '\n\n' + j.migration.message);
+            } else if (j.message) {
+                alert(j.message);
+            }
             load();
         } else {
             alert(j.message || 'Save failed');

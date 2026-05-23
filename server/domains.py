@@ -156,7 +156,7 @@ def _validate_slug(slug):
     return True, slug
 
 
-def _domain_summary(d, include_usage=False):
+def _domain_summary(d, include_usage=False, include_storage=False):
     """Public-facing dict for one Domain row. Optionally includes derived
     counts (cheap COUNT queries; only call when the caller needs them)."""
     out = {
@@ -187,6 +187,9 @@ def _domain_summary(d, include_usage=False):
                                                       revoked=False).count(),
                 'members':   UserDomainRole.query.filter_by(domain_id=d.id).count(),
             }
+    if include_storage:
+        import upload_paths
+        out['storage'] = upload_paths.tenant_storage_info(d.id)
     return out
 
 
@@ -284,7 +287,11 @@ def api_get_domain(domain_id):
         if d is None:
             return jsonify({'status': 'error', 'message': 'not found'}), 404
         return jsonify({'status': 'success',
-                        'domain': _domain_summary(d, include_usage=_is_superadmin())})
+                        'domain': _domain_summary(
+                            d,
+                            include_usage=_is_superadmin(),
+                            include_storage=_is_superadmin(),
+                        )})
 
 
 @domains_bp.route('/api/domains/<int:domain_id>', methods=['PUT'])
@@ -388,7 +395,100 @@ def api_update_domain(domain_id):
                   payload={'changes': {k: {'from': v[0], 'to': v[1]}
                                        for k, v in changes.items()}})
         return jsonify({'status': 'success',
-                        'domain': _domain_summary(d, include_usage=is_super)})
+                        'domain': _domain_summary(
+                            d,
+                            include_usage=is_super,
+                            include_storage=is_super,
+                        )})
+
+
+@domains_bp.route('/api/domains/<int:domain_id>/storage', methods=['GET', 'PUT'])
+@login_required
+def api_domain_storage(domain_id):
+    """Per-tenant storage path (superadmin only)."""
+    if not _is_superadmin():
+        return jsonify({'status': 'error', 'message': 'forbidden'}), 403
+
+    import upload_paths
+
+    if request.method == 'GET':
+        with bypass_tenant_filter():
+            d = db.session.get(Domain, domain_id)
+        if d is None:
+            return jsonify({'status': 'error', 'message': 'not found'}), 404
+        return jsonify({
+            'status': 'success',
+            'storage': upload_paths.tenant_storage_info(domain_id),
+        })
+
+    data = request.get_json(silent=True) or {}
+    move_existing = bool(data.get('move_existing'))
+    dry_run = bool(data.get('dry_run'))
+    path_val = data.get('storage_root_path')
+    if path_val is None and 'path' in data:
+        path_val = data.get('path')
+
+    with bypass_tenant_filter():
+        d = db.session.get(Domain, domain_id)
+    if d is None:
+        return jsonify({'status': 'error', 'message': 'not found'}), 404
+
+    from flask import current_app
+    result = upload_paths.migrate_tenant_storage(
+        domain_id,
+        path_val,
+        move=move_existing,
+        dry_run=dry_run,
+        app=current_app._get_current_object(),
+    )
+    if result.get('errors'):
+        return jsonify({
+            'status': 'error',
+            'message': result['errors'][0] if len(result['errors']) == 1
+            else 'Storage update failed',
+            'errors': result['errors'],
+            'result': result,
+        }), 400
+
+    mig = result.get('migration')
+    if mig:
+        audit(
+            'upload_storage.migrate_tenant',
+            target_type='domain',
+            target_id=str(domain_id),
+            payload={
+                'tenant': d.slug,
+                'old_path': result.get('old_path'),
+                'new_path': result.get('new_path'),
+                'migration': {
+                    'source': mig.get('source'),
+                    'destination': mig.get('destination'),
+                    'files_transferred': mig.get('files_transferred'),
+                    'files_skipped': mig.get('files_skipped'),
+                    'bytes_transferred': mig.get('bytes_transferred'),
+                },
+            },
+            domain_id=domain_id,
+        )
+    else:
+        audit(
+            'domain.storage.update',
+            target_type='domain',
+            target_id=str(domain_id),
+            payload={
+                'tenant': d.slug,
+                'storage_root_path': (d.storage_root_path or None),
+                'cleared_custom_path': result.get('cleared_custom_path'),
+            },
+            domain_id=domain_id,
+        )
+
+    return jsonify({
+        'status': 'success',
+        'message': result.get('message'),
+        'result': result,
+        'storage': upload_paths.tenant_storage_info(domain_id),
+    })
 
 
 @domains_bp.route('/api/domains/bulk-update', methods=['POST'])

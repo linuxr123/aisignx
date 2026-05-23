@@ -373,6 +373,10 @@ def _evolve_schema():
                     'ALTER TABLE domain ADD COLUMN enrollment_enabled '
                     'BOOLEAN NOT NULL DEFAULT 1'))
                 logger.info('schema: added domain.enrollment_enabled')
+            if 'storage_root_path' not in existing:
+                conn.execute(text(
+                    'ALTER TABLE domain ADD COLUMN storage_root_path VARCHAR(1024)'))
+                logger.info('schema: added domain.storage_root_path')
     except Exception as e:
         logger.warning(f'schema: domain enrollment columns evolve failed: {e}')
 

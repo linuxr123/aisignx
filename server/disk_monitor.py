@@ -50,13 +50,18 @@ _last_snapshot = None
 
 
 def _upload_root() -> str:
-    """Return the absolute path whose disk we monitor. Falls back to the
-    process CWD if the app config isn't reachable (e.g. CLI tools)."""
+    """Return the absolute path whose disk we monitor."""
     try:
-        from flask import current_app
-        return current_app.config.get('UPLOAD_FOLDER') or os.getcwd()
+        import upload_paths
+        return str(upload_paths.resolve_upload_root())
     except Exception:
-        return os.getcwd()
+        try:
+            from flask import current_app
+            raw = current_app.config.get('UPLOAD_FOLDER') or 'uploads'
+            p = os.path.abspath(raw)
+            return p
+        except Exception:
+            return os.getcwd()
 
 
 def _probe_disk(path: str) -> dict:

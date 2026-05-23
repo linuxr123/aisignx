@@ -30,6 +30,8 @@ the precedence: domain override → global value → builtin default.
 | `heartbeat.batch_seconds`              | int    | `60`             | Display heartbeat flush interval.      |
 | `upload.max_size_mb`                   | int    | tier-dependent   | Single-file upload cap.                |
 | `cache.in_memory_mb`                   | int    | tier-dependent   | In-memory cache budget.                |
+| `disk.upload_root`                     | string | `''` (use config) | Absolute or relative path for all tenant media (`d1/`, `d2/`, …). Superadmin only. When saving a new path, enable **Move existing tenant files** in the edit dialog to migrate data. API: `POST /api/system/upload-storage/migrate`. |
+| *(per tenant)* `storage_root_path`   | —      | default `d{id}/` under upload root | Superadmin only on **Tenant Management** → Edit tenant → **Storage location**. Moves only that tenant's folder. API: `PUT /api/domains/<id>/storage` with `storage_root_path` and optional `move_existing`. |
 | `disk.warn_pct`                        | int    | `80`             | Disk-usage warning threshold.          |
 | `disk.block_uploads_pct`               | int    | `95`             | Disk-usage threshold to block uploads. |
 
@@ -324,15 +326,75 @@ Caller code (`heartbeat.py`, future jobs) won't change.
 
 ## Storage
 
-Layout:
+Layout (default under `UPLOAD_FOLDER` or `disk.upload_root`):
+
 ```
-uploads/
+<upload_root>/
   d<id>/
 	images/<uuid>.<ext>
 	videos/<uuid>.<ext>
 	thumbnails/<uuid>.png
 	misc/...
 ```
+
+Media rows always store **relative** paths such as `d2/images/<uuid>.jpg`.
+The server resolves them to absolute paths via `upload_paths.resolve_tenant_root()`
+and `storage.py`, so a tenant can use a custom filesystem root without changing
+database paths.
+
+### Global upload root (`disk.upload_root`)
+
+Superadmin only. **Administration → System Settings** → `disk.upload_root`.
+
+| | |
+|---|---|
+| Default | `UPLOAD_FOLDER` from `config.py` (usually `server/uploads/`) |
+| Purpose | Move **all** tenants to another drive or directory |
+| On save | Check **Move existing tenant files** to copy/move `d1/`, `d2/`, … into the new root |
+| Skip policy | Files that already exist at the destination path are skipped |
+
+API:
+
+```
+PUT /api/settings/disk.upload_root
+  body: { "value": "D:\\Signage\\uploads", "move_existing": true }
+
+POST /api/system/upload-storage/migrate
+  body: { "destination": "D:\\Signage\\uploads", "move": true, "dry_run": false,
+          "apply_setting": false }
+```
+
+Audit action: `upload_storage.migrate` (global).
+
+### Per-tenant storage path (`Domain.storage_root_path`)
+
+Superadmin only. **Administration → Tenant Management** → **Edit** → **Storage location**.
+
+| | |
+|---|---|
+| Default | `<upload_root>/d<id>/` |
+| Purpose | Move **one** tenant to another folder (e.g. large tenant on a fast disk) |
+| Browse | **Browse server folders** — lists drives/directories on the **server** (not the admin PC’s file picker) |
+| On save | **Save storage location** (separate from the main tenant **Save** button). Check **Move this tenant's files** to migrate. |
+| Clear path | Leave custom path blank → reverts to default folder; files are **not** moved back automatically |
+
+API:
+
+```
+GET  /api/domains/<id>/storage
+PUT  /api/domains/<id>/storage
+  body: { "storage_root_path": "D:\\Media\\tenant-2", "move_existing": true }
+
+GET  /api/system/path-browser?path=...   # superadmin; list server directories
+```
+
+Audit actions: `upload_storage.migrate_tenant`, `domain.storage.update`.
+
+> **Logo upload vs storage path:** Logo **Choose file** uploads from your computer
+> into the tenant folder. Storage path tells the server where that tenant’s
+> entire media tree lives on disk — the browser cannot use your PC’s folder dialog
+> for that (security). If AISignX runs on the same machine you admin from, server
+> drives (`C:`, `D:`, …) are your local disks.
 
 ### Quota
 

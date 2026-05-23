@@ -80,6 +80,14 @@ BUILTIN_DEFAULTS = {
     ),
 
     # --- disk monitoring -----------------------------------------------------
+    'disk.upload_root': (
+        '', 'string', False,
+        'Absolute or server-relative path where all tenant media is stored '
+        '(d1/, d2/, …). Leave empty to use UPLOAD_FOLDER from config.py. '
+        'Example: D:\\AISignX\\uploads or /mnt/signage/uploads. '
+        'Use “Move existing files” when saving a new path to migrate d1/, d2/, … '
+        'from the current location. Files already at the destination are skipped.',
+    ),
     'disk.warn_pct': (
         80, 'int', False, 'Disk-usage warning threshold (percent).',
     ),

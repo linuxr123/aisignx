@@ -107,6 +107,7 @@ You own the data (SQLite by default, portable to Postgres later). No cloud subsc
 <summary><strong>Operations & security</strong></summary>
 
 - Scheduled backups, restore with pre-snapshot, rate limiting
+- **Configurable media storage** — global upload root or per-tenant folder on another drive (superadmin)
 - HTTP or HTTPS deploy modes (`generate_config.py --interactive`)
 - Docker Compose reference; nginx/Caddy/IIS reverse-proxy guides
 

@@ -150,8 +150,17 @@ One setting drives the rest (`TRUST_PROXY`, cookies, URL scheme). Edit `AISIGNX_
 |---|---|---|
 | `SECRET_KEY` | auto-generated | Flask session secret ? keep private, never commit |
 | `SQLALCHEMY_DATABASE_URI` | `sqlite:///digital_signage.db` | Database |
-| `UPLOAD_FOLDER` | `uploads` | Uploaded media storage |
+| `UPLOAD_FOLDER` | `uploads` | Default tenant media storage (see `disk.upload_root` in admin settings to override globally) |
 | `SERVER_NAME` | optional | Public hostname for absolute URLs |
+
+After install, superadmins can relocate media without editing `config.py`:
+
+| Scope | Where | Docs |
+|-------|--------|------|
+| All tenants | **Administration ? System Settings** ? `disk.upload_root` | [OPERATIONS.md ? Storage](OPERATIONS.md#storage) |
+| One tenant | **Administration ? Tenant Management** ? Edit ? **Storage location** | Same |
+
+Use **Move existing files** when changing a path so the server copies/moves data on disk. The tenant editor **Browse server folders** button lists drives/folders on the **machine running AISignX**, not your local PC file picker.
 
 ---
 

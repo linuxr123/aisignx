@@ -233,6 +233,67 @@
             </div>
 
             <hr>
+            <h6 class="mb-2"><i class="bi bi-hdd"></i> Storage location</h6>
+            <p class="text-muted small mb-2">
+                Move this tenant's media to another drive or folder. Media paths in the
+                database stay as <code>d{id}/images/…</code>; only the filesystem root changes.
+                Leave the path blank and save to use the default folder under the server upload root.
+            </p>
+            <div class="mb-2">
+                <label class="form-label small text-muted">Current location</label>
+                <div class="font-monospace small text-break" id="editStorageResolved">—</div>
+            </div>
+            <div class="mb-2">
+                <label class="form-label small text-muted">Default (if no custom path)</label>
+                <div class="font-monospace small text-break text-muted" id="editStorageDefault">—</div>
+            </div>
+            <div class="alert alert-light border small py-2 mb-2">
+                <strong>Not like the logo file picker.</strong> Logo upload picks a file on
+                <em>your computer</em> and copies it to the server. Storage location is a
+                folder on the <em>machine where AISignX is running</em> (the server). The
+                browser cannot open your PC&rsquo;s folders for that&mdash;use Browse below
+                to see the server&rsquo;s drives, or type a path the server can access.
+            </div>
+            <div class="mb-2">
+                <label class="form-label" for="editStoragePath">Custom storage path</label>
+                <div class="input-group">
+                    <input type="text" class="form-control font-monospace" id="editStoragePath"
+                           placeholder="e.g. D:\AISignX\tenant-acme or /mnt/media/acme">
+                    <button type="button" class="btn btn-outline-secondary" id="editStorageBrowseBtn"
+                            title="Browse folders on the server" aria-expanded="false"
+                            aria-controls="editStorageBrowserPanel">
+                        <i class="bi bi-folder2-open"></i> Browse server folders
+                    </button>
+                </div>
+                <div class="form-text">If you manage AISignX on this same PC, server drives (C:, D:, …) are your local disks.</div>
+                <div id="editStorageBrowserPanel" class="card card-body py-2 mt-2 bg-light border d-none">
+                    <div class="d-flex flex-wrap gap-1 mb-2" id="editStorageBrowserShortcuts"></div>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="editStorageBrowserUpBtn" disabled>
+                            <i class="bi bi-arrow-up"></i> Up
+                        </button>
+                        <span class="small font-monospace text-break flex-grow-1" id="editStorageBrowserBreadcrumb">—</span>
+                        <button type="button" class="btn btn-sm btn-primary" id="editStorageBrowserSelectBtn" disabled>
+                            Use this folder
+                        </button>
+                    </div>
+                    <div id="editStorageBrowserStatus" class="small text-muted mb-2"></div>
+                    <div class="list-group list-group-flush border rounded bg-white" id="editStorageBrowserList"
+                         style="max-height: 240px; overflow-y: auto;">
+                        <div class="list-group-item text-muted">Open Browse to list folders…</div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="editStorageMove" checked>
+                <label class="form-check-label" for="editStorageMove">Move this tenant's files when saving a new path</label>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="editStorageSaveBtn">
+                <i class="bi bi-arrow-left-right"></i> Save storage location
+            </button>
+            <div id="editStorageStatus" class="small text-muted mt-2"></div>
+
+            <hr>
             <h6 class="mb-2"><i class="bi bi-key"></i> Device Enrollment Code</h6>
             <p class="text-muted small mb-2">
                 Devices must present this code to join this domain. Hand it to the
@@ -275,6 +336,9 @@
   </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
 <script>
 (function() {
     const MB = 1024 * 1024;
@@ -373,11 +437,22 @@
     let allDomains = [];
 
     async function load() {
-        const r = await fetch('/api/domains');
-        const j = await r.json();
-        allDomains = j.domains || [];
-        populateTenantFilterOptions();
-        renderTenantRows();
+        const tb = document.getElementById('domainRows');
+        try {
+            const r = await fetch('/api/domains');
+            const j = await r.json();
+            if (!r.ok || j.status !== 'success') {
+                const msg = j.message || ('HTTP ' + r.status);
+                tb.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-4">Failed to load tenants: ${escapeHtml(msg)}</td></tr>`;
+                return;
+            }
+            allDomains = j.domains || [];
+            populateTenantFilterOptions();
+            renderTenantRows();
+        } catch (err) {
+            console.error('load domains failed', err);
+            tb.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-4">Failed to load tenants. Check the browser console and server log.</td></tr>';
+        }
     }
 
     function tenantRowSearchText(d) {
@@ -495,8 +570,156 @@
         document.getElementById('editLogoClearBtn').dataset.domainId = d.id;
         document.getElementById('editLogoFile').value = '';
         loadEnrollment(d.id);
+        const st = d.storage || {};
+        document.getElementById('editStorageResolved').textContent = st.resolved_path || '—';
+        document.getElementById('editStorageDefault').textContent = st.default_path || '—';
+        document.getElementById('editStoragePath').value = st.storage_root_path || '';
+        document.getElementById('editStorageMove').checked = true;
+        document.getElementById('editStorageStatus').textContent = st.uses_custom_path
+            ? 'Using custom storage path.' : 'Using default folder under server upload root.';
+        document.getElementById('editStorageSaveBtn').dataset.domainId = d.id;
+        setStorageBrowserOpen(false);
         new bootstrap.Modal(document.getElementById('editDomainModal')).show();
     }
+
+    let storageBrowserCurrent = null;
+    let storageBrowserOpen = false;
+
+    function pathFromBtn(btn) {
+        const enc = btn.getAttribute('data-path-enc');
+        return enc ? decodeURIComponent(enc) : '';
+    }
+
+    async function loadStorageBrowser(path) {
+        const listEl = document.getElementById('editStorageBrowserList');
+        const statusEl = document.getElementById('editStorageBrowserStatus');
+        const crumbEl = document.getElementById('editStorageBrowserBreadcrumb');
+        const upBtn = document.getElementById('editStorageBrowserUpBtn');
+        const selectBtn = document.getElementById('editStorageBrowserSelectBtn');
+        const shortcutsEl = document.getElementById('editStorageBrowserShortcuts');
+        listEl.innerHTML = '<div class="list-group-item text-muted">Loading…</div>';
+        statusEl.textContent = '';
+        const qs = path ? ('?path=' + encodeURIComponent(path)) : '';
+        let j;
+        try {
+            const r = await fetch('/api/system/path-browser' + qs);
+            j = await r.json();
+        } catch (err) {
+            listEl.innerHTML = '';
+            statusEl.textContent = 'Request failed: ' + err;
+            selectBtn.disabled = true;
+            return;
+        }
+        if (j.status !== 'success') {
+            listEl.innerHTML = '';
+            statusEl.textContent = j.message || 'Could not list folder.';
+            selectBtn.disabled = true;
+            return;
+        }
+        storageBrowserCurrent = j.path || null;
+        crumbEl.textContent = j.path || '(drives and roots)';
+        upBtn.disabled = j.parent === null || j.parent === undefined;
+        upBtn.dataset.parent = (j.parent === '' ? '' : (j.parent || ''));
+        selectBtn.disabled = !j.path;
+        statusEl.textContent = j.writable === false
+            ? 'Warning: this folder may not be writable by the server.'
+            : (j.path ? 'Open a subfolder or click Use this folder.' : 'Choose a drive or shortcut, then a folder.');
+
+        shortcutsEl.innerHTML = (j.shortcuts || []).map(s =>
+            `<button type="button" class="btn btn-sm btn-outline-primary storage-browser-shortcut"
+                     data-path-enc="${encodeURIComponent(s.path)}">${escapeHtml(s.label)}</button>`
+        ).join('');
+        shortcutsEl.querySelectorAll('.storage-browser-shortcut').forEach(btn => {
+            btn.addEventListener('click', () => loadStorageBrowser(pathFromBtn(btn)));
+        });
+
+        if (!j.entries || !j.entries.length) {
+            listEl.innerHTML = '<div class="list-group-item text-muted">No subfolders here</div>';
+            return;
+        }
+        listEl.innerHTML = j.entries.map(e =>
+            `<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2 storage-browser-dir"
+                     data-path-enc="${encodeURIComponent(e.path)}">
+                <i class="bi bi-folder-fill text-warning"></i>
+                <span>${escapeHtml(e.name)}</span>
+             </button>`
+        ).join('');
+        listEl.querySelectorAll('.storage-browser-dir').forEach(btn => {
+            btn.addEventListener('click', () => loadStorageBrowser(pathFromBtn(btn)));
+        });
+    }
+
+    function setStorageBrowserOpen(open) {
+        const panel = document.getElementById('editStorageBrowserPanel');
+        const btn = document.getElementById('editStorageBrowseBtn');
+        storageBrowserOpen = open;
+        panel.classList.toggle('d-none', !open);
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    document.getElementById('editStorageBrowserUpBtn')?.addEventListener('click', () => {
+        const parent = document.getElementById('editStorageBrowserUpBtn').dataset.parent;
+        if (parent === '') {
+            loadStorageBrowser(null);
+        } else if (parent) {
+            loadStorageBrowser(parent);
+        }
+    });
+
+    document.getElementById('editStorageBrowserSelectBtn')?.addEventListener('click', () => {
+        if (storageBrowserCurrent) {
+            document.getElementById('editStoragePath').value = storageBrowserCurrent;
+            setStorageBrowserOpen(false);
+        }
+    });
+
+    document.getElementById('editStorageBrowseBtn')?.addEventListener('click', () => {
+        const next = !storageBrowserOpen;
+        setStorageBrowserOpen(next);
+        if (next) {
+            const resolved = document.getElementById('editStorageResolved').textContent.trim();
+            const start = document.getElementById('editStoragePath').value.trim()
+                || (resolved !== '—' ? resolved : '');
+            loadStorageBrowser(start || null);
+        }
+    });
+
+    document.getElementById('editStorageSaveBtn')?.addEventListener('click', async () => {
+        const id = document.getElementById('editStorageSaveBtn').dataset.domainId;
+        if (!id) return;
+        const path = document.getElementById('editStoragePath').value.trim();
+        const move = document.getElementById('editStorageMove').checked;
+        const statusEl = document.getElementById('editStorageStatus');
+        if (path && !confirm(
+            `Set storage for this tenant to:\n${path}\n\n` +
+            (move ? "Existing files will be moved to the new location." : "Files will NOT be moved automatically.")
+        )) return;
+        if (!path && !confirm(
+            'Clear custom storage path and use the default folder?\n\n' +
+            'Files are NOT moved back automatically.'
+        )) return;
+        statusEl.textContent = 'Saving…';
+        const r = await fetch('/api/domains/' + id + '/storage', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                storage_root_path: path || null,
+                move_existing: move,
+            }),
+        });
+        const j = await r.json();
+        if (j.status === 'success') {
+            const st = j.storage || {};
+            document.getElementById('editStorageResolved').textContent = st.resolved_path || '—';
+            document.getElementById('editStorageDefault').textContent = st.default_path || '—';
+            document.getElementById('editStoragePath').value = st.storage_root_path || '';
+            statusEl.textContent = j.message || 'Storage location saved.';
+            load();
+        } else {
+            statusEl.textContent = '';
+            alert(j.message || (j.errors && j.errors.join('\n')) || 'Save failed');
+        }
+    });
 
     function renderLogoPreview(domain) {
         const img = document.getElementById('editLogoPreview');

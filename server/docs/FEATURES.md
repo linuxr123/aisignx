@@ -38,6 +38,9 @@ the key options, and (where useful) a pointer to a deeper doc.
 | URL ingestion (webpage as media) | ✅ | |
 | Replace media file or URL in place | ✅ | Keeps playlist references intact |
 | Per-tenant disk quota | ✅ | Enforced on every upload |
+| Global upload root override (`disk.upload_root`) | ✅ | Superadmin; optional migrate all `dN/` folders |
+| Per-tenant storage path (`storage_root_path`) | ✅ | Superadmin; Tenant Management + migrate one tenant |
+| Server folder browser for storage paths | ✅ | `GET /api/system/path-browser` |
 | **SHA-256 dedupe** with "upload as separate copy" prompt | ✅ | `allow_duplicate=1` to override |
 | Thumbnails (image + video frame) with status badge | ✅ | `thumbnail_utils.py`; per-item regenerate button |
 | **Bulk selection** in the library | ✅ | Sticky action bar |
@@ -203,6 +206,8 @@ See `docs/PLAYLISTS_MEDIA.md` for the deeper reference.
 | Vary the transition every slide | Default transition → **Random (per slide)** |
 | Override transition for one slide | Edit that item, pick a transition (Inherit = use playlist default) |
 | Download an audit trail for an incident | **Audit** → set filters → **CSV** or **JSON** |
+| Move all tenant media to another drive | **Administration → System Settings** → `disk.upload_root` |
+| Move one tenant to its own disk/folder | **Administration → Tenant Management** → Edit → **Storage location** |
 | See why a display dropped off | **Displays** → row badge, Display Diagnostics, then alerts log |
 
 ---

@@ -81,6 +81,9 @@ class Domain(db.Model):
     # Storage policy. Quotas are tracked but NOT enforced in Phase 1.
     storage_quota_bytes    = db.Column(db.BigInteger, nullable=True)
     storage_used_bytes     = db.Column(db.BigInteger, default=0, nullable=False)
+    # Optional absolute path for this tenant's media (superadmin). When set,
+    # files are stored here instead of <upload_root>/d<id>/.
+    storage_root_path      = db.Column(db.String(1024), nullable=True)
 
     # Per-domain feature flags (e.g. {"multi_zone_layouts": false}).
     features               = db.Column(db.JSON, default=dict, nullable=False)
@@ -134,6 +137,7 @@ class Domain(db.Model):
             'branding_primary_color': self.branding_primary_color,
             'storage_quota_bytes':    self.storage_quota_bytes,
             'storage_used_bytes':     self.storage_used_bytes,
+            'storage_root_path':      self.storage_root_path,
             'features':               self.features or {},
             'default_timezone':       self.default_timezone,
             'is_active':              self.is_active,

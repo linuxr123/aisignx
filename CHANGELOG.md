@@ -20,11 +20,20 @@ when tagged releases begin.
 - Added `docs/ARCHITECTURE.md`, `docs/FIRST_STEPS.md`, `docs/images/` for screenshots
 - Added `CHANGELOG.md` (this file)
 - AGPL-3.0 licensing, `CONTRIBUTING.md`, `SECURITY.md`, `THIRD_PARTY_LICENSES.md`
+- **Storage relocation:** documented global/per-tenant paths in `OPERATIONS.md`, `ARCHITECTURE.md`, `GETTING_STARTED.md`, `MULTI_TENANCY.md`, `FEATURES.md`
 
 ### Server setup
 - Config wizard: `server/generate_config.py --interactive`
 - Deploy modes: `http` (direct) and `https` (reverse proxy) via `server/deploy_modes.py`
 - `.env.example` and `config.example.py` templates
+
+### Storage & disk management
+- **Global upload root** — superadmin setting `disk.upload_root` (System Settings) with optional migration of all tenant folders (`d1/`, `d2/`, …) when the path changes
+- **Per-tenant storage path** — superadmin-only on **Tenant Management** → Edit tenant → **Storage location**; moves only that tenant’s media tree
+- **Server folder browser** — inline drive/folder picker in the tenant editor (`GET /api/system/path-browser`); lists paths on the **server**, not the admin’s PC
+- New module `server/upload_paths.py` — path resolution, validation, and migration helpers
+- `Domain.storage_root_path` column (auto-added at boot via bootstrap)
+- `storage.py` resolves media under global or per-tenant custom roots while DB paths stay `d{id}/…`
 
 ### Repository layout
 - Monorepo: `server/` (Flask app), `clients/` (Electron + Android)
@@ -32,6 +41,7 @@ when tagged releases begin.
 - `.gitignore` excludes secrets, databases, uploads, and build artifacts
 
 ### Fixes (recent)
+- Tenant Management: script load order (Bootstrap) and inline server folder browser
 - Emergency schedules tab: loading and new-template flow for empty tenants
 - Superadmin default tenant: `slug=default`
 - Proof of Play: tenant-scoped admin and filters

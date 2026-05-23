@@ -159,6 +159,16 @@ Storage accounting (`Domain.storage_used_bytes`) updates automatically via a
 insert that would push the tenant over `Domain.storage_quota_bytes` raises
 `RuntimeError` and the transaction rolls back.
 
+### Per-tenant filesystem root
+
+Optional column `Domain.storage_root_path` (nullable). When set, that tenant’s
+files are stored under the absolute path instead of `<upload_root>/d<id>/`.
+Superadmins set it from **Tenant Management** or `PUT /api/domains/<id>/storage`.
+See [OPERATIONS.md](OPERATIONS.md#per-tenant-storage-path-domainstorage_root_path).
+
+Global default root: setting `disk.upload_root` or `UPLOAD_FOLDER` in config.
+Implementation: `server/upload_paths.py`, `storage._tenant_root()`.
+
 ---
 
 ## Audit logging

@@ -675,6 +675,8 @@ def api_set_setting(key):
 
     data = request.get_json(silent=True) or {}
 
+    migration = None
+
     domain_id = data.get('domain_id')
 
     if domain_id is not None:
@@ -785,6 +787,60 @@ def api_set_setting(key):
 
 
 
+    if key == 'disk.upload_root':
+
+        if domain_id is not None:
+
+            return jsonify({'status': 'error',
+
+                            'message': 'disk.upload_root is server-wide (omit domain_id)'}), 400
+
+        if not _is_superadmin():
+
+            return jsonify({'status': 'error', 'message': 'forbidden'}), 403
+
+        path_val = '' if parsed is None else str(parsed).strip()
+
+        import upload_paths
+
+        vok, verr = upload_paths.validate_upload_root_value(path_val)
+
+        if not vok:
+
+            return jsonify({'status': 'error', 'message': verr}), 400
+
+        move_existing = bool(data.get('move_existing'))
+
+        from flask import current_app
+
+        app_obj = current_app._get_current_object()
+
+        old_root = upload_paths.resolve_upload_root(app_obj)
+
+        new_root = upload_paths.resolve_path_from_setting_value(path_val, app_obj)
+
+        if move_existing and old_root != new_root:
+
+            migration = upload_paths.migrate_upload_tree(
+
+                old_root, new_root, move=True, dry_run=False,
+
+            )
+
+            if migration.get('errors'):
+
+                return jsonify({
+
+                    'status': 'error',
+
+                    'message': migration.get('message') or 'Migration failed',
+
+                    'migration': migration,
+
+                }), 400
+
+
+
     old = settings_module.get(key, domain_id=domain_id, default=None)
 
 
@@ -811,9 +867,75 @@ def api_set_setting(key):
 
           domain_id=domain_id)
 
+    if key == 'disk.upload_root' and migration:
+
+        audit('upload_storage.migrate', target_type='disk',
+
+              target_id='upload_root',
+
+              payload={'migration': {
+
+                  'source': migration.get('source'),
+
+                  'destination': migration.get('destination'),
+
+                  'files_transferred': migration.get('files_transferred'),
+
+                  'files_skipped': migration.get('files_skipped'),
+
+                  'bytes_transferred': migration.get('bytes_transferred'),
+
+              }})
+
 
 
     new_eff = settings_module.effective_value(key, domain_id=domain_id)
+
+    if key == 'disk.upload_root':
+
+        import upload_paths
+
+        import disk_monitor
+
+        from flask import current_app
+
+        ok_apply, apply_err = upload_paths.apply_from_settings(current_app._get_current_object())
+
+        if not ok_apply:
+
+            return jsonify({'status': 'error', 'message': apply_err or 'Failed to apply upload path'}), 500
+
+        try:
+
+            disk_monitor.probe_now()
+
+        except Exception:
+
+            pass
+
+        storage = upload_paths.configured_upload_root_display()
+
+        msg = migration.get('message') if migration else (
+
+            'Upload path updated.'
+
+        )
+
+        return jsonify({
+
+            'status': 'success',
+
+            'key': key,
+
+            'effective': new_eff,
+
+            'resolved_upload_root': storage.get('resolved_path'),
+
+            'migration': migration,
+
+            'message': msg,
+
+        })
 
     return jsonify({
 

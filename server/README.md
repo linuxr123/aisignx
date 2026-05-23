@@ -24,7 +24,8 @@ Or use `install_windows.ps1` / `install_linux.sh` in this folder.
 | `app.py` | Application entry point |
 | `templates/`, `static/` | Web UI and player assets |
 | `plugins/` | Built-in and custom slide plugins |
-| `uploads/` | Tenant media files (runtime) |
+| `uploads/` | Tenant media files (runtime; override via `disk.upload_root` or per-tenant path) |
+| `upload_paths.py` | Upload root resolution, validation, migration |
 | `docs/` | Documentation |
 | `migrations/` | Schema migration helpers |
 

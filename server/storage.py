@@ -90,29 +90,45 @@ class StoredFile:
 # Path helpers
 # -----------------------------------------------------------------------------
 def _uploads_root() -> str:
-    return os.path.abspath(current_app.config['UPLOAD_FOLDER'])
+    import upload_paths
+    return str(upload_paths.resolve_upload_root())
 
 
 def _tenant_root(domain_id: int) -> str:
     """Absolute path of a tenant's storage directory. Created on demand."""
     if domain_id is None:
         raise RuntimeError('storage operation requires a tenant context')
-    root = os.path.join(_uploads_root(), f'd{int(domain_id)}')
-    os.makedirs(root, exist_ok=True)
-    return root
+    import upload_paths
+    return str(upload_paths.resolve_tenant_root(int(domain_id)))
 
 
 def _resolve(rel_path: str) -> str | None:
     """Resolve an uploads-relative path to an absolute one, sandboxed.
-    Returns None if the path escapes the uploads root."""
+    Returns None if the path escapes the allowed tenant/upload roots."""
     if not rel_path:
         return None
+    norm = rel_path.replace('\\', '/').lstrip('/')
     uploads = _uploads_root()
-    candidate = os.path.abspath(os.path.join(uploads, rel_path))
-    # Sandbox: must stay inside uploads.
-    if not (candidate == uploads or candidate.startswith(uploads + os.sep)):
-        return None
-    return candidate
+    candidate = os.path.abspath(os.path.join(uploads, norm))
+    if candidate == uploads or candidate.startswith(uploads + os.sep):
+        return candidate
+
+    parts = norm.split('/', 1)
+    if parts[0].startswith('d') and parts[0][1:].isdigit():
+        try:
+            did = int(parts[0][1:])
+            suffix = parts[1] if len(parts) > 1 else ''
+            tenant_root = _tenant_root(did)
+            candidate = (
+                os.path.abspath(os.path.join(tenant_root, suffix))
+                if suffix else os.path.abspath(tenant_root)
+            )
+            tr = os.path.abspath(tenant_root)
+            if candidate == tr or candidate.startswith(tr + os.sep):
+                return candidate
+        except (ValueError, TypeError):
+            pass
+    return None
 
 
 def _ensure_kind(kind: str) -> str:

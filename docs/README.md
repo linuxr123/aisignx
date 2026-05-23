@@ -93,6 +93,7 @@ Detailed guides live in [`server/docs/`](../server/docs/). Paths below are relat
 | Task | Go to |
 |------|--------|
 | Run server locally | [GETTING_STARTED.md](../server/docs/GETTING_STARTED.md) |
+| Move media to another drive | [OPERATIONS.md — Storage](../server/docs/OPERATIONS.md#storage) |
 | Enable HTTPS | [generate_config.py](../server/generate_config.py) + [SERVER_HTTP…](../server/docs/SERVER_HTTP_ONLY_or_HTTPS_ONLY_Version2.md) |
 | Build Electron/APK | [clients/README.md](../clients/README.md) |
 | REST integration | [API.md](../server/docs/API.md) |

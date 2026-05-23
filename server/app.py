@@ -312,6 +312,11 @@ def init_db():
 
 init_db()
 
+# Apply superadmin upload-root override (disk.upload_root) to UPLOAD_FOLDER.
+import upload_paths
+with app.app_context():
+    upload_paths.apply_from_settings(app)
+
 # ── Background jobs + heartbeat batching (Phase 1, Task 7) ────────────────────
 # Started AFTER init_db() so settings are seeded and the schema exists. The
 # Flask debug reloader runs init twice; jobs.start() is idempotent.

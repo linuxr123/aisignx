@@ -80,10 +80,25 @@ nginx/Caddy configs must disable buffering on the proxy path. See [PRODUCTION_DE
 | Data | Default location |
 |------|------------------|
 | Database | `server/digital_signage.db` (or `AISIGNX_DB_PATH`) |
-| Media uploads | `server/uploads/` |
+| Media uploads | `server/uploads/` (override via `disk.upload_root` or per-tenant `storage_root_path`) |
 | Logs | `server/logs/` |
 | Backups | Configurable; default under server backups path |
 | Built clients | `server/static/clients/` (gitignored binaries) |
+
+### Media layout
+
+Tenant files live under a root directory, then per-tenant folders:
+
+```text
+<upload_root>/
+  d1/images/…
+  d2/videos/…
+```
+
+- **Global root** — `UPLOAD_FOLDER` in `config.py`, or superadmin setting `disk.upload_root` (see [OPERATIONS.md](../server/docs/OPERATIONS.md#storage)).
+- **Per-tenant root** — optional `Domain.storage_root_path` (superadmin, Tenant Management). Database paths stay `d{id}/…`; only the filesystem root changes.
+
+Media paths in the database are always relative (`d2/images/foo.jpg`). The server resolves them through `upload_paths.py` and `storage.py`.
 
 ---
 

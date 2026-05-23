@@ -442,14 +442,91 @@ def api_system_disk():
     if not _is_superadmin():
         return jsonify({'status': 'error', 'message': 'forbidden'}), 403
     import disk_monitor, settings as _settings
+    import upload_paths
     snap = disk_monitor.current_snapshot()
     blocking, _ = disk_monitor.is_blocking_uploads()
+    storage = upload_paths.configured_upload_root_display()
     return jsonify({
         'status':        'success',
         'snapshot':      snap,
         'warn_pct':      _settings.effective_value('disk.warn_pct') or 80,
         'block_pct':     _settings.effective_value('disk.block_uploads_pct') or 95,
         'blocking':      blocking,
+        'upload_root':   storage,
+    })
+
+
+@admin_bp.route('/api/system/path-browser', methods=['GET'])
+@login_required
+def api_system_path_browser():
+    """List server directories for superadmin storage path selection."""
+    if not _is_superadmin():
+        return jsonify({'status': 'error', 'message': 'forbidden'}), 403
+    import upload_paths
+    path = request.args.get('path', '')
+    result = upload_paths.list_server_directories(path or None)
+    if result.get('errors'):
+        return jsonify({
+            'status': 'error',
+            'message': result['errors'][0],
+            'errors': result['errors'],
+        }), 400
+    return jsonify({'status': 'success', **result})
+
+
+@admin_bp.route('/api/system/upload-storage/migrate', methods=['POST'])
+@login_required
+def api_upload_storage_migrate():
+    """Move/copy tenant files from current upload root to a destination path."""
+    if not _is_superadmin():
+        return jsonify({'status': 'error', 'message': 'forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    destination = (data.get('destination') or data.get('path') or '').strip()
+    if not destination:
+        return jsonify({'status': 'error', 'message': 'destination is required'}), 400
+    import upload_paths
+    from flask import current_app
+    app_obj = current_app._get_current_object()
+    ok, err = upload_paths.validate_upload_root_value(destination)
+    if not ok:
+        return jsonify({'status': 'error', 'message': err}), 400
+    source = upload_paths.resolve_upload_root(app_obj)
+    dest = upload_paths.resolve_path_from_setting_value(destination, app_obj)
+    move = bool(data.get('move', True))
+    dry_run = bool(data.get('dry_run', False))
+    migration = upload_paths.migrate_upload_tree(
+        source, dest, move=move, dry_run=dry_run,
+    )
+    if migration.get('errors') and not dry_run:
+        return jsonify({
+            'status': 'error',
+            'message': migration.get('message') or 'Migration failed',
+            'migration': migration,
+        }), 400
+    if not dry_run and bool(data.get('apply_setting', False)):
+        import settings as settings_module
+        settings_module.set('disk.upload_root', destination,
+                            user_id=current_user.id, is_auto=False, value_type='string')
+        upload_paths.apply_from_settings(app_obj)
+        import disk_monitor
+        try:
+            disk_monitor.probe_now()
+        except Exception:
+            pass
+    if not dry_run:
+        audit('upload_storage.migrate', target_type='disk', target_id='upload_root',
+              payload={'migration': {
+                  'source': migration.get('source'),
+                  'destination': migration.get('destination'),
+                  'files_transferred': migration.get('files_transferred'),
+                  'files_skipped': migration.get('files_skipped'),
+                  'bytes_transferred': migration.get('bytes_transferred'),
+                  'apply_setting': bool(data.get('apply_setting', False)),
+              }})
+    return jsonify({
+        'status': 'success',
+        'migration': migration,
+        'upload_root': upload_paths.configured_upload_root_display(),
     })
 
 
