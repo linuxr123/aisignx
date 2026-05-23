@@ -59,6 +59,8 @@ git check-ignore -v path/to/suspicious/file
 
 Update `server/docs/` when behavior, API routes, or setup steps change. Keep path references aligned with the `server/` + `clients/` layout.
 
+**Index:** [`docs/README.md`](docs/README.md) at the repo root lists every guide.
+
 ## Pull requests
 
 - Describe what changed and why.

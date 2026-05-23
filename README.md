@@ -1,83 +1,48 @@
 ﻿# AISignX
 
-A self-hosted digital signage platform. Manage displays, playlists, media, and schedules from a central web admin. Displays can use a web browser, the Electron kiosk client (Windows / Linux), or the Android app — all managed from one server with live push updates.
+**Self-hosted digital signage** — one server, a web admin, and players for browsers, Windows/Linux kiosks, and Android.
 
-**License:** [GNU AGPL-3.0-or-later](LICENSE) — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for dependency licenses.
-
----
-
-## Repository layout
-
-```
-aisignx/
-├── server/                 Flask app, admin UI, API, plugins, docs
-│   ├── app.py
-│   ├── config.example.py   Template — copy to config.py (gitignored)
-│   ├── docs/
-│   ├── templates/
-│   ├── static/
-│   └── plugins/
-├── clients/
-│   ├── electron-client/    Windows / Linux kiosk (Electron)
-│   └── android-client/     Android WebView player
-├── build_clients_windows.ps1
-├── build_clients_linux.sh
-├── .env.example            Environment variable template
-├── LICENSE                 GNU AGPL-3.0-or-later
-└── THIRD_PARTY_LICENSES.md Dependency license summary
-```
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 
 ---
 
-## Requirements
+## What this is
 
-| Component | Requirement |
-|-----------|-------------|
-| **Server** | Python 3.10+ (3.11–3.12 recommended), pip, FFmpeg |
-| **Server (optional)** | Docker & Docker Compose |
-| **Electron client** | Node.js 18+ LTS, npm |
-| **Android client** | JDK 17, Android SDK (Android Studio recommended) |
-| **OS** | Windows, Linux, or macOS for development |
+AISignX lets you:
 
-See [server/docs/GETTING_STARTED.md](server/docs/GETTING_STARTED.md) for detailed prerequisites.
+- Upload **images, videos, and web pages** into a media library
+- Build **playlists** (transitions, timing, plugins, smart rules)
+- Schedule content on **displays** and **display groups**
+- Push **live updates** to screens (no manual refresh)
+- Run **multiple tenants** (customers/workspaces) from one install
+- Send **emergency broadcasts** and review **proof of play**
+
+You host the server yourself. Display devices connect with a browser or a native kiosk app.
+
+> **Note:** There are no pre-built [GitHub Releases](https://github.com/linuxr123/aisignx/releases) yet. Install the server from source; build display clients locally when you need them (see [Clients](#display-clients-optional)).
 
 ---
 
-## Quick start (new developer)
+## Use cases
 
-### 1. Clone and enter the repo
+| Scenario | How AISignX fits |
+|----------|------------------|
+| **Retail / lobby screens** | Playlists + schedules; group displays by location |
+| **Internal comms** | Webpage URLs, RSS/weather plugins, emergency override |
+| **Multi-customer hoster** | Tenant isolation, roles, per-tenant branding |
+| **Kiosk / dedicated device** | Electron (Windows/Linux) or Android full-screen player |
+| **Quick trial** | Browser player at `/display/<token>` — no app install |
+
+---
+
+## One-minute quick start
+
+**Goal:** Admin UI running on your machine in a few commands.
 
 ```bash
-git clone https://github.com/yourorg/aisignx.git
+git clone https://github.com/linuxr123/aisignx.git
 cd aisignx
 ```
-
-### 2. Configure secrets
-
-**Option A — environment variables (recommended for Docker/production):**
-
-```bash
-cp .env.example server/.env
-# Edit server/.env and set AISIGNX_SECRET_KEY to a long random value
-```
-
-**Option B — local Python config:**
-
-```bash
-cd server
-cp config.example.py config.py
-# Or run: python generate_config.py  (creates config.py with a random dev secret)
-```
-
-Generate a secret key:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(64))"
-```
-
-> `config.py` and `.env` are **gitignored**. Never commit real secrets.
-
-### 3. Install and run the server
 
 **Windows** (from repo root):
 
@@ -97,106 +62,150 @@ source .venv/bin/activate
 python app.py
 ```
 
-Open http://localhost:5000 — default login: `admin` / `Admin123!` (**change immediately**).
+Open **http://localhost:5000** → login `admin` / `Admin123!` → **change the password immediately**.
 
-### 4. Build display clients (optional)
-
-From the **repo root**:
-
-```powershell
-# Windows — builds Electron + Android by default, bumps patch version
-powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 -Help
-powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1
-```
-
-```bash
-# Linux
-chmod +x build_clients_linux.sh
-./build_clients_linux.sh --help
-./build_clients_linux.sh
-```
-
-Installers are copied to `server/static/clients/` for the admin **Downloads** page. Binaries are gitignored; only `client_versions.json` is tracked as a template.
-
-**Android release signing:** copy `clients/android-client/keystore.properties.example` to `keystore.properties` (gitignored) and add your keystore. Debug builds work without it.
-
-See [clients/README.md](clients/README.md) and [server/docs/CLIENTS.md](server/docs/CLIENTS.md).
-
-### 5. Docker (alternative)
-
-```bash
-cp .env.example server/.env
-# Edit server/.env — set AISIGNX_SECRET_KEY
-
-cd server
-docker compose up -d --build
-```
+**Next steps:** [Documentation](docs/README.md) · [First-time setup (detailed)](server/docs/GETTING_STARTED.md)
 
 ---
 
-## Local development vs. what Git publishes
+## Architecture overview
 
-Your working folder is a **full dev environment**. Git is configured so you can keep building and testing locally without polluting the public repo:
+```text
+                    ┌─────────────────────────────────────┐
+                    │  Admin browsers (HTTPS optional)     │
+                    └──────────────────┬──────────────────┘
+                                       │
+                    ┌──────────────────▼──────────────────┐
+                    │  Reverse proxy (optional)            │
+                    │  nginx / Caddy / IIS — TLS :443      │
+                    └──────────────────┬──────────────────┘
+                                       │ HTTP
+                    ┌──────────────────▼──────────────────┐
+                    │  AISignX server (Flask)              │
+                    │  • Admin UI + REST API               │
+                    │  • SQLite DB, uploads, plugins     │
+                    │  • SSE live push to displays         │
+                    └──────────┬────────────┬─────────────┘
+                               │            │
+              ┌────────────────┘            └────────────────┐
+              ▼                                              ▼
+    Browser player                              Native clients
+    /display/<token>                            Electron / Android
+```
 
-| Stays on your machine (gitignored) | Published in Git |
-|-------------------------------------|------------------|
-| `server/config.py`, `.env` | `config.example.py`, `.env.example` |
-| `server/uploads/`, `*.db`, logs | Source code, templates, plugins |
-| `node_modules/`, `dist/`, build outputs | `package.json`, client source |
-| Built `.exe`, `.apk`, `.AppImage`, `.deb` | Build scripts, `client_versions.json` |
-| Android keystore & `keystore.properties` | `keystore.properties.example` |
-| `RESUME_CONTEXT.md`, IDE caches | Documentation, LICENSE, THIRD_PARTY_LICENSES |
+| Part | Location | Role |
+|------|----------|------|
+| **Server** | `server/` | Flask app, templates, API, plugins, tenant DB |
+| **Clients** | `clients/` | Electron kiosk + Android WebView player |
+| **Build** | `build_clients_*.ps1` / `.sh` | Package clients → `server/static/clients/` |
+| **Docs** | [`docs/README.md`](docs/README.md) + `server/docs/` | Guides and reference |
 
-Run `git status` before pushing to confirm no secrets or build artifacts are staged.
+**HTTPS:** Terminate TLS at a reverse proxy; AISignX stays on `http://127.0.0.1:5000`. Use `python generate_config.py --mode https` in `server/`. See [HTTP vs HTTPS](server/docs/SERVER_HTTP_ONLY_or_HTTPS_ONLY_Version2.md).
+
+---
+
+## Requirements
+
+| Component | Requirement |
+|-----------|-------------|
+| **Server** | Python 3.10+, FFmpeg, 1–2 GB RAM |
+| **Production** | Waitress/Gunicorn + optional nginx/Caddy |
+| **Electron builds** | Node.js 18+ |
+| **Android builds** | JDK 17, Android SDK |
+
+Full list: [Getting started — requirements](server/docs/GETTING_STARTED.md).
+
+---
+
+## Configuration (HTTP vs HTTPS)
+
+Interactive setup (recommended):
+
+```bash
+cd server
+python generate_config.py --interactive
+```
+
+| Mode | When to use |
+|------|-------------|
+| `http` | LAN, dev, direct port 5000 |
+| `https` | Production behind nginx/Caddy/IIS |
+
+Details: [Deploy modes](server/docs/GETTING_STARTED.md#6-generate-config) · [Production deployment](server/docs/PRODUCTION_DEPLOYMENT.md)
+
+---
+
+## Display clients (optional)
+
+Native apps are **built from source** in this repo (no release binaries on GitHub yet).
+
+```powershell
+# Windows (repo root)
+powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 -Help
+```
+
+```bash
+# Linux (repo root)
+./build_clients_linux.sh --help
+```
+
+Output goes to `server/static/clients/` for the admin **Downloads** page. See [Clients](clients/README.md) and [server/docs/CLIENTS.md](server/docs/CLIENTS.md).
 
 ---
 
 ## Documentation
 
-All guides live under **`server/docs/`**:
+**Start here:** [**Documentation index**](docs/README.md) — maps every guide in `server/docs/`.
 
-| Document | What it covers |
-|----------|----------------|
-| [GETTING_STARTED.md](server/docs/GETTING_STARTED.md) | Installation, configuration, first steps |
-| [USER_GUIDE.md](server/docs/USER_GUIDE.md) | Media, playlists, schedules, emergency |
-| [ADMIN_GUIDE.md](server/docs/ADMIN_GUIDE.md) | Users, tokens, system settings |
-| [CLIENTS.md](server/docs/CLIENTS.md) | Electron and Android clients |
-| [API.md](server/docs/API.md) | REST API reference |
-| [MULTI_TENANCY.md](server/docs/MULTI_TENANCY.md) | Tenants, permissions |
-| [DEPLOY_WINDOWS.md](server/docs/DEPLOY_WINDOWS.md) | Production on Windows |
-| [DEPLOY_LINUX.md](server/docs/DEPLOY_LINUX.md) | Production on Linux |
+| Audience | Start with |
+|----------|------------|
+| New installer | [GETTING_STARTED.md](server/docs/GETTING_STARTED.md) |
+| Day-to-day operator | [USER_GUIDE.md](server/docs/USER_GUIDE.md) |
+| Tenant / system admin | [ADMIN_GUIDE.md](server/docs/ADMIN_GUIDE.md) |
+| Developers / integrators | [API.md](server/docs/API.md), [MULTI_TENANCY.md](server/docs/MULTI_TENANCY.md) |
+| Feature list | [FEATURES.md](server/docs/FEATURES.md) |
+
+---
+
+## Repository layout
+
+```text
+aisignx/
+├── docs/                   Documentation index (you are here in README)
+├── server/                 Flask application
+├── clients/                Electron + Android players
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+└── LICENSE                 AGPL-3.0-or-later
+```
+
+---
+
+## Docker
+
+```bash
+cp .env.example server/.env
+# Set AISIGNX_SECRET_KEY and AISIGNX_DEPLOY_MODE=https if behind a proxy
+
+cd server
+docker compose up -d --build
+```
+
+See [DEPLOY_LINUX.md](server/docs/DEPLOY_LINUX.md).
+
+---
+
+## Contributing & security
+
+- [Contributing](CONTRIBUTING.md) — workflow, AGPL, pre-push checks  
+- [Security](SECURITY.md) — reporting vulnerabilities  
+- [Changelog](CHANGELOG.md) — version history  
+- [Third-party licenses](THIRD_PARTY_LICENSES.md)
 
 ---
 
 ## License
 
-AISignX is **free software** licensed under the
-[GNU Affero General Public License v3.0 or later](LICENSE) (AGPL-3.0-or-later).
+AISignX is free software under the [GNU Affero General Public License v3.0 or later](LICENSE).
 
-**What that means in practice:**
-
-- You may use, modify, and redistribute AISignX.
-- If you **distribute** the software (including modified versions), you must
-  provide **corresponding source code** under the same license.
-- If you run a **modified version** as a **network service** (users interact
-  with it over a network), you must offer those users the **source code** of
-  your modified version (AGPL section 13).
-
-**Binary releases** (Windows installer, APK, etc.): source for each release
-is the matching Git tag in this repository. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
-for dependency licenses.
-
-**Trademark:** “AISignX” names and branding are not granted by the license;
-forks should use their own product name unless explicitly permitted.
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow and pre-push checks.
-
----
-
-## Security
-
-Do not commit API keys, passwords, or signing keystores. Report security issues as described in [SECURITY.md](SECURITY.md).
+If you distribute or run a modified version as a network service, AGPL requires offering corresponding source to users. Forks should use their own product name unless permitted.

@@ -22,6 +22,8 @@ services:
       # Override at deploy time. The default key in config.py MUST NOT be
       # used in production -- it ships in the public repo.
       AISIGNX_SECRET_KEY: "${AISIGNX_SECRET_KEY:?set AISIGNX_SECRET_KEY in .env}"
+      AISIGNX_DEPLOY_MODE: "${AISIGNX_DEPLOY_MODE:-https}"
+      AISIGNX_SERVER_NAME: "${AISIGNX_SERVER_NAME:-}"
       AISIGNX_DB_PATH:    "/data/db/signage.sqlite"
       UPLOAD_FOLDER:      "/data/uploads"
       AISIGNX_LOG_DIR:    "/data/logs"

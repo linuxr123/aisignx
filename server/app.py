@@ -58,6 +58,8 @@ if preferred_scheme == 'https':
     app.config.setdefault('REMEMBER_COOKIE_SECURE', True)
 
 logger.info(f"Proxy trusted: {trust_proxy} (hops={proxy_hops}) | Preferred scheme: {preferred_scheme}")
+deploy_mode = app.config.get('AISIGNX_DEPLOY_MODE') or ('https' if preferred_scheme == 'https' else 'http')
+logger.info(f"Deploy mode: {deploy_mode}")
 if app.config.get('SERVER_NAME'):
     logger.info(f"SERVER_NAME configured: {app.config['SERVER_NAME']}")
 

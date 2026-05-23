@@ -57,12 +57,12 @@ pip install -r requirements.txt --quiet
 Write-OK "Dependencies installed."
 
 # --- 5. Generate config ---
-Write-Step "Generating config.py..."
+Write-Step "Server setup (HTTP vs HTTPS)..."
 if (Test-Path "config.py") {
-    Write-OK "config.py already exists - skipping. Delete it to regenerate."
+    Write-OK "config.py already exists - skipping. Run: python generate_config.py --show"
 } else {
-    python generate_config.py
-    Write-OK "config.py generated with a random SECRET_KEY."
+    python generate_config.py --mode http
+    Write-OK "config.py created (direct HTTP mode). Run: python generate_config.py --interactive --force to change."
 }
 
 # --- 6. Run database migration ---

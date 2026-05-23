@@ -1,11 +1,13 @@
-# AISignX ù Getting Started
+# AISignX ? Getting Started
 
 Complete installation guide for a fresh server setup.
 
-> All commands in sections 3ñ8 below are run from the **`server/`** directory
+> **Documentation index:** [docs/README.md](../../docs/README.md) ? **Project overview:** [README.md](../../README.md)
+
+> All commands in sections 3?8 below are run from the **`server/`** directory
 > unless noted otherwise.
 
-> **Quick install:** Use the install script to handle steps 3ù7 automatically.
+> **Quick install:** Use the install script to handle steps 3?7 automatically.
 >
 > **Windows (run as Administrator, from the `server/` directory):**
 > ```powershell
@@ -28,7 +30,7 @@ Complete installation guide for a fresh server setup.
 | Python 3.10+ | 3.11 or 3.12 recommended |
 | pip | Included with Python |
 | FFmpeg | Required for video duration detection |
-| Chromium (Playwright) | Installed automatically ù for webpage thumbnails |
+| Chromium (Playwright) | Installed automatically ? for webpage thumbnails |
 | 1 GB RAM minimum | 2 GB recommended for production |
 | Windows, Linux, or macOS | All supported |
 
@@ -100,22 +102,56 @@ playwright install chromium
 
 ## 6. Generate Config
 
+The easiest way to choose **HTTP (LAN/dev)** vs **HTTPS (reverse proxy)**:
+
 ```bash
-python generate_config.py
+python generate_config.py --interactive
 ```
 
-Creates `config.py` with a randomly generated `SECRET_KEY`. Safe to re-run ù skips if `config.py` already exists.
+Non-interactive defaults:
 
-### Key settings in config.py
+```bash
+# Direct HTTP on port 5000 (default for install scripts)
+python generate_config.py --mode http
+
+# HTTPS behind nginx/Caddy/IIS
+python generate_config.py --mode https --hostname signage.example.com
+
+# Cloudflare in front of nginx
+python generate_config.py --mode https --hostname signage.example.com --proxy-hops 2
+```
+
+View current mode:
+
+```bash
+python generate_config.py --show
+```
+
+Re-run setup (overwrites `config.py`):
+
+```bash
+python generate_config.py --interactive --force
+```
+
+Creates `config.py` with a random `SECRET_KEY`. Safe to re-run with `--force` only when you intend to overwrite.
+
+### Deploy modes
+
+| Mode | When to use | Client URL example |
+|------|-------------|-------------------|
+| `http` | LAN, dev, no reverse proxy | `http://192.168.1.10:5000` |
+| `https` | nginx/Caddy/IIS terminates TLS on 443 | `https://signage.example.com` |
+
+One setting drives the rest (`TRUST_PROXY`, cookies, URL scheme). Edit `AISIGNX_DEPLOY_MODE` in `config.py` and restart, or re-run the wizard.
+
+### Other settings in config.py
 
 | Setting | Default | Description |
 |---|---|---|
-| `SECRET_KEY` | auto-generated | Flask session secret ù keep this private and never commit it |
-| `SQLALCHEMY_DATABASE_URI` | `sqlite:///digital_signage.db` | Database ù switch to PostgreSQL for high-traffic production |
-| `UPLOAD_FOLDER` | `uploads` | Directory where uploaded media files are stored |
-| `TRUST_PROXY` | `True` | Set `False` if running directly without a reverse proxy |
-| `TRUST_PROXY_HOPS` | `1` | Set `2` if behind Cloudflare/CDN + nginx |
-| `PREFERRED_URL_SCHEME` | `https` | Change to `http` for plain HTTP setups |
+| `SECRET_KEY` | auto-generated | Flask session secret ? keep private, never commit |
+| `SQLALCHEMY_DATABASE_URI` | `sqlite:///digital_signage.db` | Database |
+| `UPLOAD_FOLDER` | `uploads` | Uploaded media storage |
+| `SERVER_NAME` | optional | Public hostname for absolute URLs |
 
 ---
 
@@ -130,7 +166,7 @@ This single command handles everything on both fresh installs and upgrades:
 - Generates a migration script from the current models
 - Applies all pending migrations
 
-> **Important:** Never run `flask db upgrade` directly on a fresh install ù it will fail because `migrations/` does not exist yet. Always use `python migration.py`.
+> **Important:** Never run `flask db upgrade` directly on a fresh install ? it will fail because `migrations/` does not exist yet. Always use `python migration.py`.
 
 ---
 
@@ -141,19 +177,19 @@ This single command handles everything on both fresh installs and upgrades:
 python app.py
 ```
 
-**Production ù Linux (Gunicorn):**
+**Production ? Linux (Gunicorn):**
 ```bash
 pip install gunicorn
 gunicorn -w 4 -b 0.0.0.0:5000 "app:app"
 ```
 
-**Production ù Windows (Waitress):**
+**Production ? Windows (Waitress):**
 ```bash
 pip install waitress
 waitress-serve --port=5000 app:app
 ```
 
-Open **http://localhost:5000** ù log in with the default credentials:
+Open **http://localhost:5000** ? log in with the default credentials:
 
 | Username | Password |
 |---|---|
@@ -167,22 +203,31 @@ Open **http://localhost:5000** ù log in with the default credentials:
 
 Follow these steps to get your first display showing content:
 
-1. **Change the admin password** ù click your username ? Profile ? Change Password
-2. **Upload media** ù Media ? Add Media (images, videos, or web URLs)
-3. **Create a playlist** ù Playlists ? New Playlist ? add your media items
-4. **Add a display** ù Displays ? Add New Display (or use browser/native client self-registration)
-5. **Assign the playlist** ù open the Display detail page and select your playlist
-6. **Open the player** ù navigate to `http://your-server/display/<token>` on the display device
+1. **Change the admin password** ? click your username ? Profile ? Change Password
+2. **Upload media** ? Media ? Add Media (images, videos, or web URLs)
+3. **Create a playlist** ? Playlists ? New Playlist ? add your media items
+4. **Add a display** ? Displays ? Add New Display (or use browser/native client self-registration)
+5. **Assign the playlist** ? open the Display detail page and select your playlist
+6. **Open the player** ? navigate to `http://your-server/display/<token>` on the display device
 
 ---
 
 ## 10. Running Behind a Reverse Proxy (nginx / Caddy)
 
-If you put AISignX behind nginx or Caddy for HTTPS, set in `config.py`:
-```python
-TRUST_PROXY = True
-PREFERRED_URL_SCHEME = 'https'
+Use **HTTPS mode** ? either at install time:
+
+```bash
+python generate_config.py --mode https --hostname signage.example.com
 ```
+
+Or edit `config.py`:
+
+```python
+AISIGNX_DEPLOY_MODE = 'https'
+```
+
+That sets `TRUST_PROXY`, secure cookies, and `PREFERRED_URL_SCHEME` automatically.
+See `deploy_modes.py` for the full preset table.
 
 **nginx configuration:**
 ```nginx
@@ -200,7 +245,7 @@ server {
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;
 
-        # Required for SSE (live push to displays ù do not remove)
+        # Required for SSE (live push to displays ? do not remove)
         proxy_buffering    off;
         proxy_cache        off;
         proxy_read_timeout 3600s;

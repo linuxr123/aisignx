@@ -1,5 +1,17 @@
 # AISignX Server: HTTP-only or HTTPS-only
 
+Pick **one deploy mode** in `config.py` (`AISIGNX_DEPLOY_MODE = 'http'` or `'https'`), or run:
+
+```bash
+cd server
+python generate_config.py --interactive
+python generate_config.py --show
+```
+
+Presets are defined in `deploy_modes.py`. You no longer need to hand-edit `TRUST_PROXY` and cookie flags unless you have an unusual proxy chain.
+
+---
+
 Pick ONE mode at a time.
 
 ---
