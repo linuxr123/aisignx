@@ -10,12 +10,21 @@ Detailed guides live in [`server/docs/`](../server/docs/). Paths below are relat
 
 1. Read the [main README](../README.md) — what AISignX is and a one-minute install.
 2. Follow **[Getting started](../server/docs/GETTING_STARTED.md)** — FFmpeg, venv, database, first login.
-3. Skim **[Features](../server/docs/FEATURES.md)** — what is shipped vs planned.
-4. Use **[User guide](../server/docs/USER_GUIDE.md)** for everyday signage work.
+3. Walk through **[First steps](FIRST_STEPS.md)** — first playlist on a display.
+4. Skim **[Features](../server/docs/FEATURES.md)** — what is shipped vs planned.
+5. See **[Architecture](ARCHITECTURE.md)** — how server, clients, and SSE fit together.
 
 ---
 
 ## By role
+
+### Overview
+
+| Document | Description |
+|----------|-------------|
+| [FIRST_STEPS.md](FIRST_STEPS.md) | First playlist on a display after install |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System design, mermaid diagrams, data flow |
+| [images/README.md](images/README.md) | Screenshot placeholders for README |
 
 ### Install & run the server
 

@@ -16,6 +16,8 @@ when tagged releases begin.
 ### Documentation & repository
 - Root documentation index at [`docs/README.md`](docs/README.md)
 - Restructured README: use cases, one-minute quick start, architecture diagram
+- **Product-style README:** TOC, features, mermaid architecture, screenshots section, project status
+- Added `docs/ARCHITECTURE.md`, `docs/FIRST_STEPS.md`, `docs/images/` for screenshots
 - Added `CHANGELOG.md` (this file)
 - AGPL-3.0 licensing, `CONTRIBUTING.md`, `SECURITY.md`, `THIRD_PARTY_LICENSES.md`
 
