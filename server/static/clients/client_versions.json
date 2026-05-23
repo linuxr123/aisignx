@@ -1,0 +1,25 @@
+{
+    "version":  "1.0.0",
+    "clients":  {
+                    "windows":  {
+                                    "version":  "1.0.20",
+                                    "filename":  "AISignX-Player-Setup.exe",
+                                    "url":  "/static/clients/AISignX-Player-Setup.exe"
+                                },
+                    "linux_appimage":  {
+                                           "version":  "1.0.9",
+                                           "filename":  "AISignX-Player.AppImage",
+                                           "url":  "/static/clients/AISignX-Player.AppImage"
+                                       },
+                    "linux_deb":  {
+                                      "version":  "1.0.9",
+                                      "filename":  "AISignX-Player.deb",
+                                      "url":  "/static/clients/AISignX-Player.deb"
+                                  },
+                    "android":  {
+                                    "version":  "1.4.12",
+                                    "filename":  "AISignX-Player.apk",
+                                    "url":  "/static/clients/AISignX-Player.apk"
+                                }
+                }
+}

@@ -1,0 +1,222 @@
+{% extends 'base.html' %}
+
+{% block title %}Device Enrollment - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-key-fill"></i> Device Enrollment</h1>
+    {% if domains|length > 1 %}
+    <div class="d-flex align-items-center gap-2">
+        <label for="domainSelect" class="form-label small text-muted mb-0">Tenant</label>
+        <select id="domainSelect" class="form-select form-select-sm" style="min-width:220px;">
+            {% for d in domains %}
+            <option value="{{ d.id }}" {% if d.id == default_domain_id %}selected{% endif %}>{{ d.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+</div>
+
+<div class="alert alert-info py-2 small">
+    <i class="bi bi-info-circle"></i>
+    Each tenant has its own <strong>enrollment code</strong>. New displays (browser, Android, or Windows)
+    must enter this code during setup — it is not the same as the <strong>organization code</strong> staff use to sign in.
+    {% if is_superadmin %}
+    Superadmins can also manage codes under <a href="{{ url_for('domains.admin_domains_page') }}">Tenants</a> → Edit.
+    {% endif %}
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title"><i class="bi bi-key"></i> Enrollment code</h6>
+        <p class="text-muted small mb-3">
+            Hand this code to installers (email, chat, or sticker). Rotate it anytime;
+            devices that already submitted a pending request keep their place, but new devices need the current code.
+        </p>
+        <div class="input-group mb-2">
+            <span class="input-group-text">Code</span>
+            <input type="text" id="enrollCodeDisplay" class="form-control font-monospace"
+                   readonly placeholder="(none — click Generate)">
+            <button type="button" id="enrollCopyCodeBtn" class="btn btn-outline-secondary" title="Copy code">
+                <i class="bi bi-clipboard"></i>
+            </button>
+            <button type="button" id="enrollCopyLinkBtn" class="btn btn-outline-secondary" title="Copy browser setup link">
+                <i class="bi bi-link-45deg"></i>
+            </button>
+            <button type="button" id="enrollRotateBtn" class="btn btn-outline-primary">Generate / Rotate</button>
+            <button type="button" id="enrollRevokeBtn" class="btn btn-outline-danger">Revoke</button>
+        </div>
+        <div class="row g-2 align-items-center mb-2">
+            <div class="col-auto">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="enrollEnabled">
+                    <label class="form-check-label small" for="enrollEnabled">Enrollment enabled</label>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text">Expires</span>
+                    <input type="datetime-local" id="enrollExpires" class="form-control">
+                    <button type="button" id="enrollExpiresClearBtn" class="btn btn-outline-secondary">Clear</button>
+                </div>
+            </div>
+        </div>
+        <div id="enrollStatus" class="small text-muted mb-2">Loading…</div>
+        <div class="small">
+            <strong>Browser setup link:</strong>
+            <code id="enrollLinkDisplay" class="user-select-all">—</code>
+            <a id="enrollLinkOpen" href="{{ request_access_path }}" target="_blank" class="ms-2">Open</a>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h6 class="card-title"><i class="bi bi-display"></i> After devices register</h6>
+        <p class="text-muted small mb-2">
+            Approve pending devices on the <a href="{{ url_for('displays.displays') }}">Displays</a> page.
+            For browsers, share the link above or use <strong>Administration → Browser Access Link</strong>.
+        </p>
+        <p class="text-muted small mb-0">
+            <strong>Login organization code</strong> (tenant slug) for staff:
+            <code id="tenantSlugDisplay">—</code>
+        </p>
+    </div>
+</div>
+
+<script>
+(function() {
+    const DOMAINS = {{ domains|tojson }};
+    const DEFAULT_ID = {{ default_domain_id|tojson }};
+    const REQUEST_ACCESS = {{ request_access_path|tojson }};
+
+    let domainId = DEFAULT_ID;
+
+    const slugById = Object.fromEntries(DOMAINS.map(d => [d.id, d.slug]));
+
+    function selectedDomain() {
+        return DOMAINS.find(d => d.id === domainId) || DOMAINS[0];
+    }
+
+    function accessUrlForCode(code) {
+        if (!code) return window.location.origin + REQUEST_ACCESS;
+        return window.location.origin + REQUEST_ACCESS + '?code=' + encodeURIComponent(code);
+    }
+
+    function updateLinkDisplay(code) {
+        const url = accessUrlForCode(code);
+        document.getElementById('enrollLinkDisplay').textContent = url;
+        document.getElementById('enrollLinkOpen').href = url;
+    }
+
+    function _toLocalInput(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` +
+               `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function _renderEnroll(j) {
+        document.getElementById('enrollCodeDisplay').value = j.code || '';
+        document.getElementById('enrollEnabled').checked = !!j.enabled;
+        document.getElementById('enrollExpires').value = _toLocalInput(j.expires_at);
+        updateLinkDisplay(j.code || '');
+        const status = document.getElementById('enrollStatus');
+        if (!j.code) {
+            status.textContent = 'No code set — click Generate / Rotate so devices can enroll.';
+        } else if (!j.is_open) {
+            status.textContent = 'Code exists but enrollment is closed (disabled or expired).';
+        } else {
+            status.textContent = 'Enrollment is open. Share the code or browser link with installers.';
+        }
+    }
+
+    async function loadEnrollment() {
+        document.getElementById('enrollCodeDisplay').value = '';
+        document.getElementById('enrollStatus').textContent = 'Loading…';
+        const d = selectedDomain();
+        document.getElementById('tenantSlugDisplay').textContent = d ? (d.slug || '—') : '—';
+        try {
+            const r = await fetch(`/api/domains/${domainId}/enrollment`);
+            const j = await r.json();
+            if (j.status !== 'success') throw new Error(j.message || 'load failed');
+            _renderEnroll(j);
+        } catch (e) {
+            document.getElementById('enrollStatus').textContent =
+                'Failed to load enrollment: ' + e.message;
+        }
+    }
+
+    async function _postEnroll(body) {
+        const r = await fetch(`/api/domains/${domainId}/enrollment`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body || {}),
+        });
+        const j = await r.json();
+        if (j.status !== 'success') {
+            alert(j.message || 'Update failed');
+            return;
+        }
+        _renderEnroll(j);
+    }
+
+    document.getElementById('domainSelect')?.addEventListener('change', e => {
+        domainId = parseInt(e.target.value, 10);
+        const u = new URL(window.location.href);
+        u.searchParams.set('domain_id', String(domainId));
+        history.replaceState(null, '', u);
+        loadEnrollment();
+    });
+
+    document.getElementById('enrollRotateBtn').addEventListener('click', () => {
+        if (!confirm('Generate a new enrollment code? Devices that have not registered yet will need the new code.')) return;
+        _postEnroll({action: 'rotate'});
+    });
+    document.getElementById('enrollRevokeBtn').addEventListener('click', () => {
+        if (!confirm('Revoke the enrollment code? No new devices can register until you generate a new one.')) return;
+        _postEnroll({action: 'revoke'});
+    });
+    document.getElementById('enrollEnabled').addEventListener('change', e => {
+        _postEnroll({action: e.target.checked ? 'enable' : 'disable'});
+    });
+    document.getElementById('enrollExpires').addEventListener('change', e => {
+        const v = e.target.value;
+        const iso = v ? new Date(v).toISOString() : null;
+        _postEnroll({expires_at_iso: iso});
+    });
+    document.getElementById('enrollExpiresClearBtn').addEventListener('click', () => {
+        document.getElementById('enrollExpires').value = '';
+        _postEnroll({expires_at_iso: null});
+    });
+
+    async function flashStatus(msg) {
+        const s = document.getElementById('enrollStatus');
+        const prev = s.textContent;
+        s.textContent = msg;
+        setTimeout(() => { s.textContent = prev; }, 2000);
+    }
+
+    document.getElementById('enrollCopyCodeBtn').addEventListener('click', async () => {
+        const code = document.getElementById('enrollCodeDisplay').value;
+        if (!code) return;
+        try {
+            await navigator.clipboard.writeText(code);
+            flashStatus('Code copied to clipboard.');
+        } catch (_) { alert('Copy failed'); }
+    });
+    document.getElementById('enrollCopyLinkBtn').addEventListener('click', async () => {
+        const code = document.getElementById('enrollCodeDisplay').value;
+        const url = accessUrlForCode(code);
+        try {
+            await navigator.clipboard.writeText(url);
+            flashStatus('Browser setup link copied.');
+        } catch (_) { alert('Copy failed'); }
+    });
+
+    loadEnrollment();
+})();
+</script>
+{% endblock %}

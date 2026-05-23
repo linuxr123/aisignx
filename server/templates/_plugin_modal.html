@@ -1,0 +1,38 @@
+<!-- Modal for Add/Edit Plugin Item -->
+<div class="modal fade" id="pluginItemModal" tabindex="-1" aria-labelledby="pluginItemModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="pluginItemModalLabel">Add Plugin Item</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <form id="pluginItemForm">
+          <input type="hidden" id="pluginItemId" value="">
+          <div class="mb-3">
+            <label for="pluginType" class="form-label">Plugin</label>
+            <select id="pluginType" class="form-select"></select>
+            <div id="pluginDescription" class="form-text"></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label for="pluginDuration" class="form-label">Duration (s)</label>
+              <input type="number" min="1" step="1" id="pluginDuration" class="form-control" value="30">
+            </div>
+          </div>
+          <hr>
+          <div class="mb-2">
+            <strong>Plugin configuration</strong>
+          </div>
+          <div id="pluginConfigFields" class="row g-3">
+            <!-- dynamic fields render here -->
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button id="btnSavePluginItem" type="button" class="btn btn-primary">Save</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

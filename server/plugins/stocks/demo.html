@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Stock Ticker - Demo</title>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script>
+        // Plugin configuration
+        window.PLUGIN_CONFIG = {
+            symbols: "AAPL, MSFT, GOOGL, NVDA, TSLA, AMZN, META, NFLX",
+            apikey: "", // Get free key at https://finnhub.io/register
+            direction: "horizontal", // horizontal | vertical
+            scroll_speed: 50, // pixels per second (20-200)
+            duration: 0, // 0=auto (show all stocks), or custom seconds
+            theme: "dark", // dark | light | auto
+            refresh_seconds: 60 // data refresh interval
+        };
+    </script>
+
+    <!-- Load the plugin -->
+    <script src="main.js"></script>
+</body>
+</html>

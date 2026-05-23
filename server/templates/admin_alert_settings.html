@@ -1,0 +1,497 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if tenant_mode %}Tenant Alert Settings{% else %}Alert Settings{% endif %} - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="h3 mb-0"><i class="bi bi-sliders"></i> {% if tenant_mode %}Tenant Alert Settings{% else %}Alert Settings{% endif %}</h1>
+        <div class="text-muted small">
+            {% if tenant_mode %}
+            Configure offline alerts, webhooks, and snooze windows for the active tenant.
+            Use the sidebar <strong>Active tenant</strong> switcher to change which tenant you are editing.
+            {% else %}
+            Configure global defaults or per-tenant overrides for alert rules and delivery.
+            {% endif %}
+        </div>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        {% if not tenant_mode %}
+        <label for="alertScopeSelect" class="form-label small mb-0 text-muted">Scope:</label>
+        <select id="alertScopeSelect" class="form-select form-select-sm" style="width:auto;">
+            <option value="">Global (server-wide)</option>
+        </select>
+        {% endif %}
+        {% if tenant_mode %}
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('settings_admin.admin_settings_page') }}">Tenant Settings</a>
+        {% else %}
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_alerts_page') }}">Back to dashboard</a>
+        {% endif %}
+    </div>
+</div>
+
+<div id="resultBox" class="alert" style="display:none;"></div>
+
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Alert Rules</strong>
+        {% if tenant_mode %}
+        <button type="button" id="testAlertBtn" class="btn btn-sm btn-outline-secondary">Send test alert</button>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form id="cfgForm" class="row g-3">
+            <div class="col-md-3">
+                <div class="form-check form-switch mt-4">
+                    <input class="form-check-input" type="checkbox" id="alerts_enabled">
+                    <label class="form-check-label" for="alerts_enabled">Alerts enabled</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Offline threshold (minutes)</label>
+                <input type="number" min="1" class="form-control" id="alerts_offline_threshold_min">
+            </div>
+            <div class="col-md-3">
+                <div class="form-check form-switch mt-4">
+                    <input class="form-check-input" type="checkbox" id="alerts_duplicate_client_enabled">
+                    <label class="form-check-label" for="alerts_duplicate_client_enabled">Duplicate client blocked</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check form-switch mt-4">
+                    <input class="form-check-input" type="checkbox" id="alerts_bad_login_enabled">
+                    <label class="form-check-label" for="alerts_bad_login_enabled">Login rate-limit blocked</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Repeat throttle (minutes)</label>
+                <input type="number" min="1" class="form-control" id="alerts_security_event_throttle_min">
+            </div>
+            <div class="col-md-9">
+                <label class="form-label">Webhook POST URL <span class="text-muted small">(optional)</span></label>
+                <input type="text" class="form-control" id="alerts_webhook_url" placeholder="https://hooks.example.com/...">
+                <div class="form-text">
+                    Webhooks send alerts as JSON to Slack, Teams, PagerDuty, Home Assistant, or another monitoring system.
+                </div>
+            </div>
+            <div class="col-12">
+                <div class="alert alert-info py-2 small mb-0">
+                    {% if tenant_mode %}
+                    SMTP and email-from settings are on
+                    <a href="{{ url_for('settings_admin.admin_settings_page') }}?q=alerts.smtp" class="alert-link">Tenant Settings</a>
+                    (search <code>alerts.smtp</code>). Cross-tenant recipient routing is managed by a superadmin.
+                    {% else %}
+                    Email recipients are managed on
+                    <a href="{{ url_for('admin.admin_alert_notifications_page') }}" class="alert-link">Notification Recipients</a>.
+                    SMTP server settings are in
+                    <a href="{{ url_for('settings_admin.admin_settings_page') }}?q=alerts.smtp" class="alert-link">System Settings</a>
+                    (global or per-tenant scope).
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="col-12"><hr><h6>Daily Digest</h6></div>
+            <div class="col-md-3">
+                <div class="form-check form-switch mt-4">
+                    <input class="form-check-input" type="checkbox" id="alerts_digest_enabled">
+                    <label class="form-check-label" for="alerts_digest_enabled">Send daily digest</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Hour (0-23 UTC)</label>
+                <input type="number" min="0" max="23" class="form-control" id="alerts_digest_hour">
+            </div>
+            <div class="col-md-3">
+                <div class="form-check form-switch mt-4">
+                    <input class="form-check-input" type="checkbox" id="alerts_digest_only">
+                    <label class="form-check-label" for="alerts_digest_only">Digest only</label>
+                </div>
+            </div>
+            {% if not tenant_mode %}
+            <div class="col-md-3 text-end mt-4">
+                <button type="button" id="digestNowBtn" class="btn btn-outline-primary btn-sm">Send digest now</button>
+            </div>
+            {% endif %}
+            <div class="col-12 text-end">
+                <button type="submit" class="btn btn-primary">Save alert settings</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-3" id="tenantRecipientsCard">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-people"></i> Notification Recipients</strong>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="tenantAddRecipientBtn">Add recipient</button>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-2" id="tenantRecipientsHelp">
+            Users in this tenant who receive email alerts for display outages, security events, and digests.
+            Configure SMTP in
+            {% if tenant_mode %}
+            <a href="{{ url_for('settings_admin.admin_settings_page') }}?q=alerts.smtp">Tenant Settings</a>.
+            {% else %}
+            <a href="{{ url_for('settings_admin.admin_settings_page') }}?q=alerts.smtp">System Settings</a> (tenant scope).
+            {% endif %}
+        </p>
+        <div id="tenantRecipientList" class="mb-2"><span class="text-muted small">Loading…</span></div>
+        <button type="button" class="btn btn-primary btn-sm" id="tenantSaveRecipientsBtn">Save recipients</button>
+    </div>
+</div>
+
+<div class="modal fade" id="tenantRecipientModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add notification recipient</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">User</label>
+          <select class="form-select" id="tenantRecipientUser"></select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Alert types</label>
+          <div id="tenantRecipientTypes" class="border rounded p-2"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="tenantApplyRecipientBtn">Add</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-calendar-week"></i> Auto-Snooze Schedules</strong>
+        <button id="addScheduleBtn" class="btn btn-sm btn-outline-primary">Add window</button>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Define recurring windows where displays should not create offline notifications.
+            Leave both Display ID and Group ID blank to apply to all displays in this tenant.
+        </p>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead><tr><th>Label</th><th>Display ID</th><th>Group ID</th><th>Days</th><th>Start</th><th>End</th><th>TZ offset</th><th></th></tr></thead>
+                <tbody id="schedRows"></tbody>
+            </table>
+        </div>
+        <div class="text-end">
+            <button id="saveSchedulesBtn" class="btn btn-primary btn-sm">Save schedules</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const TENANT_MODE = {{ 'true' if tenant_mode else 'false' }};
+const ACTIVE_DOMAIN_ID = {{ active_domain_id|tojson }};
+const ADMIN_DOMAINS = {{ administrable_domains|default([])|tojson }};
+
+const KEYS = [
+    'alerts.enabled', 'alerts.offline_threshold_min', 'alerts.webhook_url',
+    'alerts.duplicate_client_enabled', 'alerts.bad_login_enabled',
+    'alerts.security_event_throttle_min',
+    'alerts.digest_enabled', 'alerts.digest_hour', 'alerts.digest_only',
+];
+
+function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function getAlertDomainId() {
+    const domainSwitcher = document.getElementById('domainSwitcher');
+    if (domainSwitcher && domainSwitcher.value) {
+        const id = parseInt(domainSwitcher.value, 10);
+        if (id > 0) return id;
+    }
+    const scopeSel = document.getElementById('alertScopeSelect');
+    if (scopeSel && scopeSel.value) {
+        return parseInt(scopeSel.value, 10);
+    }
+    if (TENANT_MODE) {
+        if (ACTIVE_DOMAIN_ID) return ACTIVE_DOMAIN_ID;
+        return ADMIN_DOMAINS.length ? ADMIN_DOMAINS[0].id : null;
+    }
+    return null;
+}
+
+function alertDomainQs() {
+    const id = getAlertDomainId();
+    return id ? `?domain_id=${id}` : '';
+}
+
+function setVal(key, val) {
+    const el = document.getElementById(key.replace(/\./g, '_'));
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!val;
+    else el.value = val ?? '';
+}
+function getVal(key) {
+    const el = document.getElementById(key.replace(/\./g, '_'));
+    if (!el) return null;
+    if (el.type === 'checkbox') return el.checked;
+    if (el.type === 'number') return parseInt(el.value, 10) || 0;
+    return el.value;
+}
+function showResult(kind, html) {
+    const box = document.getElementById('resultBox');
+    box.style.display = 'block';
+    box.className = 'alert alert-' + kind;
+    box.innerHTML = html;
+}
+
+async function loadConfig() {
+    const r = await fetch('/api/alerts/config' + alertDomainQs());
+    const j = await r.json();
+    if (j.status !== 'success') return showResult('danger', 'Failed to load config: ' + (j.message || ''));
+    KEYS.forEach(k => setVal(k, j.config[k]));
+}
+
+document.getElementById('cfgForm').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const body = { domain_id: getAlertDomainId() };
+    KEYS.forEach(k => body[k] = getVal(k));
+    const r = await fetch('/api/alerts/config', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (j.status === 'success') showResult('success', 'Saved alert settings.');
+    else showResult('danger', 'Save failed: ' + (j.message || ''));
+});
+
+const digestBtn = document.getElementById('digestNowBtn');
+if (digestBtn) {
+    digestBtn.addEventListener('click', async () => {
+        if (!confirm('Send the daily digest now?')) return;
+        const r = await fetch('/api/alerts/digest/run', {method: 'POST'});
+        const j = await r.json();
+        showResult(j.status === 'success' ? 'info' : 'danger',
+            '<pre class="mb-0 small">' + JSON.stringify(j.result || j, null, 2) + '</pre>');
+    });
+}
+
+const testBtn = document.getElementById('testAlertBtn');
+if (testBtn) {
+    testBtn.addEventListener('click', async () => {
+        const body = { domain_id: getAlertDomainId() };
+        const r = await fetch('/api/alerts/test', {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+        });
+        const j = await r.json();
+        if (j.status === 'success') {
+            showResult('info', 'Email: ' + (j.email.ok ? 'ok' : j.email.error || 'failed') +
+                '; Webhook: ' + (j.webhook.ok ? 'ok' : j.webhook.error || 'failed'));
+        } else {
+            showResult('danger', 'Test failed: ' + (j.message || ''));
+        }
+    });
+}
+
+const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+function rowHtml(s) {
+    s = s || {};
+    const days = s.days || [];
+    const checks = DAY_LABELS.map((lbl, i) =>
+        '<label class="me-1 small"><input type="checkbox" class="form-check-input sched-day" data-day="' + i + '"' +
+        (days.includes(i) ? ' checked' : '') + '> ' + lbl + '</label>').join('');
+    return '<tr class="sched-row">' +
+        '<td><input class="form-control form-control-sm sched-label" value="' + (s.label || '').replace(/"/g,'&quot;') + '"></td>' +
+        '<td><input type="number" min="1" class="form-control form-control-sm sched-display-id" value="' + (s.display_id || '') + '"></td>' +
+        '<td><input type="number" min="1" class="form-control form-control-sm sched-group-id" value="' + (s.group_id || '') + '"></td>' +
+        '<td>' + checks + '</td>' +
+        '<td><input type="time" class="form-control form-control-sm sched-start" value="' + (s.start_hm || '22:00') + '"></td>' +
+        '<td><input type="time" class="form-control form-control-sm sched-end" value="' + (s.end_hm || '06:00') + '"></td>' +
+        '<td><input type="number" class="form-control form-control-sm sched-tz" value="' + (s.tz_offset_min || 0) + '"></td>' +
+        '<td><button class="btn btn-sm btn-outline-danger sched-del">Remove</button></td>' +
+        '</tr>';
+}
+function bindRow(tr) { tr.querySelector('.sched-del').addEventListener('click', () => tr.remove()); }
+function readSchedules() {
+    return Array.from(document.querySelectorAll('#schedRows .sched-row')).map(tr => ({
+        label: tr.querySelector('.sched-label').value,
+        display_id: parseInt(tr.querySelector('.sched-display-id').value, 10) || null,
+        group_id: parseInt(tr.querySelector('.sched-group-id').value, 10) || null,
+        days: Array.from(tr.querySelectorAll('.sched-day:checked')).map(c => parseInt(c.dataset.day, 10)),
+        start_hm: tr.querySelector('.sched-start').value || '00:00',
+        end_hm: tr.querySelector('.sched-end').value || '00:00',
+        tz_offset_min: parseInt(tr.querySelector('.sched-tz').value, 10) || 0,
+    }));
+}
+async function loadSchedules() {
+    const r = await fetch('/api/alerts/schedules' + alertDomainQs());
+    const j = await r.json();
+    const tbody = document.getElementById('schedRows');
+    tbody.innerHTML = '';
+    if (j.status !== 'success') return;
+    (j.schedules || []).forEach(s => { tbody.insertAdjacentHTML('beforeend', rowHtml(s)); bindRow(tbody.lastElementChild); });
+}
+document.getElementById('addScheduleBtn').addEventListener('click', () => {
+    const tbody = document.getElementById('schedRows');
+    tbody.insertAdjacentHTML('beforeend', rowHtml({}));
+    bindRow(tbody.lastElementChild);
+});
+document.getElementById('saveSchedulesBtn').addEventListener('click', async () => {
+    const r = await fetch('/api/alerts/schedules', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({schedules: readSchedules(), domain_id: getAlertDomainId()}),
+    });
+    const j = await r.json();
+    if (j.status === 'success') showResult('success', 'Saved ' + j.schedules.length + ' schedule window(s).');
+    else showResult('danger', 'Save failed: ' + (j.message || ''));
+    loadSchedules();
+});
+
+async function initAlertScope() {
+    if (TENANT_MODE) {
+        loadConfig();
+        loadSchedules();
+        refreshTenantRecipientsPanel();
+        return;
+    }
+    const sel = document.getElementById('alertScopeSelect');
+    if (!sel) return;
+    const r = await fetch('/api/domains');
+    if (r.ok) {
+        const j = await r.json();
+        for (const d of (j.domains || [])) {
+            const o = document.createElement('option');
+            o.value = d.id;
+            o.textContent = 'Tenant: ' + d.name;
+            sel.appendChild(o);
+        }
+    }
+    if (ACTIVE_DOMAIN_ID) sel.value = String(ACTIVE_DOMAIN_ID);
+    sel.addEventListener('change', () => {
+        loadConfig();
+        loadSchedules();
+        refreshTenantRecipientsPanel();
+    });
+    loadConfig();
+    loadSchedules();
+    refreshTenantRecipientsPanel();
+}
+
+initAlertScope();
+
+const TENANT_DEFAULT_TYPES = ['display', 'security', 'disk', 'digest'];
+let tenantRecipientUsers = [];
+let tenantRecipientCfg = { user_ids: [], alert_types: {} };
+let tenantAlertTypeChoices = [];
+
+function tenantRecipientQs() {
+    const id = getAlertDomainId();
+    return id ? `?domain_id=${id}` : '';
+}
+
+function tenantRecipientKey(uid) {
+    return 'tenant:' + uid;
+}
+
+function renderTenantRecipientList() {
+    const box = document.getElementById('tenantRecipientList');
+    const ids = tenantRecipientCfg.user_ids || [];
+    if (!ids.length) {
+        box.innerHTML = '<div class="text-muted small">No recipients configured. Add a user from this tenant.</div>';
+        return;
+    }
+    const byId = Object.fromEntries(tenantRecipientUsers.map(u => [u.id, u]));
+    box.innerHTML = ids.map(uid => {
+        const u = byId[uid] || { username: 'User #' + uid, email: '' };
+        const types = (tenantRecipientCfg.alert_types || {})[tenantRecipientKey(uid)] || TENANT_DEFAULT_TYPES;
+        return `<div class="d-flex justify-content-between align-items-center border rounded p-2 mb-1">
+            <div><strong>${esc(u.username)}</strong> <span class="text-muted small">&lt;${esc(u.email || 'no email')}&gt;</span>
+            <br><span class="text-muted small">${types.join(', ')}</span></div>
+            <button type="button" class="btn btn-sm btn-outline-danger" data-rm="${uid}">Remove</button>
+        </div>`;
+    }).join('');
+    box.querySelectorAll('button[data-rm]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const uid = parseInt(btn.dataset.rm, 10);
+            tenantRecipientCfg.user_ids = (tenantRecipientCfg.user_ids || [])
+                .filter(id => parseInt(id, 10) !== uid);
+            const key = tenantRecipientKey(uid);
+            if (tenantRecipientCfg.alert_types) delete tenantRecipientCfg.alert_types[key];
+            renderTenantRecipientList();
+        });
+    });
+}
+
+async function loadTenantRecipients() {
+    const r = await fetch('/api/alerts/tenant-recipients' + tenantRecipientQs());
+    const j = await r.json();
+    if (j.status !== 'success') {
+        document.getElementById('tenantRecipientList').innerHTML =
+            '<span class="text-danger small">' + esc(j.message || 'Failed to load') + '</span>';
+        return;
+    }
+    tenantRecipientUsers = j.users || [];
+    tenantRecipientCfg = j.recipients || { user_ids: [], alert_types: {} };
+    tenantAlertTypeChoices = j.alert_types || [];
+    renderTenantRecipientList();
+}
+
+function openTenantRecipientModal() {
+    const sel = document.getElementById('tenantRecipientUser');
+    const assigned = new Set((tenantRecipientCfg.user_ids || []).map(id => parseInt(id, 10)));
+    const avail = tenantRecipientUsers.filter(u => !assigned.has(u.id));
+    sel.innerHTML = avail.length
+        ? avail.map(u => `<option value="${u.id}">${esc(u.username)} &lt;${esc(u.email || 'no email')}&gt;</option>`).join('')
+        : '<option value="">No more users to add</option>';
+    const types = tenantAlertTypeChoices.length ? tenantAlertTypeChoices
+        : TENANT_DEFAULT_TYPES.map(id => ({ id, label: id }));
+    document.getElementById('tenantRecipientTypes').innerHTML = types.map(t =>
+        `<div class="form-check">
+            <input class="form-check-input tenant-type-check" type="checkbox" value="${esc(t.id)}" id="tt_${esc(t.id)}" checked>
+            <label class="form-check-label" for="tt_${esc(t.id)}">${esc(t.label)}</label>
+        </div>`).join('');
+    new bootstrap.Modal(document.getElementById('tenantRecipientModal')).show();
+}
+
+document.getElementById('tenantAddRecipientBtn')?.addEventListener('click', openTenantRecipientModal);
+document.getElementById('tenantApplyRecipientBtn')?.addEventListener('click', () => {
+    const uid = parseInt(document.getElementById('tenantRecipientUser').value, 10);
+    if (!uid) return alert('Select a user.');
+    const types = Array.from(document.querySelectorAll('.tenant-type-check:checked')).map(c => c.value);
+    if (!types.length) return alert('Select at least one alert type.');
+    tenantRecipientCfg.user_ids = Array.from(new Set([...(tenantRecipientCfg.user_ids || []), uid]));
+    tenantRecipientCfg.alert_types = tenantRecipientCfg.alert_types || {};
+    tenantRecipientCfg.alert_types[tenantRecipientKey(uid)] = types;
+    bootstrap.Modal.getInstance(document.getElementById('tenantRecipientModal')).hide();
+    renderTenantRecipientList();
+});
+document.getElementById('tenantSaveRecipientsBtn')?.addEventListener('click', async () => {
+    const r = await fetch('/api/alerts/tenant-recipients' + tenantRecipientQs(), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ recipients: tenantRecipientCfg, domain_id: getAlertDomainId() }),
+    });
+    const j = await r.json();
+    if (j.status === 'success') {
+        showResult('success', 'Saved notification recipients.');
+        tenantRecipientCfg = j.recipients || tenantRecipientCfg;
+        renderTenantRecipientList();
+    } else {
+        showResult('danger', 'Save failed: ' + (j.message || ''));
+    }
+});
+function refreshTenantRecipientsPanel() {
+    const card = document.getElementById('tenantRecipientsCard');
+    if (!card) return;
+    const did = getAlertDomainId();
+    if (!did) {
+        card.style.display = 'none';
+        return;
+    }
+    card.style.display = '';
+    loadTenantRecipients();
+}
+
+refreshTenantRecipientsPanel();
+</script>
+{% endblock %}

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Plugins - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0"><i class="bi bi-puzzle me-2"></i>Plugins</h1>
+    <div class="btn-group">
+        {% if current_user.is_authenticated and current_user.is_superadmin %}
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#uploadPluginModal">
+            <i class="bi bi-upload me-1"></i>Upload Plugin (.zip)
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+{% if plugins %}
+<div class="row g-3">
+    {% for p in plugins %}
+    <div class="col-md-6 col-xl-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2 gap-2">
+                    <i class="bi {{ p.icon or 'bi-puzzle' }} fs-4 text-primary"></i>
+                    <div>
+                        <h5 class="mb-0">{{ p.name }}</h5>
+                        <small class="text-muted">type: <code>{{ p.type }}</code> &nbsp;|&nbsp; v{{ p.version }}</small>
+                    </div>
+                </div>
+                <p class="card-text text-muted small">{{ p.description or 'No description provided.' }}</p>
+                {% if p.schema %}
+                <p class="mb-1 small fw-semibold">Config fields:</p>
+                <ul class="mb-0 small">
+                    {% for field in p.schema %}
+                    <li><code>{{ field.key }}</code> ({{ field.type }}) &mdash; {{ field.label or field.key }}{% if field.required %} <span class="text-danger">*</span>{% endif %}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+            <div class="card-footer bg-transparent text-muted small">
+                Add this plugin to a playlist via the Playlist editor.
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-puzzle fs-1 d-block mb-3"></i>
+        <h5>No plugins installed</h5>
+        {% if current_user.is_authenticated and current_user.is_superadmin %}
+        <p class="mb-0">Upload a plugin zip file to install a plugin.</p>
+        {% else %}
+        <p class="mb-0">No plugins are available.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% if current_user.is_authenticated and current_user.is_superadmin %}
+<div class="modal fade" id="uploadPluginModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="uploadPluginForm" class="modal-content" enctype="multipart/form-data">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Upload Plugin</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Plugin archive (.zip)</label>
+          <input type="file" name="file" class="form-control" accept=".zip,application/zip,application/x-zip-compressed" required>
+          <div class="form-text">
+            The archive must contain <code>plugin.json</code> and <code>main.js</code>
+            either at the root or inside a single top-level folder.
+            Uploading replaces an existing plugin with the same folder name.
+          </div>
+        </div>
+        <div id="uploadPluginStatus" class="small"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="uploadPluginSubmit">Install</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+    const form = document.getElementById('uploadPluginForm');
+    if (!form) return;
+    const status = document.getElementById('uploadPluginStatus');
+    const btn = document.getElementById('uploadPluginSubmit');
+    form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        status.className = 'small text-muted';
+        status.textContent = 'Uploading\u2026';
+        btn.disabled = true;
+        const fd = new FormData(form);
+        fetch('/api/plugins/upload', { method: 'POST', body: fd })
+            .then(r => r.json().then(d => ({ ok: r.ok, body: d })))
+            .then(({ ok, body }) => {
+                if (ok && body.status === 'success') {
+                    status.className = 'small text-success';
+                    status.textContent = 'Installed ' + body.slug + (body.replaced ? ' (replaced existing)' : '') + '. Reloading\u2026';
+                    setTimeout(() => window.location.reload(), 600);
+                } else {
+                    status.className = 'small text-danger';
+                    status.textContent = 'Error: ' + (body.message || 'upload failed');
+                    btn.disabled = false;
+                }
+            })
+            .catch(err => {
+                status.className = 'small text-danger';
+                status.textContent = 'Request failed: ' + err;
+                btn.disabled = false;
+            });
+    });
+})();
+</script>
+{% endblock %}

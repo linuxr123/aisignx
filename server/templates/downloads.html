@@ -1,0 +1,236 @@
+{% extends 'base.html' %}
+{% block title %}Downloads — AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Client Downloads</h1>
+    <span class="badge bg-secondary" id="serverVersion">Loading…</span>
+</div>
+
+<p class="text-muted mb-4">
+    Install a native client on each display device. After installation the client will
+    prompt for your server URL, then appear in the
+    <a href="{{ url_for('displays.displays') }}">Displays</a> pending list for approval.
+    Installed clients automatically check for updates every hour.
+</p>
+
+<div class="row g-4">
+
+    <!-- Windows -->
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+                <div class="mb-3" style="font-size:2.5rem;">🪟</div>
+                <h5 class="card-title d-flex justify-content-between align-items-center">
+                    Windows
+                    <span class="badge bg-primary client-version" data-client="windows">—</span>
+                </h5>
+                <p class="card-text text-muted flex-grow-1">
+                    Self-contained installer (.exe). Fullscreen kiosk mode, auto-starts on login,
+                    checks for updates every hour.
+                </p>
+                <div class="mt-3">
+                    <a href="{{ manifest.get('clients', {}).get('windows', {}).get('url', '#') }}"
+                       class="btn btn-primary w-100 mb-2 dl-btn{% if not manifest.get('clients', {}).get('windows', {}).get('url') %} disabled{% endif %}" id="dlWin"
+                       data-client="windows" data-label="Download .exe" download>
+                        <i class="bi bi-download me-1"></i> Download .exe
+                    </a>
+                </div>
+            </div>
+            <div class="card-footer text-muted small">Windows 10 / 11 &nbsp;·&nbsp; x64</div>
+        </div>
+    </div>
+
+    <!-- Linux -->
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+                <div class="mb-3" style="font-size:2.5rem;">🐧</div>
+                <h5 class="card-title d-flex justify-content-between align-items-center">
+                    Linux
+                    <span class="badge bg-primary client-version" data-client="linux_appimage">—</span>
+                </h5>
+                <p class="card-text text-muted flex-grow-1">
+                    Portable AppImage — no installation required. A .deb package is also available.
+                    Checks for updates every hour.
+                </p>
+                <div class="mt-3">
+                    <a href="{{ manifest.get('clients', {}).get('linux_appimage', {}).get('url', '#') }}"
+                       class="btn btn-primary w-100 mb-2 dl-btn{% if not manifest.get('clients', {}).get('linux_appimage', {}).get('url') %} disabled{% endif %}"
+                       data-client="linux_appimage" data-label="Download AppImage" download>
+                        <i class="bi bi-download me-1"></i> Download AppImage
+                    </a>
+                    <a href="{{ manifest.get('clients', {}).get('linux_deb', {}).get('url', '#') }}"
+                       class="btn btn-outline-primary w-100 mb-2 dl-btn{% if not manifest.get('clients', {}).get('linux_deb', {}).get('url') %} disabled{% endif %}"
+                       data-client="linux_deb" data-label="Download .deb" download>
+                        <i class="bi bi-download me-1"></i> Download .deb
+                    </a>
+                </div>
+            </div>
+            <div class="card-footer text-muted small">Ubuntu 20.04+ / Debian 11+ &nbsp;·&nbsp; x64</div>
+        </div>
+    </div>
+
+    <!-- Android -->
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+                <div class="mb-3" style="font-size:2.5rem;">🤖</div>
+                <h5 class="card-title d-flex justify-content-between align-items-center">
+                    Android
+                    <span class="badge bg-primary client-version" data-client="android">—</span>
+                </h5>
+                <p class="card-text text-muted flex-grow-1">
+                    Native kiosk app. Blocks back/home, keeps screen on, auto-starts after reboot,
+                    prompts for update when new APK is on the server.
+                </p>
+                <div class="mt-3">
+                    <a href="{{ manifest.get('clients', {}).get('android', {}).get('url', '#') }}"
+                       class="btn btn-primary w-100 mb-2 dl-btn{% if not manifest.get('clients', {}).get('android', {}).get('url') %} disabled{% endif %}"
+                       data-client="android" data-label="Download .apk" download>
+                        <i class="bi bi-download me-1"></i> Download .apk
+                    </a>
+                    <p class="text-muted small mb-0">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Enable <em>Install unknown apps</em> in Android settings before installing.
+                    </p>
+                </div>
+            </div>
+            <div class="card-footer text-muted small">Android 8.0+ (API 26) &nbsp;·&nbsp; ARM64 / x86_64</div>
+        </div>
+    </div>
+</div>
+
+<!-- Version manifest editor -->
+<div class="card mt-5">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Publish a New Version</strong>
+        <button class="btn btn-sm btn-outline-secondary" id="btnEditManifest" data-bs-toggle="collapse" data-bs-target="#manifestEditor">
+            Edit client_versions.json
+        </button>
+    </div>
+    <div class="collapse" id="manifestEditor">
+        <div class="card-body">
+            <p class="text-muted small mb-2">
+                Edit the version numbers below, then click Save. Clients check this file every hour and
+                will prompt the user to download the new package when the version number is higher than
+                their installed version.
+            </p>
+            <textarea id="manifestText" class="form-control font-monospace" rows="22" style="font-size:.8rem;"></textarea>
+            <div class="d-flex gap-2 mt-2">
+                <button class="btn btn-primary" id="btnSaveManifest">Save</button>
+                <span id="manifestStatus" class="text-muted align-self-center small"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Setup instructions -->
+<div class="card mt-4">
+    <div class="card-header"><strong>Setup Instructions</strong></div>
+    <div class="card-body">
+        <ol class="mb-0">
+            <li class="mb-2">Install the client on your display device using one of the packages above.</li>
+            <li class="mb-2">
+                Launch the app. It will show a setup screen asking for your <strong>Server URL</strong>:<br>
+                <code class="user-select-all">{{ server_url }}</code>
+            </li>
+            <li class="mb-2">Enter a friendly name for the display (e.g. <em>Lobby Screen</em>) and submit.</li>
+            <li class="mb-2">
+                Go to <a href="{{ url_for('displays.displays') }}">Displays</a> — a pending registration
+                will appear at the top. Click <strong>Approve</strong> and set the display name.
+            </li>
+            <li>The client detects approval automatically and starts playing your content.</li>
+        </ol>
+    </div>
+</div>
+
+<!-- Build-from-source -->
+<div class="card mt-4 mb-4">
+    <div class="card-header"><strong>Build from Source</strong></div>
+    <div class="card-body">
+        <div class="row g-4">
+            <div class="col-md-6">
+                <h6><i class="bi bi-laptop me-1"></i> Electron (Windows &amp; Linux)</h6>
+                <pre class="bg-dark text-light p-3 rounded small mb-0"><code>cd electron-client
+npm install
+npm run build:all
+# Output: electron-client/dist/
+# Copy to: static/clients/</code></pre>
+            </div>
+            <div class="col-md-6">
+                <h6><i class="bi bi-phone me-1"></i> Android</h6>
+                <pre class="bg-dark text-light p-3 rounded small mb-0"><code>cd android-client
+./gradlew assembleRelease
+# APK: app/build/outputs/apk/release/
+# Copy to: static/clients/AISignX-Player.apk</code></pre>
+            </div>
+        </div>
+        <p class="text-muted small mt-3 mb-0">
+            After copying packages to <code>static/clients/</code>, update the version numbers in the manifest editor above so clients know to download the new build.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Load version manifest — populate badges AND wire up download buttons
+fetch('/api/version')
+    .then(r => r.json())
+    .then(data => {
+        const overall = data.version || '—';
+        document.getElementById('serverVersion').textContent = 'v' + overall;
+        const clients = data.clients || {};
+
+        // Version badges
+        document.querySelectorAll('.client-version').forEach(el => {
+            const key = el.dataset.client;
+            el.textContent = clients[key]?.version ? 'v' + clients[key].version : '—';
+        });
+
+        // Wire download buttons to actual URLs from manifest
+        document.querySelectorAll('.dl-btn').forEach(btn => {
+            const key = btn.dataset.client;
+            const entry = clients[key];
+            if (entry && entry.url) {
+                btn.href = entry.url;
+                btn.classList.remove('disabled');
+                btn.removeAttribute('aria-disabled');
+                btn.title = '';
+            } else {
+                btn.classList.add('disabled');
+                btn.setAttribute('aria-disabled', 'true');
+                btn.title = 'Not yet available — build not uploaded';
+            }
+        });
+
+        // Load manifest text into editor
+        document.getElementById('manifestText').value = JSON.stringify(data, null, 2);
+    })
+    .catch(() => {
+        document.getElementById('serverVersion').textContent = 'unavailable';
+    });
+
+// Save manifest
+document.getElementById('btnSaveManifest').addEventListener('click', () => {
+    const text = document.getElementById('manifestText').value;
+    let parsed;
+    try { parsed = JSON.parse(text); } catch(e) {
+        document.getElementById('manifestStatus').textContent = '❌ Invalid JSON: ' + e.message;
+        return;
+    }
+    fetch('/api/version/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed)
+    })
+    .then(r => r.json())
+    .then(d => {
+        document.getElementById('manifestStatus').textContent =
+            d.status === 'success' ? '✅ Saved' : '❌ ' + (d.message || 'Error');
+    })
+    .catch(() => { document.getElementById('manifestStatus').textContent = '❌ Network error'; });
+});
+</script>
+{% endblock %}

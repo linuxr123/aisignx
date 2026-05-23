@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Request Display Access – AISignX</title>
+  <link rel="icon" type="image/x-icon" href="/static/img/AISignX.ico">
+  <link rel="icon" type="image/png" href="/static/img/AISignX.png">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #1e293b;
+      border-radius: 18px;
+      padding: 48px 52px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 24px 60px rgba(0,0,0,.55);
+    }
+
+    .logo { font-size: 2rem; margin-bottom: 6px; }
+    h1   { font-size: 1.4rem; font-weight: 700; margin-bottom: 6px; }
+    .sub { font-size: .88rem; color: #94a3b8; margin-bottom: 36px; }
+
+    /* steps */
+    .step { display: none; }
+    .step.active { display: block; }
+
+    label {
+      display: block;
+      font-size: .75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #94a3b8;
+      margin-bottom: 8px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1.5px solid #334155;
+      background: #0f172a;
+      color: #f1f5f9;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color .2s;
+      margin-bottom: 6px;
+    }
+    input:focus { border-color: #38bdf8; }
+
+    .hint {
+      font-size: .78rem;
+      color: #475569;
+      margin-bottom: 24px;
+    }
+
+    .error {
+      color: #f87171;
+      font-size: .83rem;
+      margin-bottom: 16px;
+      min-height: 20px;
+    }
+
+    button {
+      width: 100%;
+      padding: 13px;
+      border: none;
+      border-radius: 10px;
+      background: #38bdf8;
+      color: #0f172a;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .18s;
+    }
+    button:hover  { background: #7dd3fc; }
+    button:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+
+    /* waiting animation */
+    .pulse-ring {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      background: #38bdf8;
+      margin: 0 auto 24px;
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem;
+    }
+    .pulse-ring::before, .pulse-ring::after {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      border: 2px solid #38bdf8;
+      animation: ping 1.8s cubic-bezier(0,0,.2,1) infinite;
+    }
+    .pulse-ring::after { animation-delay: .9s; }
+    @keyframes ping {
+      0%   { transform: scale(1);   opacity: .7; }
+      100% { transform: scale(1.7); opacity: 0;  }
+    }
+
+    .status-icon { font-size: 3.5rem; display: block; text-align: center; margin-bottom: 18px; }
+    .center { text-align: center; }
+    .muted  { color: #94a3b8; font-size: .88rem; line-height: 1.7; }
+    .mono   { font-family: monospace; font-size: .78rem; color: #475569; margin-top: 12px; }
+
+    .btn-ghost {
+      background: #334155;
+      color: #94a3b8;
+      margin-top: 14px;
+    }
+    .btn-ghost:hover { background: #475569; color: #f1f5f9; }
+
+    .btn-secondary {
+      background: #334155;
+      color: #cbd5e1;
+      margin-bottom: 12px;
+    }
+    .btn-secondary:hover { background: #475569; color: #f1f5f9; }
+
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2.5px solid #0f172a;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin .65s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">📺</div>
+  <h1>Request Display Access</h1>
+  {% if domain_name %}
+  <p class="sub">Requesting access to <strong style="color:#38bdf8">{{ domain_name }}</strong>. An administrator of that tenant must approve.</p>
+  {% else %}
+  <p class="sub">Your browser will become a display once an administrator approves your request.</p>
+  {% endif %}
+
+  <!-- Step 1: Enter name -->
+  <div id="step1" class="step active">
+    <label for="enrollmentCode">Enrollment Code</label>
+    <input type="text" id="enrollmentCode" placeholder="e.g. A1B2C3D4E5F6G7H8" maxlength="40" autocomplete="off"
+           autocapitalize="characters" spellcheck="false" style="font-family:monospace;letter-spacing:.05em;text-transform:uppercase;">
+    <p class="hint">Provided by your administrator. Identifies which tenant this display joins.</p>
+
+    <label for="displayName">Display Name</label>
+    <input type="text" id="displayName" placeholder="e.g. Conference Room B" maxlength="80" autocomplete="off">
+    <p class="hint">This name will appear in the admin approval list.</p>
+
+    <button type="button" class="btn-secondary" id="btnImportSetup">Load setup file…</button>
+    <input type="file" id="fileImportSetup" accept="application/json,.json" hidden>
+    <p class="hint">Import the JSON setup file from the display page (same file used for Android / Windows kiosk).</p>
+
+    <div class="error" id="step1Error"></div>
+    <button id="btnRequest">Request Access</button>
+  </div>
+
+  <!-- Step 2: Waiting for approval -->
+  <div id="step2" class="step center">
+    <div class="pulse-ring">⏳</div>
+    <h2 id="waitTitle" style="font-size:1.1rem; margin-bottom:10px;">Awaiting Approval</h2>
+    <p class="muted" id="waitMsg">
+      An administrator needs to approve this request.<br>
+      This page will advance automatically.
+    </p>
+    <p class="mono" id="deviceIdDisplay"></p>
+    <button class="btn-ghost" id="btnCancel" style="margin-top:28px;">Cancel / Start Over</button>
+  </div>
+
+  <!-- Step 3: Approved — redirect happening -->
+  <div id="step3" class="step center">
+    <span class="status-icon">✅</span>
+    <h2 style="margin-bottom:10px;">Approved!</h2>
+    <p class="muted">Launching your display…</p>
+  </div>
+
+  <!-- Step 4: Declined -->
+  <div id="step4" class="step center">
+    <span class="status-icon">❌</span>
+    <h2 style="margin-bottom:10px;">Request Declined</h2>
+    <p class="muted">Your request was declined by an administrator.</p>
+    <button class="btn-ghost" id="btnRestart" style="margin-top:28px;">Try Again</button>
+  </div>
+</div>
+
+<script>
+  const STORAGE_KEY = 'signage_browser_device_id';
+  const POLL_MS     = 5000;
+  const PREFILLED_CODE = {{ (prefilled_code or '')|tojson }};
+  let pollTimer     = null;
+  let deviceId      = null;
+
+  function showStep(n) {
+    document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+    document.getElementById('step' + n).classList.add('active');
+  }
+
+  function setError(msg) {
+    const el = document.getElementById('step1Error');
+    el.textContent = msg;
+  }
+
+  function normalizeOrigin(url) {
+    try {
+      const u = new URL(url);
+      return u.origin;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /** Parse aisignx-player-config JSON (setup file from admin display page). */
+  async function applyBrowserClientConfig(rawText) {
+    let data;
+    try {
+      data = typeof rawText === 'string' ? JSON.parse(rawText) : rawText;
+    } catch (_) {
+      return { ok: false, error: 'Invalid JSON in setup file.' };
+    }
+    if (!data || data.format !== 'aisignx-player-config') {
+      return { ok: false, error: 'Not a valid AISignX setup file (missing aisignx-player-config format).' };
+    }
+    const serverUrl = String(data.server_url || window.location.origin).trim().replace(/\/$/, '');
+    const token = String(data.display_token || data.token || '').trim();
+    const enroll = String(data.enrollment_code || '').trim().replace(/[\s-]/g, '').toUpperCase();
+    const displayName = String(data.display_name || '').trim();
+
+    if (token) {
+      const here = normalizeOrigin(window.location.href);
+      const there = normalizeOrigin(serverUrl);
+      if (there && here && there !== here) {
+        window.location.href = serverUrl + '/display/' + encodeURIComponent(token);
+        return { ok: true, mode: 'redirect' };
+      }
+      clearInterval(pollTimer);
+      pollTimer = null;
+      localStorage.removeItem(STORAGE_KEY);
+      showStep(3);
+      setTimeout(() => {
+        window.location.href = '/display/' + encodeURIComponent(token);
+      }, 600);
+      return { ok: true, mode: 'player' };
+    }
+
+    if (!enroll) {
+      return { ok: false, error: 'Setup file has no display token or enrollment code.' };
+    }
+
+    if (displayName) {
+      document.getElementById('displayName').value = displayName;
+    }
+    document.getElementById('enrollmentCode').value = enroll;
+
+    const here = normalizeOrigin(window.location.href);
+    const there = normalizeOrigin(serverUrl);
+    if (there && here && there !== here) {
+      window.location.href = serverUrl + '/request-access?code=' + encodeURIComponent(enroll);
+      return { ok: true, mode: 'redirect' };
+    }
+
+    try {
+      const res = await fetch('/api/version');
+      if (!res.ok) {
+        return { ok: false, error: 'Server is not responding. Check that AISignX is running.' };
+      }
+    } catch (e) {
+      return { ok: false, error: 'Cannot reach this server: ' + (e.message || 'network error') };
+    }
+
+    return { ok: true, mode: 'enrollment' };
+  }
+
+  document.getElementById('btnImportSetup').addEventListener('click', () => {
+    document.getElementById('fileImportSetup').click();
+  });
+
+  document.getElementById('fileImportSetup').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const btn = document.getElementById('btnImportSetup');
+    btn.disabled = true;
+    setError('');
+    let text;
+    try {
+      text = await file.text();
+    } catch (err) {
+      btn.disabled = false;
+      setError('Could not read file: ' + (err.message || 'unknown error'));
+      return;
+    }
+    const result = await applyBrowserClientConfig(text);
+    btn.disabled = false;
+    if (!result.ok) {
+      setError(result.error || 'Import failed.');
+      return;
+    }
+    if (result.mode === 'enrollment') {
+      setError('');
+      document.getElementById('displayName').focus();
+    }
+  });
+
+  // Pre-fill the code if the admin handed out a /request-access?code=… URL.
+  if (PREFILLED_CODE) {
+    document.getElementById('enrollmentCode').value = PREFILLED_CODE;
+  }
+
+  // ── If we have a saved device_id, resume waiting ──────────────────────────
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    deviceId = saved;
+    document.getElementById('deviceIdDisplay').textContent = 'ID: ' + deviceId;
+    showStep(2);
+    startPolling();
+  }
+
+  // ── Step 1: submit ─────────────────────────────────────────────────────────
+  document.getElementById('btnRequest').addEventListener('click', async () => {
+    const name = document.getElementById('displayName').value.trim();
+    const code = document.getElementById('enrollmentCode').value
+        .trim().replace(/[\s-]/g, '').toUpperCase();
+    if (!code) { setError('Please enter the enrollment code from your administrator.'); return; }
+    if (!name) { setError('Please enter a display name.'); return; }
+    setError('');
+
+    const btn = document.getElementById('btnRequest');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Sending…';
+
+    // Generate a device_id client-side so it survives page refreshes
+    deviceId = localStorage.getItem(STORAGE_KEY) || crypto.randomUUID();
+
+    const resolution = `${screen.width}x${screen.height}`;
+
+    try {
+      const res = await fetch('/api/register/browser', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_id:       deviceId,
+          friendly_name:   name,
+          resolution:      resolution,
+          enrollment_code: code
+        })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.message || 'Registration failed.');
+        btn.disabled = false;
+        btn.textContent = 'Request Access';
+        return;
+      }
+
+      if (data.status === 'approved') {
+        localStorage.removeItem(STORAGE_KEY);
+        showStep(3);
+        setTimeout(() => { window.location.href = '/display/' + data.token; }, 1200);
+        return;
+      }
+      if (data.status === 'declined') {
+        localStorage.removeItem(STORAGE_KEY);
+        showStep(4);
+        return;
+      }
+      if (data.status === 'pending') {
+        deviceId = data.device_id || deviceId;
+        localStorage.setItem(STORAGE_KEY, deviceId);
+        document.getElementById('deviceIdDisplay').textContent = 'ID: ' + deviceId;
+        showStep(2);
+        startPolling();
+        return;
+      }
+      setError('Unexpected response. Please try again.');
+    } catch (e) {
+      setError('Network error: ' + e.message);
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Request Access';
+  });
+
+  // ── Polling ────────────────────────────────────────────────────────────────
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(poll, POLL_MS);
+  }
+
+  async function poll() {
+    if (!deviceId) return;
+    try {
+      const res  = await fetch('/api/register/status/' + encodeURIComponent(deviceId));
+      const data = await res.json();
+
+      if (data.status === 'approved') {
+        clearInterval(pollTimer);
+        localStorage.removeItem(STORAGE_KEY);
+        showStep(3);
+        setTimeout(() => { window.location.href = '/display/' + data.token; }, 1200);
+      } else if (data.status === 'declined') {
+        clearInterval(pollTimer);
+        localStorage.removeItem(STORAGE_KEY);
+        document.getElementById('waitTitle').textContent = 'Request Declined';
+        document.getElementById('waitMsg').textContent   = 'Your request was declined by an administrator.';
+        // swap icon
+        document.querySelector('.pulse-ring').textContent = '❌';
+        document.querySelector('.pulse-ring').style.background = '#7f1d1d';
+        document.querySelector('.pulse-ring').style.setProperty('--ring-color', '#f87171');
+        showStep(4);
+      }
+    } catch (_) { /* network hiccup — keep polling */ }
+  }
+
+  // ── Cancel ─────────────────────────────────────────────────────────────────
+  document.getElementById('btnCancel').addEventListener('click', () => {
+    clearInterval(pollTimer);
+    pollTimer = null;
+    deviceId  = null;
+    localStorage.removeItem(STORAGE_KEY);
+    document.getElementById('displayName').value = '';
+    document.getElementById('btnRequest').disabled = false;
+    document.getElementById('btnRequest').textContent = 'Request Access';
+    showStep(1);
+  });
+
+  document.getElementById('btnRestart').addEventListener('click', () => {
+    deviceId = null;
+    localStorage.removeItem(STORAGE_KEY);
+    document.getElementById('displayName').value = '';
+    document.getElementById('btnRequest').disabled = false;
+    document.getElementById('btnRequest').textContent = 'Request Access';
+    showStep(1);
+  });
+</script>
+</body>
+</html>

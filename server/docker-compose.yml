@@ -1,0 +1,46 @@
+# AISignXV2 — single-server reference deployment (spec §3, §4).
+#
+# One container, three named volumes for state. Front it with your own
+# reverse proxy (nginx + LetsEncrypt) for HTTPS per spec §5.3.
+#
+# Usage:
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# First boot creates user 'admin' / 'Admin123!' — change immediately.
+
+services:
+  aisignx:
+    build: .
+    # Build context is this server/ directory (run: docker compose up from server/)
+    image: aisignx:latest
+    container_name: aisignx
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      # Override at deploy time. The default key in config.py MUST NOT be
+      # used in production -- it ships in the public repo.
+      AISIGNX_SECRET_KEY: "${AISIGNX_SECRET_KEY:?set AISIGNX_SECRET_KEY in .env}"
+      AISIGNX_DB_PATH:    "/data/db/signage.sqlite"
+      UPLOAD_FOLDER:      "/data/uploads"
+      AISIGNX_LOG_DIR:    "/data/logs"
+      # 1 = behind nginx;  2 = behind Cloudflare -> nginx
+      TRUST_PROXY_HOPS:   "1"
+    volumes:
+      - aisignx_uploads:/data/uploads
+      - aisignx_db:/data/db
+      - aisignx_logs:/data/logs
+      # Mount custom plugins read-only so a compromised app can't mutate them.
+      - ./plugins:/app/plugins:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/static/sw.js"]
+      interval: 30s
+      timeout:  5s
+      retries:  3
+      start_period: 30s
+
+volumes:
+  aisignx_uploads:
+  aisignx_db:
+  aisignx_logs:

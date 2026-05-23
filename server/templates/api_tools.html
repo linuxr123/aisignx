@@ -1,0 +1,296 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+  <div class="row">
+    <!-- Left column: Token creation and management -->
+    <div class="col-lg-5">
+      <div class="card mb-3">
+        <div class="card-header">API Tools: Create Token</div>
+        <div class="card-body">
+          <form id="createTokenForm">
+            <div class="mb-2">
+              <label class="form-label">Token name</label>
+              <input type="text" name="name" class="form-control" placeholder="e.g., automation, CI updater" />
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label d-flex justify-content-between align-items-center">
+                <span>Scopes <span class="text-danger">*</span></span>
+                <span>
+                  <button type="button" class="btn btn-link btn-sm p-0 me-2" onclick="toggleAllScopes(true)">Select all</button>
+                  <button type="button" class="btn btn-link btn-sm p-0" onclick="toggleAllScopes(false)">Clear</button>
+                </span>
+              </label>
+              <div class="border rounded p-2" style="max-height: 240px; overflow-y: auto;">
+                {% for value, label, desc in all_scopes %}
+                <div class="form-check">
+                  <input class="form-check-input scope-check" type="checkbox" value="{{ value }}" id="scope_{{ value | replace(':','_') }}">
+                  <label class="form-check-label" for="scope_{{ value | replace(':','_') }}">
+                    <strong>{{ label }}</strong>
+                    <code class="small text-muted ms-1">{{ value }}</code>
+                    <div class="small text-muted">{{ desc }}</div>
+                  </label>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Restrict to media ID <span class="text-muted">(optional)</span></label>
+              <input name="media_id" type="number" class="form-control" placeholder="Leave blank for general-purpose token">
+              <div class="form-text">Only set this for legacy single-file CI/automation tokens. Leave blank for normal API access.</div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Create Token</button>
+          </form>
+
+          <!-- Shows the raw token once, after creation -->
+          <div id="tokenResult" class="alert alert-warning d-none mt-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <strong>Raw token (copy now):</strong>
+                <code id="rawTokenText"></code>
+              </div>
+              <div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyRawToken()">Copy</button>
+              </div>
+            </div>
+            <div class="small text-muted mt-2">This token will not be shown again. Store it securely.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header">All Tokens</div>
+        <div class="card-body">
+          <div class="table-responsive" style="max-height: 280px; overflow:auto;">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Scopes</th>
+                  <th>Preview</th>
+                  <th>Media ID</th>
+                  <th>Created By</th>
+                  <th>Last used</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="tokensTableBody">
+                {% for t in tokens %}
+                {% if not t.revoked %}
+                <tr>
+                  <td>{{ t.name }}</td>
+                  <td><small><code>{{ t.scopes or '' }}</code></small></td>
+                  <td><code>…{{ (t.token_hash or '')[-8:] }}</code></td>
+                  <td>{{ t.media_id if t.media_id else '—' }}</td>
+                  <td>{{ t.user.username if t.user else 'Unknown' }}</td>
+                  <td>{{ t.last_used_at|format_datetime }}</td>
+                  <td>
+                    <button class="btn btn-sm btn-outline-danger" onclick="revokeToken({{ t.id }})">Revoke</button>
+                  </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mt-3">
+            <h6>Auth header example</h6>
+            <code>Authorization: Bearer YOUR_TOKEN</code>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right column: Media list and curl helpers -->
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Media: IDs, Paths, and API Examples</span>
+          <small>API Base: <code id="apiBase">{{ base_url }}</code></small>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <input type="text" id="mediaFilter" class="form-control" placeholder="Filter by name/type/id..." oninput="filterMedia()" />
+          </div>
+          <div class="table-responsive" style="max-height: 520px; overflow:auto;">
+            <table class="table table-sm align-middle" id="mediaTable">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Path / URL</th>
+                  <th>Copy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for m in media_items %}
+                <tr>
+                  <td><code>{{ m.id }}</code></td>
+                  <td>{{ m.name }}</td>
+                  <td>{{ m.media_type }}</td>
+                  <td style="max-width: 360px; word-break: break-all;">
+                    {% if m.media_type == 'webpage' %}
+                      <code>{{ m.file_path }}</code>
+                    {% else %}
+                      <code>{{ m.file_path }}</code>
+                    {% endif %}
+                    <div class="small text-muted mt-1">
+                      API: <code>{{ base_url }}/api/media/{{ m.id }}</code>,
+                      Replace: <code>{{ base_url }}/api/media/{{ m.id }}/replace</code>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="btn-group btn-group-sm">
+                      <button class="btn btn-outline-secondary" onclick="copyText('{{ m.id }}')">ID</button>
+                      <button class="btn btn-outline-secondary" onclick="copyText('{{ base_url }}/api/media/{{ m.id }}')">API</button>
+                      <button class="btn btn-outline-secondary" onclick="copyText('{{ base_url }}/api/media/{{ m.id }}/replace')">Replace</button>
+                      <button class="btn btn-outline-primary" onclick="copyCurl({{ m.id }})">cURL</button>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mt-3">
+            <h6>curl template</h6>
+            <code id="curlTemplate">curl -X POST "{{ base_url }}/api/media/MEDIA_ID/replace" -H "Authorization: Bearer YOUR_TOKEN" -F "file=@/path/to/file.ext"</code>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let lastRawToken = '';
+
+function copyText(txt) {
+  const flash = (ok) => {
+    const el = document.createElement('div');
+    el.textContent = ok ? 'Copied!' : 'Copy failed';
+    el.style.cssText = 'position:fixed;top:1rem;right:1rem;z-index:9999;' +
+      'background:' + (ok ? '#198754' : '#dc3545') + ';color:#fff;' +
+      'padding:0.5rem 1rem;border-radius:0.25rem;font:14px sans-serif;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,0.2);transition:opacity 0.3s;';
+    document.body.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; }, 1200);
+    setTimeout(() => { el.remove(); }, 1600);
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(() => flash(true), () => fallback());
+  } else {
+    fallback();
+  }
+  function fallback() {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = txt;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      flash(ok);
+    } catch (e) {
+      flash(false);
+    }
+  }
+}
+function copyRawToken() { copyText(lastRawToken); }
+
+function selectedScopes() {
+  const checks = Array.from(document.querySelectorAll('#createTokenForm .scope-check:checked'));
+  return checks.map(c => c.value);
+}
+
+function toggleAllScopes(checked) {
+  document.querySelectorAll('#createTokenForm .scope-check').forEach(c => { c.checked = checked; });
+}
+
+document.getElementById('createTokenForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = e.target.elements['name'].value || 'automation';
+  const scopes = selectedScopes();
+  if (!scopes.length) {
+    alert('Select at least one scope.');
+    return;
+  }
+  const mediaIdRaw = (e.target.elements['media_id'].value || '').trim();
+  const media_id = mediaIdRaw === '' ? null : parseInt(mediaIdRaw, 10);
+
+  const r = await fetch('/api/tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, scopes, media_id })
+  });
+  const data = await r.json();
+  if (data.status === 'success' && data.token) {
+    lastRawToken = data.token;
+    document.getElementById('rawTokenText').textContent = data.token;
+    document.getElementById('tokenResult').classList.remove('d-none');
+    refreshTokens();
+  } else {
+    alert('Error creating token: ' + (data.message || 'unknown'));
+  }
+});
+
+async function refreshTokens() {
+  const r = await fetch('/api/tokens');
+  const data = await r.json();
+  if (data.status !== 'success') return;
+  const tbody = document.getElementById('tokensTableBody');
+  tbody.innerHTML = '';
+  data.tokens.forEach(t => {
+    if (t.revoked) return; // hide revoked tokens
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${t.name}</td>
+      <td><small><code>${t.scopes || ''}</code></small></td>
+      <td><code>…${t.preview || ''}</code></td>
+      <td>${t.media_id ?? '—'}</td>
+      <td>${t.user || 'Unknown'}</td>
+      <td>${t.last_used_at || ''}</td>
+      <td><button class="btn btn-sm btn-outline-danger" onclick="revokeToken(${t.id})">Revoke</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function revokeToken(id) {
+  if (!confirm('Revoke this token?')) return;
+  const r = await fetch(`/api/tokens/${id}/revoke`, { method: 'POST' });
+  const data = await r.json();
+  if (data.status === 'success') {
+    refreshTokens();
+  } else {
+    alert('Error revoking token');
+  }
+}
+
+function filterMedia() {
+  const term = (document.getElementById('mediaFilter').value || '').toLowerCase();
+  const rows = document.querySelectorAll('#mediaTable tbody tr');
+  rows.forEach(row => {
+    row.style.display = row.innerText.toLowerCase().includes(term) ? '' : 'none';
+  });
+}
+
+function copyCurl(mediaId) {
+  const base = document.getElementById('apiBase').textContent.trim();
+  const tpl = `curl -X POST "${base}/api/media/${mediaId}/replace" -H "Authorization: Bearer YOUR_TOKEN" -F "file=@/path/to/file.ext"`;
+  copyText(tpl);
+}
+
+// Initial refresh for tokens table
+document.addEventListener('DOMContentLoaded', () => {
+  refreshTokens();
+});
+</script>
+{% endblock %}

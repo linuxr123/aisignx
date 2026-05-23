@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+
+{% block title %}Self-Tests - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-clipboard-check"></i> Operator Self-Tests</h1>
+    <button id="runBtn" class="btn btn-primary">
+        <i class="bi bi-play-circle"></i> Run all checks
+    </button>
+</div>
+
+<p class="text-muted small">
+    Cheap, safe-to-run-on-production diagnostics: database write,
+    upload disk write, free space, background scheduler, alert
+    configuration, webhook reachability, and SMTP handshake. No
+    Display rows or Proof-of-Play data are touched.
+</p>
+
+<div id="summaryBox" class="alert" style="display:none;"></div>
+
+<div class="card">
+    <div class="card-header"><strong>Results</strong></div>
+    <div class="card-body p-0">
+        <table class="table mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th style="width:8em;">Status</th>
+                    <th>Check</th>
+                    <th>Detail</th>
+                    <th class="text-end" style="width:6em;">ms</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody">
+                <tr><td colspan="4" class="text-muted small text-center py-3">
+                    Click "Run all checks" to begin.
+                </td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+async function runChecks() {
+    const btn = document.getElementById('runBtn');
+    const summary = document.getElementById('summaryBox');
+    const body = document.getElementById('resultsBody');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Running…';
+    summary.style.display = 'none';
+    body.innerHTML = '<tr><td colspan="4" class="text-center text-muted small py-3">Running checks…</td></tr>';
+
+    try {
+        const r = await fetch('/api/selftest/run', {method: 'POST'});
+        const j = await r.json();
+        if (j.status !== 'success') {
+            summary.style.display = 'block';
+            summary.className = 'alert alert-danger';
+            summary.textContent = 'Failed to run: ' + (j.message || r.statusText);
+            return;
+        }
+        const result = j.result;
+        const failedCount = result.checks.filter(c => !c.ok).length;
+        summary.style.display = 'block';
+        summary.className = 'alert alert-' + (result.ok ? 'success' : 'warning');
+        summary.innerHTML = result.ok
+            ? '<i class="bi bi-check-circle"></i> All ' + result.checks.length +
+              ' checks passed in ' + result.duration_ms + ' ms.'
+            : '<i class="bi bi-exclamation-triangle"></i> ' + failedCount +
+              ' of ' + result.checks.length + ' checks failed (' +
+              result.duration_ms + ' ms total).';
+
+        body.innerHTML = result.checks.map(c => {
+            const cls = c.ok ? 'success' : 'danger';
+            const icon = c.ok ? 'check-circle-fill' : 'x-circle-fill';
+            return '<tr>' +
+                '<td><span class="badge bg-' + cls + '">' +
+                    '<i class="bi bi-' + icon + '"></i> ' + (c.ok ? 'OK' : 'FAIL') + '</span></td>' +
+                '<td class="text-capitalize">' + c.name + '</td>' +
+                '<td class="text-muted small">' + (c.detail || '') + '</td>' +
+                '<td class="text-end small">' + c.duration_ms + '</td>' +
+                '</tr>';
+        }).join('');
+    } catch (e) {
+        summary.style.display = 'block';
+        summary.className = 'alert alert-danger';
+        summary.textContent = 'Request failed: ' + e;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-play-circle"></i> Run all checks';
+    }
+}
+
+document.getElementById('runBtn').addEventListener('click', runChecks);
+</script>
+{% endblock %}

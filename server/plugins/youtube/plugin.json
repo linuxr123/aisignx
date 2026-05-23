@@ -1,0 +1,161 @@
+﻿{
+  "key": "youtube",
+  "type": "youtube",
+  "name": "YouTube Video",
+  "version": "2.1.0",
+  "icon": "bi-youtube",
+  "description": "Play YouTube videos fullscreen with multi-video support, playback controls, and quality settings.",
+  "permissions": [
+    "network.fetch",
+    "autoplay",
+    "fullscreen",
+    "presentation"
+  ],
+  "csp_origins": [
+    "https://www.youtube.com",
+    "https://www.youtube-nocookie.com",
+    "https://www.youtubeeducation.com",
+    "https://i.ytimg.com",
+    "https://s.ytimg.com",
+    "https://yt3.ggpht.com",
+    "https://*.googlevideo.com",
+    "https://*.youtube.com",
+    "https://*.youtube-nocookie.com",
+    "https://*.ytimg.com"
+  ],
+  "schema": [
+    {
+      "name": "videos",
+      "type": "textarea",
+      "label": "YouTube URLs or Video IDs",
+      "description": "One video per line. Optionally add start and end times (in seconds) after the URL, separated by spaces. Examples:\nhttps://youtu.be/VIDEOID1\nhttps://youtu.be/VIDEOID2 30\nhttps://youtu.be/VIDEOID3 60 120\n(second example starts at 0:30, third plays from 1:00 to 2:00)",
+      "placeholder": "https://youtu.be/VIDEOID1\nhttps://youtu.be/VIDEOID2 30\nhttps://youtu.be/VIDEOID3 60 120",
+      "default": "",
+      "group": "Videos"
+    },
+    {
+      "name": "playback_mode",
+      "type": "select",
+      "label": "Playback Order",
+      "description": "Sequential plays videos in order; Random picks a different video each time.",
+      "options": [
+        { "label": "Sequential (in order)", "value": "sequential" },
+        { "label": "Random (shuffle)", "value": "random" }
+      ],
+      "default": "sequential",
+      "group": "Videos"
+    },
+    {
+      "name": "mute",
+      "type": "boolean",
+      "label": "Mute Audio",
+      "description": "Mute the video. Required by most browsers for autoplay.",
+      "default": true,
+      "group": "Playback"
+    },
+    {
+      "name": "loop",
+      "type": "boolean",
+      "label": "Loop Video",
+      "description": "Replay the current video instead of advancing to the next playlist item.",
+      "default": false,
+      "group": "Playback"
+    },
+    {
+      "name": "start",
+      "type": "integer",
+      "label": "Default Start At (seconds)",
+      "description": "Start all videos at this point by default. Can be overridden per-video in the URL list above. 0 = beginning.",
+      "default": 0,
+      "group": "Playback"
+    },
+    {
+      "name": "end",
+      "type": "integer",
+      "label": "Default End At (seconds)",
+      "description": "Stop all videos at this point by default. Can be overridden per-video in the URL list above. 0 = play to the end.",
+      "default": 0,
+      "group": "Playback"
+    },
+    {
+      "name": "playback_rate",
+      "type": "select",
+      "label": "Playback Speed",
+      "description": "Speed multiplier for video playback.",
+      "options": [
+        { "label": "0.25x (very slow)", "value": "0.25" },
+        { "label": "0.5x (slow)", "value": "0.5" },
+        { "label": "1x (normal)", "value": "1" },
+        { "label": "1.25x", "value": "1.25" },
+        { "label": "1.5x (fast)", "value": "1.5" },
+        { "label": "2x (very fast)", "value": "2" }
+      ],
+      "default": "1",
+      "group": "Playback"
+    },
+    {
+      "name": "quality",
+      "type": "select",
+      "label": "Preferred Quality",
+      "description": "Preferred video quality. YouTube may override based on bandwidth.",
+      "options": [
+        { "label": "Auto (default)", "value": "default" },
+        { "label": "1080p HD", "value": "hd1080" },
+        { "label": "720p HD", "value": "hd720" },
+        { "label": "480p Large", "value": "large" },
+        { "label": "360p Medium", "value": "medium" },
+        { "label": "240p Small", "value": "small" }
+      ],
+      "default": "default",
+      "group": "Playback"
+    },
+    {
+      "name": "video_duration",
+      "type": "integer",
+      "label": "Duration Per Video (seconds)",
+      "description": "Max time to spend on each video. 0 = play each video fully before advancing.",
+      "default": 0,
+      "group": "Playback"
+    },
+    {
+      "name": "controls",
+      "type": "boolean",
+      "label": "Show YouTube Controls",
+      "description": "Show the native YouTube playback controls bar.",
+      "default": false,
+      "group": "Player Options"
+    },
+    {
+      "name": "cc",
+      "type": "boolean",
+      "label": "Show Captions",
+      "description": "Enable closed captions / subtitles if available.",
+      "default": false,
+      "group": "Player Options"
+    },
+    {
+      "name": "privacy_mode",
+      "type": "boolean",
+      "label": "Privacy-Enhanced Mode",
+      "description": "Load via youtube-nocookie.com to reduce tracking cookies.",
+      "default": true,
+      "group": "Player Options"
+    },
+    {
+      "name": "rel",
+      "type": "boolean",
+      "label": "Show Related Videos",
+      "description": "Show related video suggestions when the video ends.",
+      "default": false,
+      "group": "Player Options"
+    },
+    {
+      "name": "branding",
+      "type": "boolean",
+      "label": "Modest Branding",
+      "description": "Reduce the YouTube logo watermark on the player.",
+      "default": true,
+      "group": "Player Options"
+    }
+  ]
+}

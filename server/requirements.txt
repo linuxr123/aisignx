@@ -1,0 +1,13 @@
+#you must install ffmpeg for your OS and make sure its in the path. 
+flask
+flask_sqlalchemy
+flask_migrate
+flask_login
+werkzeug
+moviepy
+ffmpeg-python
+#run playwright install chromium
+playwright
+Pillow
+flask-cors
+requests

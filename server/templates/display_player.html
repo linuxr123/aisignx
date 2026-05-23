@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AISignX Display</title>
+    <link rel="icon" type="image/x-icon" href="/static/img/AISignX.ico">
+    <link rel="icon" type="image/png" href="/static/img/AISignX.png">
+    <!-- PWA / "Add to Home Screen" support (Android Chrome, Edge, iOS Safari) -->
+    <link rel="manifest" href="/display/{{ token }}/manifest.webmanifest">
+    <meta name="theme-color" content="#000000">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="AISignX">
+    <link rel="apple-touch-icon" href="/static/img/AISignX.png">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            cursor: default;
+        }
+        body.cursor-idle,
+        body.cursor-idle * {
+            cursor: none;
+        }
+
+        #player {
+            position: fixed;
+            inset: 0;
+            background: #000;
+        }
+
+        /* Each slide layer */
+        .slide {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            transition: opacity 0.6s ease-in-out;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .slide.active  { opacity: 1; z-index: 2; }
+        .slide.exiting { opacity: 0; z-index: 1; }
+
+        /* Per-item transition variants. Defaults above implement 'fade' /
+           'crossfade' (same effect at this layer). 'cut' is handled in JS by
+           skipping the transition. Each variant defines:
+             .trans-X            – starting (off-screen / hidden) state
+             .trans-X.active     – final visible state
+             .trans-X.exiting    – exit state for the outgoing slide
+           The base .slide rule already animates `opacity`; variants extend
+           that with `transform`/`clip-path` so the GPU compositor handles
+           them smoothly. */
+
+        .slide.trans-cut       { transition: none; }
+
+        /* Wipe – classic horizontal slide of a single layer */
+        .slide.trans-wipe      { transition: transform 0.6s ease-in-out, opacity 0.2s ease-in-out;
+                                 transform: translateX(100%); }
+        .slide.trans-wipe.active  { transform: translateX(0); }
+        .slide.trans-wipe.exiting { transform: translateX(-100%); opacity: 1; }
+
+        /* Directional slides – both layers move together for a "push" feel */
+        .slide.trans-slide-left      { transition: transform 0.7s ease-in-out, opacity 0.2s; transform: translateX(100%); }
+        .slide.trans-slide-left.active  { transform: translateX(0); }
+        .slide.trans-slide-left.exiting { transform: translateX(-100%); opacity: 1; }
+
+        .slide.trans-slide-right     { transition: transform 0.7s ease-in-out, opacity 0.2s; transform: translateX(-100%); }
+        .slide.trans-slide-right.active  { transform: translateX(0); }
+        .slide.trans-slide-right.exiting { transform: translateX(100%); opacity: 1; }
+
+        .slide.trans-slide-up        { transition: transform 0.7s ease-in-out, opacity 0.2s; transform: translateY(100%); }
+        .slide.trans-slide-up.active   { transform: translateY(0); }
+        .slide.trans-slide-up.exiting  { transform: translateY(-100%); opacity: 1; }
+
+        .slide.trans-slide-down      { transition: transform 0.7s ease-in-out, opacity 0.2s; transform: translateY(-100%); }
+        .slide.trans-slide-down.active { transform: translateY(0); }
+        .slide.trans-slide-down.exiting{ transform: translateY(100%); opacity: 1; }
+
+        /* Zoom – new slide grows in from centre while old fades */
+        .slide.trans-zoom            { transition: transform 0.6s ease-out, opacity 0.6s ease-out;
+                                       transform: scale(0.4); opacity: 0; }
+        .slide.trans-zoom.active     { transform: scale(1); opacity: 1; }
+        .slide.trans-zoom.exiting    { transform: scale(1.4); opacity: 0; }
+
+        /* Spin – rotate + scale entry */
+        .slide.trans-spin            { transition: transform 0.7s cubic-bezier(.25,.8,.25,1), opacity 0.5s ease-out;
+                                       transform: rotate(-180deg) scale(0.3); opacity: 0; }
+        .slide.trans-spin.active     { transform: rotate(0) scale(1); opacity: 1; }
+        .slide.trans-spin.exiting    { transform: rotate(180deg) scale(0.3); opacity: 0; }
+
+        /* Flip – 3D Y-axis flip; needs perspective on the parent */
+        #player                      { perspective: 1600px; }
+        .slide.trans-flip            { transition: transform 0.7s ease-in-out, opacity 0.4s ease-in-out;
+                                       transform: rotateY(90deg); opacity: 0;
+                                       backface-visibility: hidden; }
+        .slide.trans-flip.active     { transform: rotateY(0); opacity: 1; }
+        .slide.trans-flip.exiting    { transform: rotateY(-90deg); opacity: 0; }
+
+        /* Iris – circle clip-path reveal from centre */
+        .slide.trans-iris            { transition: clip-path 0.8s ease-in-out, opacity 0.2s;
+                                       clip-path: circle(0% at 50% 50%); }
+        .slide.trans-iris.active     { clip-path: circle(75% at 50% 50%); }
+        .slide.trans-iris.exiting    { clip-path: circle(0% at 50% 50%); opacity: 1; }
+
+        /* Puzzle – JS builds a tile overlay; the slide itself just appears.
+           See buildPuzzleOverlay() in display_player.js. */
+        .slide.trans-puzzle          { transition: none; opacity: 1; }
+        .puzzle-overlay              { position: absolute; inset: 0; z-index: 5;
+                                       display: grid; pointer-events: none; }
+        .puzzle-overlay .tile        { background: #000;
+                                       transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+                                       opacity: 1; transform: scale(1); }
+        .puzzle-overlay.gone .tile   { opacity: 0; transform: scale(0.6); }
+
+        .slide img,
+        .slide video {
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+        .slide.video-pending video {
+            display: none;
+            opacity: 0;
+            visibility: hidden;
+        }
+        .slide.video-pending::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            background: #000;
+            pointer-events: none;
+        }
+        .slide video::-webkit-media-controls {
+            display: none !important;
+        }
+        .slide video::-webkit-media-controls-start-playback-button {
+            display: none !important;
+        }
+
+        /* aspect_mode mappings */
+        .slide.mode-fit    img,
+        .slide.mode-fit    video { object-fit: contain; }
+        .slide.mode-fill   img,
+        .slide.mode-fill   video { object-fit: cover; }
+        .slide.mode-stretch img,
+        .slide.mode-stretch video { object-fit: fill; }
+        .slide.mode-center  img,
+        .slide.mode-center  video { object-fit: none; width: auto; height: auto; max-width: 100%; max-height: 100%; }
+
+        .slide iframe {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        /* Overlay status messages */
+        #status-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #111;
+            color: #e2e8f0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 500;
+            z-index: 100;
+            gap: 1.2rem;
+            text-align: center;
+            padding: 2rem;
+        }
+        #status-overlay .status-label {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+        #status-overlay.hidden { display: none; }
+        #status-overlay .spinner {
+            width: 2.5rem;
+            height: 2.5rem;
+            border: 3px solid #333;
+            border-top-color: #666;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Media skip buttons */
+        #media-buttons {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 1.5rem;
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+        #media-buttons.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        /* Transparent layer that sits BELOW media buttons — only used to
+           block mouse events reaching iframes when input is locked.
+           Never covers the media buttons (z-index lower than buttons). */
+        #media-btn-trap {
+            position: fixed;
+            inset: 0;
+            z-index: 190;
+            pointer-events: none;
+            background: transparent;
+        }
+        /* Bottom hot-zone — always-on thin strip that detects mouse movement
+           even when an iframe (plugin) is on screen and capturing all events.
+           Tall enough to trigger before the user's cursor reaches the buttons,
+           narrow enough to not block normal interaction with the iframe content. */
+        #media-hotzone {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 140px;
+            z-index: 195;
+            pointer-events: auto;
+            background: transparent;
+        }
+        /* When buttons are visible, lift the hotzone so iframes can be clicked
+           in that region too — buttons themselves stay clickable. */
+        #media-buttons.visible ~ #media-hotzone {
+            pointer-events: none;
+        }
+        .media-btn {
+            background: rgba(0, 0, 0, 0.65);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            width: 4rem;
+            height: 4rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #fff;
+            font-size: 1.6rem;
+            user-select: none;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .media-btn:hover {
+            background: rgba(0, 0, 0, 0.85);
+            transform: scale(1.1);
+        }
+        .media-btn:active {
+            transform: scale(0.95);
+        }
+        .media-btn.video-only {
+            visibility: hidden;
+            pointer-events: none;
+        }
+        #media-buttons.has-video .media-btn.video-only {
+            visibility: visible;
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+
+<div id="player"></div>
+
+<div id="status-overlay">
+    <div class="spinner"></div>
+    <span id="status-text">Loading…</span>
+    <span class="status-label" id="status-label">{{ display.name }}</span>
+</div>
+
+<div id="media-btn-trap"></div>
+
+<!-- "Install this display as an app" prompt. Hidden by default; shown only
+     when the browser fires beforeinstallprompt (Chromium/Edge on Android &
+     Windows). Auto-hides after install or 12s, and remembers dismissal in
+     localStorage so it never nags. iOS Safari ignores beforeinstallprompt;
+     users there still get install via the Share menu, just without this hint. -->
+<div id="install-prompt" style="
+    display:none;
+    position:fixed; left:50%; bottom:20px; transform:translateX(-50%);
+    z-index:400; background:#1e293b; color:#f1f5f9;
+    border:1px solid #334155; border-radius:8px;
+    padding:0.7rem 1rem; font:14px/1.3 sans-serif;
+    box-shadow:0 4px 16px rgba(0,0,0,0.4); cursor:default;
+    display:none;">
+    <span>Install this display as an app for kiosk mode?</span>
+    <button id="install-yes" style="margin-left:0.7rem;background:#2563eb;color:#fff;border:0;border-radius:4px;padding:0.3rem 0.7rem;cursor:pointer;">Install</button>
+    <button id="install-no"  style="margin-left:0.3rem;background:transparent;color:#94a3b8;border:0;cursor:pointer;">Not now</button>
+</div>
+
+<!-- Offline cache banner. Three states surfaced via data-state:
+       server-offline   = our flask server unreachable, internet still works
+       network-offline  = no internet at all
+       (hidden when online) -->
+<div id="offline-banner" data-state="" style="
+    display:none;
+    position:fixed;
+    top:0; left:0; right:0;
+    z-index:300;
+    background:rgba(180,100,0,0.85);
+    color:#fff;
+    font:13px/1 sans-serif;
+    padding:0.4rem 1rem;
+    align-items:center;
+    justify-content:center;
+    gap:0.5rem;
+    letter-spacing:0.02em;
+">
+    <span id="offline-banner-icon">&#9888;</span>
+    <span id="offline-banner-text">Server offline &mdash; playing from cached playlist</span>
+</div>
+
+<div id="media-buttons">
+    <button class="media-btn" id="btn-prev" title="Previous slide" aria-label="Previous slide">&#9198;</button>
+    <button class="media-btn video-only" id="btn-rewind" title="Rewind 10s" aria-label="Rewind 10 seconds">&#9194;</button>
+    <button class="media-btn" id="btn-pause" title="Pause / Resume" aria-label="Pause or resume">&#9646;&#9646;</button>
+    <button class="media-btn video-only" id="btn-ffwd" title="Fast forward 10s" aria-label="Fast forward 10 seconds">&#9193;</button>
+    <button class="media-btn" id="btn-next" title="Next slide" aria-label="Next slide">&#9197;</button>
+</div>
+
+<!-- Hot-zone: detects mouse movement even when iframes capture pointer events -->
+<div id="media-hotzone"></div>
+
+<script>
+    window.DISPLAY_TOKEN    = {{ token | tojson }};
+    window.DISPLAY_NAME     = {{ display.name | tojson }};
+    window.DISPLAY_CLIENT_ID = {{ (request.args.get('client_id') or '') | tojson }};
+    window.BOOT_PLAYLIST    = {{ playlist_json | safe }};
+    window.ASPECT_MODE      = {{ (display.aspect_mode or 'fit') | tojson }};
+    window.ORIENTATION      = {{ (display.orientation or 'landscape') | tojson }};
+    window.RESOLUTION_X     = {{ display.resolution_x or 1920 }};
+    window.RESOLUTION_Y     = {{ display.resolution_y or 1080 }};
+    window.SHOW_MEDIA_BUTTONS = {{ show_media_buttons | tojson }};
+    window.ALLOW_INPUT        = {{ allow_input | tojson }};
+    window.SYNC_PLAYBACK_OPT_OUT = {{ (display.sync_playback_opt_out or false) | tojson }};
+    window.SHOW_OFFLINE_BANNER = {{ show_offline_banner | tojson }};
+    window.UNLOCK_PIN          = {{ unlock_pin | tojson }};
+    window.VOLUME              = {{ volume | tojson }};
+    window.AISIGNX_AUTO_UPDATE_CLIENT = {{ auto_update_client | tojson }};
+    window.DIAGNOSTICS_ENABLED = {{ diagnostics_enabled | tojson }};
+</script>
+<script>
+    if ('serviceWorker' in navigator) {
+        // Clean up any old service workers from previous versions whose scope
+        // doesn't match what we want now (e.g. legacy /display/ scope).
+        navigator.serviceWorker.getRegistrations().then(regs => {
+            regs.forEach(reg => {
+                const scope = (reg.scope || '').replace(window.location.origin, '');
+                if (scope && scope !== '/' && scope !== '') {
+                    reg.unregister().catch(() => {});
+                }
+            });
+        }).catch(() => {});
+
+        navigator.serviceWorker.register('/static/sw.js', { scope: '/' })
+            .then(reg => {
+                reg.update().catch(() => {});
+            })
+            .catch(err => console.warn('SW registration failed:', err));
+    }
+</script>
+<script>
+    // Keep the kiosk pointer out of the way, but make it visible while the
+    // operator is actively using the mouse.
+    (function() {
+        const IDLE_MS = 2000;
+        let hideTimer = null;
+
+        function showCursorTemporarily() {
+            document.body.classList.remove('cursor-idle');
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => {
+                document.body.classList.add('cursor-idle');
+            }, IDLE_MS);
+        }
+
+        ['mousemove', 'pointermove', 'mousedown', 'pointerdown', 'wheel', 'keydown']
+            .forEach(eventName => {
+                window.addEventListener(eventName, showCursorTemporarily, { passive: true });
+            });
+
+        showCursorTemporarily();
+    })();
+</script>
+<script src="/static/js/display_player.js"></script>
+
+<script>
+    // Install-as-PWA prompt. Stays out of the way once the operator has
+    // either installed or dismissed it. Uses localStorage scoped to the
+    // display token so re-tokenizing the device re-prompts.
+    (function() {
+        const KEY = 'aisignx.installPrompt.dismissed.' + (window.DISPLAY_TOKEN || 'unknown');
+        if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return;
+        if (window.navigator.standalone === true) return; // iOS already-installed
+        if (localStorage.getItem(KEY)) return;
+
+        let deferred = null;
+        const banner = document.getElementById('install-prompt');
+        const yes    = document.getElementById('install-yes');
+        const no     = document.getElementById('install-no');
+        let hideTimer = null;
+
+        function show()  { if (banner) { banner.style.display = 'block'; hideTimer = setTimeout(hide, 12000); } }
+        function hide()  { if (banner) banner.style.display = 'none'; clearTimeout(hideTimer); }
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferred = e;
+            show();
+        });
+
+        yes?.addEventListener('click', async () => {
+            hide();
+            if (!deferred) return;
+            try { deferred.prompt(); await deferred.userChoice; } catch (_) {}
+            deferred = null;
+            localStorage.setItem(KEY, '1');
+        });
+        no?.addEventListener('click', () => {
+            hide();
+            localStorage.setItem(KEY, '1');
+        });
+
+        window.addEventListener('appinstalled', () => {
+            hide();
+            localStorage.setItem(KEY, '1');
+        });
+    })();
+</script>
+
+</body>
+</html>

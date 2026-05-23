@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Edit Display</h2>
+<form method="post" action="{{ url_for('edit_display', display_id=display.id) }}">
+    <div class="card">
+        <div class="card-body">
+            <h5>Basic Information</h5>
+            <div class="form-group">
+                <label for="name">Display Name</label>
+                <input type="text" class="form-control" id="name" name="name" value="{{ display.name }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="location">Location</label>
+                <input type="text" class="form-control" id="location" name="location" value="{{ display.location }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="description">Description</label>
+                <textarea class="form-control" id="description" name="description" rows="3">{{ display.description }}</textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="group_id">Group</label>
+                <select class="form-control" id="group_id" name="group_id">
+                    <option value="" data-sync-playback="false">-- None --</option>
+                    {% for group in groups %}
+                        <option value="{{ group.id }}" data-sync-playback="{{ group.sync_playback|tojson }}"
+                                {% if display.group_id == group.id %}selected{% endif %}>
+                            {{ group.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group mt-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="sync_playback_opt_out" name="sync_playback_opt_out"
+                           {% if display.sync_playback_opt_out %}checked{% endif %}>
+                    <label class="form-check-label" for="sync_playback_opt_out">
+                        Opt out of synchronized playback
+                    </label>
+                </div>
+                <div class="form-text">
+                    Keep this display on the same group schedule and playlist, but let it play independently.
+                </div>
+            </div>
+            
+            <h5 class="mt-4">Display Settings</h5>
+            <div class="form-group">
+                <label for="aspect_mode">Aspect Mode</label>
+                <select class="form-control" id="aspect_mode" name="aspect_mode">
+                    <option value="fit" {% if display.aspect_mode == 'fit' %}selected{% endif %}>Fit (preserve aspect ratio)</option>
+                    <option value="fill" {% if display.aspect_mode == 'fill' %}selected{% endif %}>Fill (cover screen)</option>
+                    <option value="stretch" {% if display.aspect_mode == 'stretch' %}selected{% endif %}>Stretch (distort to fit)</option>
+                    <option value="center" {% if display.aspect_mode == 'center' %}selected{% endif %}>Center (no scaling)</option>
+                </select>
+            </div>
+
+            <div class="form-group mt-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="show_media_buttons" name="show_media_buttons"
+                           {% if display.show_media_buttons and not group_syncs_playback %}checked{% endif %}>
+                    <label class="form-check-label {% if group_syncs_playback %}text-muted{% endif %}" for="show_media_buttons">
+                        Show media skip buttons (previous / next) on the player
+                    </label>
+                </div>
+                <div id="media_buttons_sync_notice" class="form-text" style="display:none;">
+                    This option is unavailable because the selected group has <strong>synchronized playback</strong> enabled.
+                    Skip and next controls would conflict with keeping every screen on the same item at the same time.
+                </div>
+            </div>
+            <script>
+                (function () {
+                    var grp = document.getElementById('group_id');
+                    var chk = document.getElementById('show_media_buttons');
+                    var note = document.getElementById('media_buttons_sync_notice');
+                    var optOut = document.getElementById('sync_playback_opt_out');
+                    function selectedGroupSyncs() {
+                        if (!grp || !grp.options[grp.selectedIndex]) return false;
+                        return grp.options[grp.selectedIndex].getAttribute('data-sync-playback') === 'true';
+                    }
+                    function syncMediaButtonsLock() {
+                        if (!chk) return;
+                        var on = selectedGroupSyncs() && !(optOut && optOut.checked);
+                        chk.disabled = on;
+                        if (on) chk.checked = false;
+                        if (note) note.style.display = on ? 'block' : 'none';
+                    }
+                    if (grp) grp.addEventListener('change', syncMediaButtonsLock);
+                    if (optOut) optOut.addEventListener('change', syncMediaButtonsLock);
+                    syncMediaButtonsLock();
+                })();
+            </script>
+
+            <div class="form-group mt-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="show_offline_banner" name="show_offline_banner"
+                           {% if display.show_offline_banner %}checked{% endif %}>
+                    <label class="form-check-label" for="show_offline_banner">
+                        Show “Server offline” banner when the server is unreachable
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group mt-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="auto_update_client" name="auto_update_client"
+                           {% if display.auto_update_client %}checked{% endif %}>
+                    <label class="form-check-label" for="auto_update_client">
+                        Allow this display’s client app to update and restart automatically (no prompts)
+                    </label>
+                </div>
+                <div class="form-text">
+                    Applies to Android and Windows kiosk clients. When off, each device follows its own update mode from setup (prompt / auto / manual).
+                </div>
+            </div>
+
+            <div class="form-group mt-3">
+                <label for="volume" class="form-label">
+                    Volume <span id="volume_label" class="text-muted">({{ display.volume if display.volume is not none else 100 }}%)</span>
+                </label>
+                <input type="range" class="form-range" id="volume" name="volume"
+                       min="0" max="100" step="1"
+                       value="{{ display.volume if display.volume is not none else 100 }}">
+                <div class="form-text">
+                    Master playback volume for this display. 0 mutes the player
+                    entirely. Per-playlist and per-media-file overrides still
+                    apply on top of this setting.
+                </div>
+                <script>
+                    (function () {
+                        var v = document.getElementById('volume');
+                        var l = document.getElementById('volume_label');
+                        if (v && l) {
+                            v.addEventListener('input', function () {
+                                l.textContent = '(' + v.value + '%)';
+                            });
+                        }
+                    })();
+                </script>
+            </div>
+
+            <div class="form-group mt-4">
+                <label for="unlock_pin" class="form-label">
+                    Unlock PIN
+                    <small class="text-muted">(4-8 digits, blank to disable lock)</small>
+                </label>
+                <div class="input-group">
+                    <input class="form-control"
+                           type="password"
+                           id="unlock_pin"
+                           name="unlock_pin"
+                           inputmode="numeric"
+                           pattern="\d{4,8}"
+                           maxlength="8"
+                           autocomplete="off"
+                           value="{{ display.unlock_pin or '' }}">
+                    <button class="btn btn-outline-secondary" type="button" id="reveal_pin_btn"
+                            title="Show / hide PIN">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary" type="button" id="generate_pin_btn"
+                            title="Generate a new random 4-digit PIN">
+                        <i class="bi bi-arrow-clockwise"></i> New
+                    </button>
+                </div>
+                <div class="form-text">
+                    Required to unlock on-screen input on the kiosk. Tap the
+                    screen on a locked player and enter this PIN to allow input
+                    for 5 minutes.
+                </div>
+            </div>
+            <script>
+                (function () {
+                    var inp = document.getElementById('unlock_pin');
+                    var rev = document.getElementById('reveal_pin_btn');
+                    var gen = document.getElementById('generate_pin_btn');
+                    rev.addEventListener('click', function () {
+                        inp.type = (inp.type === 'password') ? 'text' : 'password';
+                    });
+                    gen.addEventListener('click', function () {
+                        var pin = '';
+                        for (var i = 0; i < 4; i++) pin += Math.floor(Math.random() * 10);
+                        inp.value = pin;
+                        inp.type = 'text';   // reveal so admin can read it
+                    });
+                })();
+            </script>
+            
+            <div class="mt-3">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <a href="{{ url_for('displays.display_detail', display_id=display.id) }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}

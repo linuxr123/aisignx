@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}Edit Schedule{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>Edit Schedule</h1>
+    <form method="post">
+        <div class="mb-3">
+            <label for="name">Schedule Name</label>
+            <input type="text" class="form-control" name="name" id="name" value="{{ schedule.name }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="playlist_id">Playlist</label>
+            <select class="form-control" name="playlist_id" id="playlist_id">
+                {% for playlist in playlists %}
+                <option value="{{ playlist.id }}" {% if playlist.id == schedule.playlist_id %}selected{% endif %}>{{ playlist.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="display_id">Display</label>
+            <select class="form-control" name="display_id" id="display_id">
+                <option value="">None</option>
+                {% for display in displays %}
+                <option value="{{ display.id }}" {% if display.id == schedule.display_id %}selected{% endif %}>{{ display.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="group_id">Group</label>
+            <select class="form-control" name="group_id" id="group_id">
+                <option value="">None</option>
+                {% for group in groups %}
+                <option value="{{ group.id }}" {% if group.id == schedule.group_id %}selected{% endif %}>{{ group.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="priority">Priority</label>
+            <input type="number" class="form-control" name="priority" id="priority" value="{{ schedule.priority }}">
+        </div>
+        <div class="mb-3">
+            <label for="is_active">
+                <input type="checkbox" name="is_active" id="is_active" {% if schedule.is_active %}checked{% endif %}> Active
+            </label>
+        </div>
+        <div class="mb-3">
+            <label for="start_date">Start Date</label>
+            <input type="date" class="form-control" name="start_date" id="start_date" value="{{ schedule.start_date }}">
+        </div>
+        <div class="mb-3">
+            <label for="end_date">End Date</label>
+            <input type="date" class="form-control" name="end_date" id="end_date" value="{{ schedule.end_date }}">
+        </div>
+        <div class="mb-3">
+            <label for="start_time">Start Time</label>
+            <input type="time" class="form-control" name="start_time" id="start_time" value="{{ schedule.start_time }}">
+        </div>
+        <div class="mb-3">
+            <label for="end_time">End Time</label>
+            <input type="time" class="form-control" name="end_time" id="end_time" value="{{ schedule.end_time }}">
+        </div>
+        <div class="mb-3">
+            <label for="days_of_week">Days of Week (comma-separated, e.g. 1,2,3 for Mon, Tue, Wed)</label>
+            <input type="text" class="form-control" name="days_of_week" id="days_of_week" value="{{ schedule.days_of_week }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <a href="{{ url_for('schedules') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

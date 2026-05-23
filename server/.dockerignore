@@ -1,0 +1,19 @@
+# Build artefacts and developer state we don't want in the image.
+.git
+.gitignore
+.vs
+.vscode
+__pycache__
+*.pyc
+*.pyo
+*.log
+node_modules
+uploads/
+instance/
+*.sqlite
+*.sqlite3
+digital_signage.db
+.dockerignore
+Dockerfile
+docker-compose.yml
+RESUME_CONTEXT.md

@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AISignX{% endblock %}</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/AISignX.ico') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/AISignX.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/AISignX.png') }}">
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <!-- Custom styles -->
+    <style>
+        body {
+            font-size: .875rem;
+            padding-top: 4.5rem;
+        }
+
+        .sidebar {
+            position: fixed;
+            top: 56px;
+            bottom: 0;
+            left: 0;
+            z-index: 100;
+            padding: 48px 0 0;
+            box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+            background-color: #f8f9fa;
+        }
+
+        .sidebar-sticky {
+            position: sticky;
+            top: 0;
+            height: calc(100vh - 48px);
+            padding-top: .5rem;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        .sidebar .nav-link {
+            font-weight: 500;
+            color: #333;
+            padding: 0.5rem 1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .sidebar .nav-link:hover {
+            color: #0d6efd;
+            background-color: rgba(13, 110, 253, 0.05);
+        }
+
+        .sidebar .nav-link.active {
+            color: #0d6efd;
+            background-color: rgba(13, 110, 253, 0.1);
+        }
+        
+        .sidebar .nav-link i {
+            margin-right: 0.5rem;
+        }
+        
+        .main-content {
+            padding: 1rem;
+        }
+        
+        .card {
+            margin-bottom: 1.5rem;
+            box-shadow: 0 .125rem .25rem rgba(0, 0, 0, .075);
+        }
+        
+        .card-header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid rgba(0, 0, 0, .125);
+        }
+        
+        .stat-card {
+            text-align: center;
+            padding: 1.5rem;
+        }
+        
+        .stat-card i {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: #0d6efd;
+        }
+        
+        .stat-card .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        
+        .stat-card .stat-text {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #6c757d;
+        }
+
+        /* Navbar improvements */
+        .navbar-brand {
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Highlight admin links */
+        .admin-link {
+            background-color: rgba(255, 193, 7, 0.1);
+            border-left: 3px solid #ffc107;
+        }
+        
+        .admin-link:hover {
+            background-color: rgba(255, 193, 7, 0.2);
+        }
+        
+        /* Highlight user profile links */
+        .profile-link {
+            background-color: rgba(13, 202, 240, 0.1);
+            border-left: 3px solid #0dcaf0;
+        }
+        
+        .profile-link:hover {
+            background-color: rgba(13, 202, 240, 0.2);
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 767.98px) {
+            .sidebar {
+                top: 5rem;
+            }
+
+            body {
+                padding-top: 5rem;
+            }
+        }
+        
+        /* Badge styling */
+        .admin-badge {
+            background-color: #ffc107;
+            color: #000;
+        }
+        
+        /* Debug section */
+        .debug-info {
+            font-size: 0.75rem;
+            color: #6c757d;
+            border-top: 1px solid #dee2e6;
+            margin-top: 1rem;
+            padding-top: 0.5rem;
+        }
+    </style>
+
+    {% set _b = branding() %}
+    <style>
+        /* Per-tenant branding: primary color is exposed both as a CSS
+           variable (for custom rules above) and as Bootstrap's --bs-primary
+           override so badges, buttons, and links pick it up automatically. */
+        :root {
+            --tenant-primary: {{ _b.primary_color }};
+            --bs-primary:     {{ _b.primary_color }};
+            --bs-link-color:  {{ _b.primary_color }};
+        }
+        .btn-primary, .bg-primary {
+            background-color: var(--tenant-primary) !important;
+            border-color:     var(--tenant-primary) !important;
+        }
+        .text-primary, .sidebar .nav-link.active, .sidebar a.nav-link:hover {
+            color: var(--tenant-primary) !important;
+        }
+        /* Bootstrap pills/tabs paint a coloured background; keep their text
+           white so it stays readable. The earlier broad rule was forcing
+           tenant-primary text on every active nav-link, which produced
+           unreadable blue-on-blue pills (e.g. the plugin config tabs). */
+        .nav-pills .nav-link.active,
+        .nav-tabs  .nav-link.active.bg-primary,
+        .nav-link.active.bg-primary {
+            color: #fff !important;
+        }
+    </style>
+
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <!-- Top navigation -->
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand p-0" href="{{ url_for('main.dashboard') }}">
+                {% if _b.logo_url %}
+                <img src="{{ _b.logo_url }}" alt="{{ _b.tenant_name or 'AISignX' }}"
+                     style="height:36px; width:auto; max-width:200px; border-radius:4px; background:#fff; padding:2px;">
+                {% else %}
+                <img src="{{ url_for('static', filename='img/AISignX.png') }}" alt="AISignX" style="height:36px; width:auto; border-radius:4px;">
+                {% endif %}
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    {% if current_user.is_authenticated %}
+                    
+                    <!-- Admin Links in Top Nav -->
+                    {% if current_user.is_admin %}
+                    <li class="nav-item me-2">
+                        <a class="nav-link btn btn-warning btn-sm text-dark" href="{{ url_for('admin.users') }}">
+                            <i class="bi bi-people-fill"></i> User Management
+                        </a>
+                    </li>
+                    {% endif %}
+	                <!-- Change Password Quick Link -->
+					<li class="nav-item me-2">
+						<a class="nav-link btn btn-info btn-sm" href="{{ url_for('auth.profile', section='password') }}">
+							<i class="bi bi-key-fill"></i> Change Password
+						</a>
+					</li>
+					
+					<!-- User dropdown -->
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+							<i class="bi bi-person-circle me-1"></i> 
+							{{ current_user.username }}
+							{% if current_user.is_admin %}
+							<span class="badge admin-badge">Admin</span>
+							{% endif %}
+						</a>
+						<ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+							<li><a class="dropdown-item" href="{{ url_for('auth.profile', section='profile') }}">
+								<i class="bi bi-person-gear me-2"></i>Edit Profile
+							</a></li>
+							<li><a class="dropdown-item" href="{{ url_for('auth.profile', section='password') }}">
+								<i class="bi bi-key me-2"></i>Change Password
+							</a></li>
+							{% if current_user.is_admin %}
+							<li><a class="dropdown-item" href="{{ url_for('admin.users') }}">
+								<i class="bi bi-people-fill me-2"></i>User Management
+							</a></li>
+							<li><a class="dropdown-item" href="{{ url_for('admin.users') }}">
+								<i class="bi bi-key me-2"></i>Users &amp; API tokens
+							</a></li>
+							{% endif %}
+							<li><hr class="dropdown-divider"></li>
+							<li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">
+								<i class="bi bi-box-arrow-right me-2"></i>Logout
+							</a></li>
+						</ul>
+					</li>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('auth.login') }}">
+                            <i class="bi bi-box-arrow-in-right me-1"></i> Login
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Sidebar and content -->
+    <div class="container-fluid">
+        <div class="row">
+            {% if current_user.is_authenticated %}
+            <!-- Sidebar -->
+            <nav id="sidebar" class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+                <div class="sidebar-sticky pt-3">
+                    {% set ds = domain_switcher() %}
+                    {% if ds.visible %}
+                    <div class="px-3 pb-3 mb-2 border-bottom">
+                        <label for="domainSwitcher" class="form-label small text-muted mb-1">
+                            <i class="bi bi-building"></i> Active tenant
+                        </label>
+                        <select id="domainSwitcher" class="form-select form-select-sm">
+                            {% set available_ids = ds.available|map(attribute='id')|list %}
+                            {% for d in ds.available %}
+                            <option value="{{ d.id }}" {% if d.id == ds.current_id %}selected{% endif %}>{{ d.name }}</option>
+                            {% endfor %}
+                            {% if ds.current_id and ds.current_id not in available_ids %}
+                            <option value="{{ ds.current_id }}" selected>{{ ds.current_name }} (read-only)</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                    <script>
+                    (function() {
+                        const sel = document.getElementById('domainSwitcher');
+                        if (!sel) return;
+                        sel.addEventListener('change', async () => {
+                            const target = parseInt(sel.value, 10);
+                            const r = await fetch('/api/session/domain', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({domain_id: target}),
+                            });
+                            const j = await r.json();
+                            if (j.status === 'success') {
+                                // Don't reload the same URL after a tenant
+                                // switch -- if the current page points at a
+                                // resource that belongs to the previous
+                                // tenant (e.g. /playlists/123, /media/45)
+                                // it 404s. Strip everything after the
+                                // section root and navigate there. The
+                                // dashboard is the safe fallback for paths
+                                // we don't recognise.
+                                const SAFE_ROOTS = [
+                                    '/dashboard', '/displays', '/groups',
+                                    '/media', '/playlists', '/schedules',
+                                    '/plugins'
+                                ];
+                                const path = window.location.pathname;
+                                let target = '/dashboard';
+                                for (const root of SAFE_ROOTS) {
+                                    if (path === root || path.startsWith(root + '/')) {
+                                        target = root;
+                                        break;
+                                    }
+                                }
+                                window.location.assign(target);
+                            } else {
+                                alert(j.message || 'Failed to switch tenant.');
+                            }
+                        });
+                    })();
+                    </script>
+                    {% endif %}
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link {{ 'active' if request.endpoint == 'main.dashboard' else '' }}" href="{{ url_for('main.dashboard') }}">
+                                <i class="bi bi-speedometer2"></i> Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {{ 'active' if request.endpoint == 'displays.displays' else '' }}" href="{{ url_for('displays.displays') }}">
+                                <i class="bi bi-display"></i> Displays
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {{ 'active' if request.endpoint == 'groups.groups' else '' }}" href="{{ url_for('groups.groups') }}">
+                                <i class="bi bi-collection"></i> Display Groups
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {{ 'active' if request.endpoint == 'media.media' else '' }}" href="{{ url_for('media.media') }}">
+                                <i class="bi bi-images"></i> Media
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {{ 'active' if request.endpoint == 'playlists.playlists' else '' }}" href="{{ url_for('playlists.playlists') }}">
+                                <i class="bi bi-list-ul"></i> Playlists
+                            </a>
+                        </li>
+						<li class="nav-item">
+							<a class="nav-link {{ 'active' if request.endpoint == 'schedules.schedules' else '' }}" href="{{ url_for('schedules.schedules') }}">
+								<i class="bi bi-calendar-week"></i> Schedules
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link {{ 'active' if request.endpoint == 'admin.admin_schedule_conflicts_page' else '' }}" href="{{ url_for('admin.admin_schedule_conflicts_page') }}">
+								<i class="bi bi-calendar2-x"></i> Schedule Conflicts
+							</a>
+						</li>
+						{% if current_user.is_superadmin %}
+						<li class="nav-item">
+							<a class="nav-link {{ 'active' if request.endpoint == 'plugins.plugins_page' else '' }}" href="{{ url_for('plugins.plugins_page') }}">
+								<i class="bi bi-puzzle"></i> Install Plugins
+							</a>
+						</li>
+						{% endif %}
+
+						<!-- Profile Links (For All Users) -->
+						<li class="nav-item mt-3">
+							<hr class="my-2">
+							<h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mb-1 text-muted">
+								<span>User Settings</span>
+							</h6>
+						</li>
+						
+						<li class="nav-item">
+							<a class="nav-link profile-link {{ 'active' if request.endpoint == 'auth.profile' and request.args.get('section') == 'password' else '' }}" 
+							href="{{ url_for('auth.profile', section='password') }}">
+								<i class="bi bi-key"></i> Change My Password
+							</a>
+						</li>
+						
+						<li class="nav-item">
+							<a class="nav-link profile-link {{ 'active' if request.endpoint == 'auth.profile' and request.args.get('section') == 'profile' else '' }}" 
+							href="{{ url_for('auth.profile', section='profile') }}">
+								<i class="bi bi-person-gear"></i> Edit Profile Info
+							</a>
+						</li>
+
+                        <!-- Tenant administration (domain admins + superadmins) -->
+                        {% if current_user.is_admin %}
+                        <li class="nav-item mt-3">
+                            <hr class="my-2">
+                            <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mb-1 text-muted">
+                                <span>{% if current_user.is_superadmin %}Administration{% else %}Tenant Admin{% endif %}</span>
+                                <span class="badge admin-badge">{% if current_user.is_superadmin %}Admin{% else %}Tenant{% endif %}</span>
+                            </h6>
+                        </li>
+                        
+                        <li class="nav-item">
+                            <a class="nav-link admin-link {{ 'active' if request.endpoint == 'admin.users' else '' }}" href="{{ url_for('admin.users') }}">
+                                <i class="bi bi-people-fill"></i> Users
+                            </a>
+                        </li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'audit.audit_page' else '' }}" href="{{ url_for('audit.audit_page') }}">
+								<i class="bi bi-shield-check"></i> Audit Log
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'admin.admin_proof_of_play_page' else '' }}" href="{{ url_for('admin.admin_proof_of_play_page') }}">
+								<i class="bi bi-clipboard-check"></i> Proof of Play
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'displays.display_diagnostics_page' else '' }}" href="{{ url_for('displays.display_diagnostics_page') }}">
+								<i class="bi bi-bug"></i> Display Diagnostics
+							</a>
+						</li>
+						{% if current_user.is_superadmin %}
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'admin.admin_roles_page' else '' }}" href="{{ url_for('admin.admin_roles_page') }}">
+								<i class="bi bi-shield-lock-fill"></i> Roles &amp; Permissions
+							</a>
+						</li>
+						{% endif %}
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'registration.admin_enrollment_page' else '' }}" href="{{ url_for('registration.admin_enrollment_page') }}">
+								<i class="bi bi-key-fill"></i> Device Enrollment
+							</a>
+						</li>
+						{% if not current_user.is_superadmin %}
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'settings_admin.admin_settings_page' else '' }}" href="{{ url_for('settings_admin.admin_settings_page') }}">
+								<i class="bi bi-gear"></i> Tenant Settings
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'settings_admin.admin_tenant_alerts_page' else '' }}" href="{{ url_for('settings_admin.admin_tenant_alerts_page') }}">
+								<i class="bi bi-bell"></i> Tenant Alerts
+							</a>
+						</li>
+						{% endif %}
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'admin.admin_plugin_policy_page' else '' }}" href="{{ url_for('admin.admin_plugin_policy_page') }}">
+								<i class="bi bi-puzzle"></i> Plugins
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'downloads_page' else '' }}" href="{{ url_for('downloads_page') }}">
+								<i class="bi bi-download"></i> Downloads
+							</a>
+						</li>
+						{% if current_user.is_superadmin %}
+						<li class="nav-item mt-3">
+							<hr class="my-2">
+							<h6 class="sidebar-heading px-3 mb-1 text-muted">
+								<span>System</span>
+							</h6>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'domains.admin_domains_page' else '' }}" href="{{ url_for('domains.admin_domains_page') }}">
+								<i class="bi bi-building-gear"></i> Tenants
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'settings_admin.admin_settings_page' else '' }}" href="{{ url_for('settings_admin.admin_settings_page') }}">
+								<i class="bi bi-gear-fill"></i> System Settings
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'admin.admin_backups_page' else '' }}" href="{{ url_for('admin.admin_backups_page') }}">
+								<i class="bi bi-hdd-stack-fill"></i> Backup &amp; Restore
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'plugins.plugins_page' else '' }}" href="{{ url_for('plugins.plugins_page') }}">
+								<i class="bi bi-puzzle"></i> Install Plugins
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'admin.admin_audit_retention_page' else '' }}" href="{{ url_for('admin.admin_audit_retention_page') }}">
+								<i class="bi bi-archive"></i> Audit Retention
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'admin.admin_system_health_page' else '' }}" href="{{ url_for('admin.admin_system_health_page') }}">
+								<i class="bi bi-activity"></i> System Health
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'admin.admin_alerts_page' else '' }}" href="{{ url_for('admin.admin_alerts_page') }}">
+								<i class="bi bi-bell"></i> System Alerts
+							</a>
+						</li>
+						<li class="nav-item">
+							<a class="nav-link admin-link {{ 'active' if request.endpoint == 'admin.admin_selftest_page' else '' }}" href="{{ url_for('admin.admin_selftest_page') }}">
+								<i class="bi bi-clipboard-check"></i> Self-Tests
+							</a>
+						</li>
+						{% endif %}
+						<li class="nav-item">
+							<a class="nav-link admin-link" href="{{ url_for('registration.request_access_page') }}" target="_blank">
+								<i class="bi bi-link-45deg"></i> Browser Access Link <i class="bi bi-box-arrow-up-right" style="font-size:.7rem;"></i>
+							</a>
+						</li>
+						{% endif %}
+                    </ul>
+                    
+                    <!-- Debug Info -->
+                    <div class="debug-info px-3 mt-4">
+                        <p class="mb-1">Current user: {{ current_user.username }}</p>
+                        <p class="mb-1">Admin status: {{ current_user.is_admin }}</p>
+                        <p class="mb-0">Last login: {{ current_user.last_login.strftime('%Y-%m-%d %H:%M:%S') if current_user.last_login else 'Unknown' }}</p>
+                    </div>
+                </div>
+            </nav>
+            
+            <!-- Main content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content">
+            {% else %}
+            <!-- Login content -->
+            <main class="col-12 px-4 main-content">
+            {% endif %}
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show mt-3" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+                {% endwith %}
+                
+                <div class="pt-3 pb-2 mb-3">
+                    {% block content %}{% endblock %}
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer mt-auto py-3 bg-light">
+        <div class="container-fluid">
+            <div class="d-flex justify-content-between align-items-center">
+                <span class="text-muted">&copy; 2025 AISignX</span>
+                <span class="text-muted">Version 1.0</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
+    
+    <!-- Custom scripts -->
+    <script>
+        // Make sure sidebar collapses correctly on mobile
+        document.addEventListener('DOMContentLoaded', function() {
+            var navbarToggler = document.querySelector('.navbar-toggler');
+            var sidebarNav = document.querySelector('#sidebar');
+            
+            if (navbarToggler && sidebarNav) {
+                navbarToggler.addEventListener('click', function() {
+                    sidebarNav.classList.toggle('show');
+                });
+            }
+
+            // Auto-close alerts after 5 seconds
+            var alerts = document.querySelectorAll('.alert');
+            alerts.forEach(function(alert) {
+                setTimeout(function() {
+                    var closeButton = alert.querySelector('.btn-close');
+                    if (closeButton) {
+                        closeButton.click();
+                    }
+                }, 5000);
+            });
+        });
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

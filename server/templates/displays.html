@@ -1,0 +1,1025 @@
+{% extends 'base.html' %}
+
+{% block title %}Displays - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center">
+    <h1>Displays</h1>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addDisplayModal">
+        Add New Display
+    </button>
+</div>
+
+<!-- Pending Registrations -->
+<div id="pendingSection" class="row mt-4" style="display:none!important">
+    <div class="col-md-12">
+        <div class="card border-warning">
+            <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-hourglass-split me-1 text-warning"></i><strong>Pending Device Registrations</strong> <span id="pendingBadge" class="badge bg-warning text-dark ms-1">0</span></span>
+                <div id="pendingBulkBar" class="btn-group btn-group-sm" role="group" style="display:none;">
+                    <span class="text-muted small me-2 align-self-center"><span id="pendingBulkCount">0</span> selected</span>
+                    <button type="button" class="btn btn-success" id="pendingBulkApprove">Approve selected</button>
+                    <button type="button" class="btn btn-outline-danger" id="pendingBulkDecline">Decline selected</button>
+                    <button type="button" class="btn btn-outline-secondary" id="pendingBulkClear">Clear</button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width:32px;"><input type="checkbox" id="pendingSelectAll" class="form-check-input"></th>
+                                <th>Friendly Name</th>
+                                <th>Hostname</th>
+                                <th>OS</th>
+                                <th>Resolution</th>
+                                <th>Version</th>
+                                <th>IP</th>
+                                <th>Requested</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pendingTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <div class="card mb-2">
+                        <div class="card-body py-2">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted mb-1" for="displayFilterSearch">Search</label>
+                                    <input type="search" class="form-control form-control-sm" id="displayFilterSearch"
+                                           placeholder="Name, location, IP, version...">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small text-muted mb-1" for="displayFilterGroup">Group</label>
+                                    <select class="form-select form-select-sm" id="displayFilterGroup">
+                                        <option value="">All groups</option>
+                                        <option value="__none__">No group</option>
+                                        {% for group in groups %}
+                                        <option value="{{ group.name|lower }}">{{ group.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label small text-muted mb-1" for="displayFilterStatus">Status</label>
+                                    <select class="form-select form-select-sm" id="displayFilterStatus">
+                                        <option value="">Any status</option>
+                                        <option value="online">Online</option>
+                                        <option value="offline">Offline</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label small text-muted mb-1" for="displayFilterIssues">Issues</label>
+                                    <select class="form-select form-select-sm" id="displayFilterIssues">
+                                        <option value="">Any issues</option>
+                                        <option value="none">No issues</option>
+                                        <option value="offline">Offline</option>
+                                        <option value="version_drift">Version drift</option>
+                                        <option value="no_version">No version</option>
+                                        <option value="alert_active">Alert active</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-1 d-grid">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="displayFilterReset">Reset</button>
+                                </div>
+                            </div>
+                            <div class="small text-muted mt-2">
+                                Showing <span id="displayFilterCount">{{ displays|length }}</span> of {{ displays|length }} display(s)
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-2 px-1" id="bulkBar" style="display:none !important;">
+                        <span class="small text-muted"><span id="bulkCount">0</span> selected</span>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary"   data-bulk-action="reload">Reload</button>
+                            <button type="button" class="btn btn-outline-warning"   data-bulk-action="update">Update</button>
+                            <button type="button" class="btn btn-outline-danger"    data-bulk-action="reboot">Reboot</button>
+                            <button type="button" class="btn btn-outline-info" id="bulkEditDisplays" data-bs-toggle="modal" data-bs-target="#bulkEditModal">Edit&hellip;</button>
+                            <button type="button" class="btn btn-outline-danger" id="bulkDeleteDisplays">Delete</button>
+                            <button type="button" class="btn btn-outline-secondary" id="bulkClear">Clear</button>
+                        </div>
+                    </div>
+                    <div id="bulkResults" class="alert alert-secondary py-2 small mb-2" style="display:none;"></div>
+                    <div id="alertsBanner" class="alert alert-warning py-2 small mb-2 d-none">
+                        <i class="bi bi-bell-fill"></i>
+                        <strong><span id="alertsBannerCount">0</span> display(s)</strong> currently in an active offline alert.
+                        <a href="/admin/alerts" class="alert-link ms-1">Configure alerts →</a>
+                    </div>
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th style="width:32px;"><input type="checkbox" id="selectAllDisplays" class="form-check-input"></th>
+                                <th>Name</th>
+                                <th>Location</th>
+                                <th>Group</th>
+                                <th>Status</th>
+                                <th><abbr class="text-decoration-none border-bottom border-dotted" style="cursor: help;"
+                                    title="Issues refresh about every 20 seconds. Version drift: this display is in a group where different members report different app versions (often a client update only partly rolled out). Offline: no recent ping. No version: online but the player never reported an app version. Alert badges: offline alerting from /admin/alerts.">Issues</abbr></th>
+                                <th>Version</th>
+                                <th>Last Ping</th>
+                                <th>IP Address</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for display in displays %}
+                            <tr data-row-display-id="{{ display.id }}"
+                                data-filter-name="{{ display.name|lower }}"
+                                data-filter-location="{{ (display.location or '')|lower }}"
+                                data-filter-group="{{ (display.group.name if display.group else 'none')|lower }}"
+                                data-filter-status="{{ 'online' if display.is_online else 'offline' }}"
+                                data-filter-version="{{ (display.app_version or '')|lower }}"
+                                data-filter-ip="{{ (display.ip_address or '')|lower }}">
+                                <td><input type="checkbox" class="form-check-input display-select" value="{{ display.id }}"></td>
+                                <td>{{ display.name }}</td>
+                                <td>{{ display.location or 'N/A' }}</td>
+                                <td>{{ display.group.name if display.group else 'None' }}</td>
+                                <td>
+                                    {% if display.is_online %}
+                                    <span class="badge bg-success">Online</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Offline</span>
+                                    {% endif %}
+                                </td>
+                                <td><span class="display-issues" data-display-id="{{ display.id }}"></span></td>
+                                <td><span class="display-version" data-display-id="{{ display.id }}">{{ display.app_version or '—' }}</span></td>
+                                <td>{{ display.last_ping|format_datetime if display.last_ping else 'Never' }}</td>
+                                <td>{{ display.ip_address or 'N/A' }}</td>
+                                <td class="d-flex gap-2">
+                                    <a href="{{ url_for('displays.display_detail', display_id=display.id) }}" class="btn btn-sm btn-primary">View Details</a>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary btn-cmd-display"
+                                            data-id="{{ display.id }}"
+                                            data-name="{{ display.name }}">
+                                        Command
+                                    </button>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary btn-support-link"
+                                            data-id="{{ display.id }}"
+                                            data-name="{{ display.name }}"
+                                            title="Copy a one-click support link for field staff">
+                                        <i class="bi bi-link-45deg"></i>
+                                    </button>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-danger btn-delete-display"
+                                            data-id="{{ display.id }}"
+                                            data-name="{{ display.name }}"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#deleteDisplayModal">
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Display Modal -->
+<div class="modal fade" id="addDisplayModal" tabindex="-1" aria-labelledby="addDisplayModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addDisplayModalLabel">Add New Display</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addDisplayForm">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Display Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="location" class="form-label">Location</label>
+                        <input type="text" class="form-control" id="location" name="location">
+                    </div>
+                    <div class="mb-3">
+                        <label for="group" class="form-label">Group</label>
+                        <select class="form-select" id="group" name="group">
+                            <option value="">None</option>
+                            {% for group in groups %}
+                            <option value="{{ group.id }}">{{ group.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveDisplay">Save Display</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Approve Registration Modal -->
+<div class="modal fade" id="approveModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Approve Display Registration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="approvePendingId">
+                <div class="mb-3">
+                    <label class="form-label">Display Name</label>
+                    <input type="text" class="form-control" id="approveDisplayName">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Location <span class="text-muted">(optional)</span></label>
+                    <input type="text" class="form-control" id="approveLocation">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Group <span class="text-muted">(optional)</span></label>
+                    <select class="form-select" id="approveGroup">
+                        <option value="">None</option>
+                        {% for group in groups %}
+                        <option value="{{ group.id }}">{{ group.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirmApprove">Approve</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk edit selected displays modal -->
+<div class="modal fade" id="bulkEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Bulk edit displays</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small">Apply to <strong><span id="bulkEditCount">0</span></strong> selected display(s). Only checked fields are changed.</p>
+
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input bulk-field" type="checkbox" id="bulkChkGroup">
+            <label class="form-check-label small text-muted" for="bulkChkGroup">Set group</label>
+          </div>
+          <select class="form-select form-select-sm mt-1" id="bulkValGroup" disabled>
+            <option value="">(no group)</option>
+            {% for group in groups %}
+            <option value="{{ group.id }}">{{ group.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input bulk-field" type="checkbox" id="bulkChkAutoUpdate">
+            <label class="form-check-label small text-muted" for="bulkChkAutoUpdate">Set automatic client updates</label>
+          </div>
+          <select class="form-select form-select-sm mt-1" id="bulkValAutoUpdate" disabled>
+            <option value="1">Enabled</option>
+            <option value="0">Disabled</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input bulk-field" type="checkbox" id="bulkChkSyncOptOut">
+            <label class="form-check-label small text-muted" for="bulkChkSyncOptOut">Opt out of synchronized playback</label>
+          </div>
+          <select class="form-select form-select-sm mt-1" id="bulkValSyncOptOut" disabled>
+            <option value="1">Opt out</option>
+            <option value="0">Follow group sync</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input bulk-field" type="checkbox" id="bulkChkAspect">
+            <label class="form-check-label small text-muted" for="bulkChkAspect">Set aspect mode</label>
+          </div>
+          <select class="form-select form-select-sm mt-1" id="bulkValAspect" disabled>
+            <option value="fit">Fit</option>
+            <option value="fill">Fill</option>
+            <option value="stretch">Stretch</option>
+            <option value="center">Center</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input bulk-field" type="checkbox" id="bulkChkVolume">
+            <label class="form-check-label small text-muted" for="bulkChkVolume">Set master volume (0-100)</label>
+          </div>
+          <input type="number" min="0" max="100" class="form-control form-control-sm mt-1" id="bulkValVolume" value="100" disabled>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input bulk-field" type="checkbox" id="bulkChkLocation">
+            <label class="form-check-label small text-muted" for="bulkChkLocation">Set location (overwrites)</label>
+          </div>
+          <input type="text" class="form-control form-control-sm mt-1" id="bulkValLocation" placeholder="e.g. Main Hall" disabled>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input bulk-field" type="checkbox" id="bulkChkShowOfflineBanner">
+            <label class="form-check-label small text-muted" for="bulkChkShowOfflineBanner">Show offline banner</label>
+          </div>
+          <select class="form-select form-select-sm mt-1" id="bulkValShowOfflineBanner" disabled>
+            <option value="1">Show</option>
+            <option value="0">Hide</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input bulk-field" type="checkbox" id="bulkChkAllowInput">
+            <label class="form-check-label small text-muted" for="bulkChkAllowInput">Allow keyboard/mouse input</label>
+          </div>
+          <select class="form-select form-select-sm mt-1" id="bulkValAllowInput" disabled>
+            <option value="1">Allow</option>
+            <option value="0">Block</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input bulk-field" type="checkbox" id="bulkChkDiagnostics">
+            <label class="form-check-label small text-muted" for="bulkChkDiagnostics">Record diagnostic log</label>
+          </div>
+          <select class="form-select form-select-sm mt-1" id="bulkValDiagnostics" disabled>
+            <option value="1">Enabled</option>
+            <option value="0">Disabled</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="bulkEditApply">Apply changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Display Modal -->
+<div class="modal fade" id="deleteDisplayModal" tabindex="-1" aria-labelledby="deleteDisplayModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteDisplayModalLabel">Delete Display</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="deleteDisplayId">
+        Are you sure you want to delete display
+        <strong id="deleteDisplayName"></strong>?
+        This action cannot be undone.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteDisplay">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Pending Registrations ────────────────────────────────────────────────────
+function formatRelative(isoStr) {
+    if (!isoStr) return '—';
+    const diff = Math.floor((Date.now() - new Date(isoStr + 'Z')) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+    return `${Math.floor(diff/3600)}h ago`;
+}
+
+function loadPending() {
+    fetch('/api/register/pending')
+        .then(r => r.json())
+        .then(data => {
+            const section = document.getElementById('pendingSection');
+            const badge = document.getElementById('pendingBadge');
+            const tbody = document.getElementById('pendingTableBody');
+            const items = data.pending || [];
+            badge.textContent = items.length;
+            if (items.length === 0) {
+                section.style.setProperty('display', 'none', 'important');
+                return;
+            }
+            section.style.removeProperty('display');
+                tbody.innerHTML = items.map(p => `
+            <tr>
+                <td><input type="checkbox" class="form-check-input pending-select" value="${p.id}"></td>
+                <td>${escHtml(p.friendly_name || '—')}</td>
+                <td>${escHtml(p.hostname || '—')}</td>
+                <td>
+                    ${p.os === 'Browser'
+                        ? '<span class="badge bg-info text-dark">🌐 Browser</span>'
+                        : escHtml(p.os || '—')}
+                </td>
+                <td>${escHtml(p.resolution || '—')}</td>
+                <td>${escHtml(p.app_version || '—')}</td>
+                <td>${escHtml(p.ip_address || '—')}</td>
+                <td>${formatRelative(p.requested_at)}</td>
+                <td class="d-flex gap-2">
+                    <button class="btn btn-sm btn-success btn-approve-pending"
+                        data-id="${p.id}" data-name="${escAttr(p.friendly_name || '')}">
+                        Approve
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger btn-decline-pending"
+                        data-id="${p.id}">
+                        Decline
+                    </button>
+                </td>
+            </tr>`).join('');
+            wirePendingBulkSelect();
+
+            document.querySelectorAll('.btn-approve-pending').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.getElementById('approvePendingId').value = btn.dataset.id;
+                    document.getElementById('approveDisplayName').value = btn.dataset.name;
+                    document.getElementById('approveLocation').value = '';
+                    document.getElementById('approveGroup').value = '';
+                    new bootstrap.Modal(document.getElementById('approveModal')).show();
+                });
+            });
+            document.querySelectorAll('.btn-decline-pending').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (!confirm('Decline this registration request?')) return;
+                    fetch(`/api/register/${btn.dataset.id}/decline`, { method: 'POST' })
+                        .then(() => loadPending());
+                });
+            });
+        })
+        .catch(() => {});
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) { return escHtml(s); }
+
+document.getElementById('confirmApprove').addEventListener('click', () => {
+    const id = document.getElementById('approvePendingId').value;
+    const name = document.getElementById('approveDisplayName').value.trim();
+    const location = document.getElementById('approveLocation').value.trim();
+    const groupVal = document.getElementById('approveGroup').value;
+    const group_id = groupVal ? parseInt(groupVal, 10) : null;
+    fetch(`/api/register/${id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, location, group_id })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'success') {
+            bootstrap.Modal.getInstance(document.getElementById('approveModal')).hide();
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Approval failed'));
+        }
+    });
+});
+
+loadPending();
+setInterval(loadPending, 10000);
+// ── End Pending Registrations ────────────────────────────────────────────────
+document.getElementById('saveDisplay').addEventListener('click', function() {
+    const form = document.getElementById('addDisplayForm');
+    const formData = {
+        name: form.elements.name.value,
+        location: form.elements.location.value,
+        group_id: form.elements.group.value || null
+    };
+    fetch('/api/displays', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'success') {
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to create display'));
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert('An error occurred. Please try again.');
+    });
+});
+
+// Wire delete modal population
+document.querySelectorAll('.btn-delete-display').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('deleteDisplayId').value = btn.dataset.id;
+        document.getElementById('deleteDisplayName').textContent = btn.dataset.name || '';
+    });
+});
+
+// Per-display command (reload/reboot/update). Mirrors the group-level
+// bulk command but targets one display via /api/displays/<id>/command.
+document.querySelectorAll('.btn-cmd-display').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const name = btn.dataset.name || ('#' + btn.dataset.id);
+        const action = prompt('Push command to "' + name + '".\nEnter one of: reload, reboot, update', 'reload');
+        if (!action) return;
+        const a = action.trim().toLowerCase();
+        if (!['reload','reboot','update'].includes(a)) {
+            alert('Action must be reload, reboot, or update.');
+            return;
+        }
+        fetch('/api/displays/' + btn.dataset.id + '/command', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: a})
+        })
+        .then(r => r.json())
+        .then(j => {
+            if (j.status === 'success') {
+                alert(a + ': ' + (j.message || (j.delivered ? 'delivered' : 'not connected')));
+            } else {
+                alert('Error: ' + (j.message || 'failed'));
+            }
+        })
+        .catch(err => { console.error(err); alert('Request failed.'); });
+    });
+});
+
+// Per-row "Copy support link" button — pairs with the deep-link handler
+// in display_detail.html, which auto-clicks the matching button when a
+// logged-in operator opens the URL.
+document.querySelectorAll('.btn-support-link').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const name = btn.dataset.name || ('#' + btn.dataset.id);
+        const choice = (prompt(
+            'Support link for "' + name + '" — type one of:\n  reload\n  reboot\n  update',
+            'reload') || '').trim().toLowerCase();
+        if (!['reload', 'reboot', 'update'].includes(choice)) {
+            if (choice) alert('Unknown action: ' + choice);
+            return;
+        }
+        const url = window.location.origin + '/display/' + btn.dataset.id + '?cmd=' + choice;
+        try {
+            await navigator.clipboard.writeText(url);
+            alert('Support link copied:\n\n' + url);
+        } catch {
+            prompt('Copy this support link:', url);
+        }
+    });
+});
+
+// Confirm delete
+document.getElementById('confirmDeleteDisplay').addEventListener('click', () => {
+    const id = document.getElementById('deleteDisplayId').value;
+    fetch(`/api/displays/${id}`, { method: 'DELETE' })
+      .then(async res => {
+          const data = await res.json().catch(() => ({ status:'error', message:res.statusText }));
+          if (res.ok && data.status === 'success') {
+              // Hide modal and reload
+              const modalEl = document.getElementById('deleteDisplayModal');
+              const modal = bootstrap.Modal.getInstance(modalEl);
+              modal.hide();
+              // Optionally remove row without reload:
+              // document.querySelector(`tr[data-row-display-id="${id}"]`)?.remove();
+              window.location.reload();
+          } else {
+              alert('Failed to delete: ' + (data.message || res.statusText));
+          }
+      })
+      .catch(err => {
+          console.error(err);
+          alert('An error occurred while deleting.');
+      });
+});
+
+// ----- Bulk multi-select command bar -----
+const bulkBar    = document.getElementById('bulkBar');
+const bulkCount  = document.getElementById('bulkCount');
+const selectAll  = document.getElementById('selectAllDisplays');
+const checkboxes = () => Array.from(document.querySelectorAll('.display-select'));
+function isVisibleRowCheckbox(c) {
+    const row = c.closest('tr');
+    return !row || row.style.display !== 'none';
+}
+
+function selectedIds() {
+    return checkboxes().filter(c => c.checked && isVisibleRowCheckbox(c)).map(c => parseInt(c.value, 10));
+}
+function refreshBulkBar() {
+    const ids = selectedIds();
+    bulkCount.textContent = ids.length;
+    bulkBar.style.setProperty('display', ids.length ? 'flex' : 'none', 'important');
+    if (selectAll) {
+        const all = checkboxes().filter(isVisibleRowCheckbox);
+        selectAll.checked       = all.length > 0 && ids.length === all.length;
+        selectAll.indeterminate = ids.length > 0 && ids.length < all.length;
+    }
+}
+
+if (selectAll) {
+    selectAll.addEventListener('change', () => {
+        checkboxes().filter(isVisibleRowCheckbox).forEach(c => { c.checked = selectAll.checked; });
+        refreshBulkBar();
+    });
+}
+checkboxes().forEach(c => c.addEventListener('change', refreshBulkBar));
+
+// ----- Uniform display filters -----
+const displayFilterEls = {
+    search: document.getElementById('displayFilterSearch'),
+    group:  document.getElementById('displayFilterGroup'),
+    status: document.getElementById('displayFilterStatus'),
+    issues: document.getElementById('displayFilterIssues'),
+    count:  document.getElementById('displayFilterCount'),
+};
+function displayIssueKeys(row) {
+    return (row.dataset.issueKeys || '').split(',').filter(Boolean);
+}
+function applyDisplayFilters() {
+    const q = (displayFilterEls.search?.value || '').trim().toLowerCase();
+    const group = displayFilterEls.group?.value || '';
+    const status = displayFilterEls.status?.value || '';
+    const issue = displayFilterEls.issues?.value || '';
+    let shown = 0;
+    document.querySelectorAll('tr[data-row-display-id]').forEach(row => {
+        const hay = [
+            row.dataset.filterName || '',
+            row.dataset.filterLocation || '',
+            row.dataset.filterGroup || '',
+            row.dataset.filterStatus || '',
+            row.dataset.filterVersion || '',
+            row.dataset.filterIp || '',
+        ].join(' ');
+        const rowGroup = row.dataset.filterGroup || 'none';
+        const issues = displayIssueKeys(row);
+        let ok = true;
+        if (q && !hay.includes(q)) ok = false;
+        if (group === '__none__' && rowGroup !== 'none') ok = false;
+        if (group && group !== '__none__' && rowGroup !== group) ok = false;
+        if (status && row.dataset.filterStatus !== status) ok = false;
+        if (issue === 'none' && issues.length) ok = false;
+        if (issue && issue !== 'none' && !issues.includes(issue)) ok = false;
+        row.style.display = ok ? '' : 'none';
+        if (ok) shown++;
+    });
+    if (displayFilterEls.count) displayFilterEls.count.textContent = shown;
+    refreshBulkBar();
+}
+['search','group','status','issues'].forEach(k => {
+    displayFilterEls[k]?.addEventListener(k === 'search' ? 'input' : 'change', applyDisplayFilters);
+});
+document.getElementById('displayFilterReset')?.addEventListener('click', () => {
+    if (displayFilterEls.search) displayFilterEls.search.value = '';
+    if (displayFilterEls.group) displayFilterEls.group.value = '';
+    if (displayFilterEls.status) displayFilterEls.status.value = '';
+    if (displayFilterEls.issues) displayFilterEls.issues.value = '';
+    applyDisplayFilters();
+});
+
+document.getElementById('bulkClear')?.addEventListener('click', () => {
+    checkboxes().forEach(c => { c.checked = false; });
+    refreshBulkBar();
+});
+
+document.getElementById('bulkDeleteDisplays')?.addEventListener('click', () => {
+    const ids = selectedIds();
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} selected display(s)? This removes the display tokens and diagnostic logs, and detaches direct schedules from those displays.`)) return;
+    const $r = document.getElementById('bulkResults');
+    $r.style.display = 'block';
+    $r.className = 'alert alert-secondary py-2 small mb-2';
+    $r.textContent = `Deleting ${ids.length} display(s)...`;
+    fetch('/api/displays/bulk-delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids}),
+    })
+    .then(r => r.json())
+    .then(j => {
+        if (j.status !== 'success') {
+            $r.className = 'alert alert-danger py-2 small mb-2';
+            $r.textContent = 'Bulk delete failed: ' + (j.message || 'unknown error');
+            return;
+        }
+        alert(`Deleted ${j.deleted}/${j.requested} display(s).` + (j.not_found?.length ? ` ${j.not_found.length} not found or not visible.` : ''));
+        window.location.reload();
+    })
+    .catch(err => {
+        console.error(err);
+        $r.className = 'alert alert-danger py-2 small mb-2';
+        $r.textContent = 'Bulk delete request failed.';
+    });
+});
+
+document.querySelectorAll('[data-bulk-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const ids = selectedIds();
+        if (!ids.length) return;
+        const action = btn.dataset.bulkAction;
+        if (!confirm(`Send "${action}" to ${ids.length} display(s)?`)) return;
+
+        const $r = document.getElementById('bulkResults');
+        $r.style.display = 'block';
+        $r.className = 'alert alert-secondary py-2 small mb-2';
+        $r.innerHTML = `Sending <strong>${action}</strong> to ${ids.length} display(s)...`;
+
+        // Capture pre-action versions so an "update" call can show what
+        // actually changed once each player has phoned home again.
+        const beforeVersions = {};
+        ids.forEach(id => {
+            const row = document.querySelector(`tr[data-row-display-id="${id}"]`);
+            const cells = row?.querySelectorAll('td');
+            beforeVersions[id] = {
+                name: cells?.[1]?.innerText?.trim() || ('#' + id),
+            };
+        });
+
+        fetch('/api/displays/command', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action, ids})
+        })
+        .then(r => r.json())
+        .then(j => {
+            if (j.status !== 'success') {
+                $r.className = 'alert alert-danger py-2 small mb-2';
+                $r.innerHTML = 'Error: ' + (j.message || 'failed');
+                return;
+            }
+            const rows = (j.results || []).map(rr =>
+                `<tr><td>${rr.name || ('#'+rr.id)}</td>
+                     <td class="text-end">${rr.delivered
+                        ? '<span class="badge bg-success">delivered</span>'
+                        : '<span class="badge bg-secondary">offline</span>'}</td>
+                     <td class="text-end" data-version-cell="${rr.id}">—</td></tr>`).join('');
+            $r.className = 'alert alert-info py-2 small mb-2';
+            $r.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span><strong>${j.action}</strong>: ${j.delivered}/${j.targets} delivered
+                        ${j.not_found?.length ? ` &middot; ${j.not_found.length} not found` : ''}</span>
+                    <button type="button" class="btn-close" aria-label="Close"
+                            onclick="this.closest('.alert').style.display='none'"></button>
+                </div>
+                <table class="table table-sm mb-0 small">
+                    <thead><tr><th>Display</th>
+                               <th class="text-end">Push</th>
+                               <th class="text-end">Reported version</th></tr></thead>
+                    <tbody>${rows || '<tr><td colspan="3" class="text-muted">no results</td></tr>'}</tbody>
+                </table>`;
+
+            // For 'update' / 'reload', poll the displays list a few times
+            // to surface any version change without forcing a full refresh.
+            if (action === 'update' || action === 'reload') {
+                let attempts = 0;
+                const poll = () => {
+                    attempts++;
+                    fetch('/api/displays')
+                        .then(r => r.json())
+                        .then(jj => {
+                            if (jj.status !== 'success') return;
+                            (jj.displays || []).forEach(d => {
+                                if (!ids.includes(d.id)) return;
+                                const newVer = d.app_version || '—';
+                                const cell = document.querySelector(
+                                    `[data-version-cell="${d.id}"]`);
+                                if (cell) cell.textContent = newVer;
+                                // Also update the main table's Version column
+                                // and flash it so operators can spot rollouts
+                                // landing in real time on the page they're
+                                // already looking at.
+                                const $row = document.querySelector(
+                                    `.display-version[data-display-id="${d.id}"]`);
+                                if ($row && $row.textContent !== newVer) {
+                                    $row.textContent = newVer;
+                                    $row.style.transition = 'background-color 1.5s ease';
+                                    $row.style.backgroundColor = '#fff3cd';
+                                    setTimeout(() => { $row.style.backgroundColor = ''; }, 1500);
+                                }
+                            });
+                            if (attempts < 6) setTimeout(poll, 5000);
+                        })
+                        .catch(() => {});
+                };
+                setTimeout(poll, 3000);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            $r.className = 'alert alert-danger py-2 small mb-2';
+            $r.textContent = 'Request failed.';
+        });
+    });
+});
+
+// ----- Live "Issues" + version column poller (~every 20s) -----
+// Lightweight read-only summary; the heavier displays page render only
+// happens on full reload. We update spans by display id in-place.
+const ISSUE_LABELS = {
+    offline:        ['danger',  'Offline'],
+    no_version:     ['secondary','No version reported'],
+    version_drift:  ['warning', 'Version drift in group'],
+    alert_active:   ['dark',    'Offline alert dispatched (see /admin/alerts)'],
+    alert_snoozed:  ['info',    'Alerts snoozed (planned outage)'],
+};
+/** Longer hover text for issue badges (ISSUE_LABELS short label stays on the badge face). */
+const ISSUE_BADGE_TITLES = {
+    version_drift: 'This display is in a group where players report more than one app version. Usually means a kiosk or app update reached some devices in the group but not others yet.',
+    offline: 'No heartbeat from this display within the online window.',
+    no_version: 'The display is online but has not reported an app_version yet (older client or still connecting).',
+    alert_active: 'This display is in an active offline alert. See /admin/alerts.',
+    alert_snoozed: 'Offline alerts are temporarily snoozed for this display.',
+};
+function pollDisplayIssues() {
+    fetch('/api/displays/issues')
+        .then(r => r.ok ? r.json() : null)
+        .then(j => {
+            if (!j || j.status !== 'success') return;
+            // Fleet-wide alerts banner: only superadmin-ish operators
+            // would have alerts configured, but the badge itself is
+            // harmless to show to anyone with display.read.
+            const $banner = document.getElementById('alertsBanner');
+            const $count  = document.getElementById('alertsBannerCount');
+            const active  = (j.summary && j.summary.alerts_active) || 0;
+            if ($banner && $count) {
+                $count.textContent = active;
+                $banner.classList.toggle('d-none', active === 0);
+            }
+            j.displays.forEach(d => {
+                const $i = document.querySelector(`.display-issues[data-display-id="${d.id}"]`);
+                const $rowForIssues = document.querySelector(`tr[data-row-display-id="${d.id}"]`);
+                if ($rowForIssues) $rowForIssues.dataset.issueKeys = (d.issues || []).join(',');
+                if ($i) {
+                    if (!d.issues.length) {
+                        $i.innerHTML = '<span class="text-muted small">—</span>';
+                    } else {
+                        $i.innerHTML = d.issues.map(k => {
+                            const [cls, label] = ISSUE_LABELS[k] || ['secondary', k];
+                            const tip = ISSUE_BADGE_TITLES[k] || label;
+                            return `<span class="badge bg-${cls} me-1" title="${tip.replace(/"/g, '&quot;')}">${k.replace('_',' ')}</span>`;
+                        }).join('');
+                    }
+                }
+                const $v = document.querySelector(`.display-version[data-display-id="${d.id}"]`);
+                if ($v) {
+                    const newVer = d.app_version || '—';
+                    if ($v.textContent !== newVer) {
+                        $v.textContent = newVer;
+                        // Brief highlight so operators see rollouts land live.
+                        $v.style.transition = 'background-color 1.5s ease';
+                        $v.style.backgroundColor = '#fff3cd';
+                        setTimeout(() => { $v.style.backgroundColor = ''; }, 1500);
+                    }
+                }
+            });
+            applyDisplayFilters();
+        })
+        .catch(() => {});
+}
+pollDisplayIssues();
+setInterval(pollDisplayIssues, 20000);
+
+// ── Pending bulk approve / decline ────────────────────────────────────────────
+function pendingCheckboxes() { return Array.from(document.querySelectorAll('.pending-select')); }
+function pendingSelectedIds() { return pendingCheckboxes().filter(c => c.checked).map(c => parseInt(c.value, 10)); }
+function refreshPendingBulkBar() {
+    const ids = pendingSelectedIds();
+    const bar = document.getElementById('pendingBulkBar');
+    const cnt = document.getElementById('pendingBulkCount');
+    const sa  = document.getElementById('pendingSelectAll');
+    if (cnt) cnt.textContent = ids.length;
+    if (bar) bar.style.display = ids.length ? 'inline-flex' : 'none';
+    if (sa)  {
+        const all = pendingCheckboxes();
+        sa.checked       = all.length > 0 && ids.length === all.length;
+        sa.indeterminate = ids.length > 0 && ids.length < all.length;
+    }
+}
+function wirePendingBulkSelect() {
+    pendingCheckboxes().forEach(c => c.addEventListener('change', refreshPendingBulkBar));
+    refreshPendingBulkBar();
+}
+document.getElementById('pendingSelectAll')?.addEventListener('change', (e) => {
+    pendingCheckboxes().forEach(c => { c.checked = e.target.checked; });
+    refreshPendingBulkBar();
+});
+document.getElementById('pendingBulkClear')?.addEventListener('click', () => {
+    pendingCheckboxes().forEach(c => { c.checked = false; });
+    refreshPendingBulkBar();
+});
+document.getElementById('pendingBulkApprove')?.addEventListener('click', () => {
+    const ids = pendingSelectedIds();
+    if (!ids.length) return;
+    if (!confirm(`Approve ${ids.length} pending registration(s)?`)) return;
+    fetch('/api/register/bulk-approve', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ids })
+    })
+    .then(r => r.json())
+    .then(j => {
+        if (j.status === 'success') {
+            alert(`Approved ${j.approved}/${j.requested}.`);
+            loadPending();
+            setTimeout(() => window.location.reload(), 600);
+        } else {
+            alert('Error: ' + (j.message || 'bulk approve failed'));
+        }
+    })
+    .catch(err => { console.error(err); alert('Request failed.'); });
+});
+document.getElementById('pendingBulkDecline')?.addEventListener('click', () => {
+    const ids = pendingSelectedIds();
+    if (!ids.length) return;
+    if (!confirm(`Decline ${ids.length} pending registration(s)?`)) return;
+    fetch('/api/register/bulk-decline', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ids })
+    })
+    .then(r => r.json())
+    .then(j => {
+        if (j.status === 'success') {
+            alert(`Declined ${j.declined}/${j.requested}.`);
+            loadPending();
+        } else {
+            alert('Error: ' + (j.message || 'bulk decline failed'));
+        }
+    })
+    .catch(err => { console.error(err); alert('Request failed.'); });
+});
+
+// ── Bulk edit displays modal ───────────────────────────────────────────────────
+document.querySelectorAll('.bulk-field').forEach(chk => {
+    chk.addEventListener('change', () => {
+        const targetId = chk.id.replace('bulkChk', 'bulkVal');
+        const el = document.getElementById(targetId);
+        if (el) el.disabled = !chk.checked;
+    });
+});
+document.getElementById('bulkEditDisplays')?.addEventListener('click', () => {
+    document.getElementById('bulkEditCount').textContent = selectedIds().length;
+});
+document.getElementById('bulkEditApply')?.addEventListener('click', () => {
+    const ids = selectedIds();
+    if (!ids.length) { alert('Select at least one display first.'); return; }
+    const changes = {};
+    const map = [
+        ['bulkChkGroup',             'bulkValGroup',             'group_id',           'int_or_null'],
+        ['bulkChkAutoUpdate',        'bulkValAutoUpdate',        'auto_update_client', 'bool01'],
+        ['bulkChkSyncOptOut',        'bulkValSyncOptOut',        'sync_playback_opt_out','bool01'],
+        ['bulkChkAspect',            'bulkValAspect',            'aspect_mode',        'str'],
+        ['bulkChkVolume',            'bulkValVolume',            'volume',             'int'],
+        ['bulkChkLocation',          'bulkValLocation',          'location',           'str'],
+        ['bulkChkShowOfflineBanner', 'bulkValShowOfflineBanner', 'show_offline_banner','bool01'],
+        ['bulkChkAllowInput',        'bulkValAllowInput',        'allow_input',        'bool01'],
+        ['bulkChkDiagnostics',       'bulkValDiagnostics',       'diagnostics_enabled','bool01'],
+    ];
+    for (const [chkId, valId, field, kind] of map) {
+        const c = document.getElementById(chkId);
+        if (!c || !c.checked) continue;
+        const v = document.getElementById(valId)?.value;
+        if (kind === 'bool01') changes[field] = (v === '1');
+        else if (kind === 'int') changes[field] = parseInt(v, 10);
+        else if (kind === 'int_or_null') changes[field] = (v === '' || v == null) ? null : parseInt(v, 10);
+        else changes[field] = v;
+    }
+    if (!Object.keys(changes).length) { alert('Tick at least one field to change.'); return; }
+    if (!confirm(`Apply ${Object.keys(changes).length} change(s) to ${ids.length} display(s)?`)) return;
+    fetch('/api/displays/bulk-update', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ids, changes })
+    })
+    .then(r => r.json())
+    .then(j => {
+        if (j.status === 'success') {
+            alert(`Updated ${j.updated}/${j.requested}.`);
+            bootstrap.Modal.getInstance(document.getElementById('bulkEditModal'))?.hide();
+            window.location.reload();
+        } else {
+            alert('Error: ' + (j.message || 'bulk update failed'));
+        }
+    })
+    .catch(err => { console.error(err); alert('Request failed.'); });
+});
+</script>
+{% endblock %}

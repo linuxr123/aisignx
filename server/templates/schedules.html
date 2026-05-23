@@ -1,0 +1,1129 @@
+﻿{% extends "base.html" %}
+{% block title %}Schedules - AISignX{% endblock %}
+
+{% block head %}
+<style>
+#timeline-wrap { overflow-x: auto; }
+.tl-grid {
+    display: grid;
+    grid-template-columns: 110px repeat(24, minmax(34px,1fr));
+    font-size: .76rem;
+    min-width: 880px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.tl-header { background:#f8f9fa; font-weight:600; padding:4px 2px; text-align:center; border-bottom:2px solid #dee2e6; border-right:1px solid #ececec; }
+.tl-label  { padding:4px 6px; font-weight:600; background:#f8f9fa; border-bottom:1px solid #dee2e6; border-right:2px solid #dee2e6; display:flex; align-items:center; }
+.tl-cell   { border-bottom:1px solid #dee2e6; border-right:1px solid #ececec; min-height:34px; position:relative; }
+.tl-block  {
+    position:absolute; top:3px; bottom:3px; border-radius:4px;
+    display:flex; align-items:center; overflow:hidden;
+    padding:0 4px; font-size:.7rem; font-weight:600; color:#fff;
+    white-space:nowrap; cursor:default;
+    box-shadow:0 1px 3px rgba(0,0,0,.2);
+    left:1px; right:1px;
+}
+#emergency-panel { border-left:4px solid #dc3545; }
+.eb-live { animation: eb-pulse 1.5s infinite; }
+@keyframes eb-pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div id="active-emergency-banner" class="alert alert-danger align-items-center gap-3 mb-3 d-none">
+    <i class="bi bi-exclamation-triangle-fill fs-4 eb-live me-2"></i>
+    <strong>EMERGENCY BROADCAST ACTIVE:</strong>
+    <span id="eb-banner-title" class="ms-1 flex-grow-1"></span>
+    <button class="btn btn-sm btn-outline-light ms-3" id="eb-banner-cancel">&#10006; Cancel Broadcast</button>
+</div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-calendar-week me-2"></i>Schedules</h1>
+    <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#emergencyModal">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>Emergency Broadcast
+        </button>
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#playNowModal">
+            <i class="bi bi-play-circle-fill me-1"></i>Play Now
+        </button>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addScheduleModal">
+            <i class="bi bi-plus-lg me-1"></i>Create Schedule
+        </button>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-3" id="scheduleTabs">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-list"><i class="bi bi-list-ul me-1"></i>Schedule List</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-timeline" id="timelineTab"><i class="bi bi-bar-chart-steps me-1"></i>Weekly Timeline</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-emergency" id="emergencyTab"><i class="bi bi-exclamation-triangle me-1"></i>Emergency</button></li>
+</ul>
+
+<div class="tab-content">
+
+<!-- Schedule List -->
+<div class="tab-pane fade show active" id="tab-list">
+<div class="card">
+<div class="card-body">
+<div class="card mb-2">
+<div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label small text-muted mb-1" for="scheduleFilterSearch">Search</label>
+            <input type="search" id="scheduleFilterSearch" class="form-control form-control-sm" placeholder="Name, playlist, target...">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small text-muted mb-1" for="scheduleFilterPlaylist">Playlist</label>
+            <select id="scheduleFilterPlaylist" class="form-select form-select-sm">
+                <option value="">Any playlist</option>
+                {% for p in playlists %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small text-muted mb-1" for="scheduleFilterTarget">Target</label>
+            <select id="scheduleFilterTarget" class="form-select form-select-sm">
+                <option value="">Any target</option>
+                <option value="all">All displays</option>
+                <option value="display">Display</option>
+                <option value="group">Group</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small text-muted mb-1" for="scheduleFilterStatus">Status</label>
+            <select id="scheduleFilterStatus" class="form-select form-select-sm">
+                <option value="">Any status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="override">Play-now override</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small text-muted mb-1" for="scheduleFilterDays">Days</label>
+            <select id="scheduleFilterDays" class="form-select form-select-sm">
+                <option value="">Any days</option>
+                <option value="every">Every day</option>
+                <option value="limited">Limited days</option>
+            </select>
+        </div>
+        <div class="col-md-1 d-grid">
+            <button type="button" id="scheduleFilterReset" class="btn btn-sm btn-outline-secondary">Reset</button>
+        </div>
+    </div>
+    <div class="small text-muted mt-2">Showing <span id="scheduleFilterCount">0</span> schedule(s)</div>
+</div>
+</div>
+<div class="d-flex justify-content-between align-items-center mb-2 px-1" id="scheduleBulkBar" style="display:none !important;">
+    <span class="small text-muted"><span id="scheduleBulkCount">0</span> selected</span>
+    <div class="btn-group btn-group-sm" role="group">
+        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#bulkEditScheduleModal">Edit&hellip;</button>
+        <button type="button" class="btn btn-outline-secondary" id="scheduleBulkClear">Clear</button>
+    </div>
+</div>
+{% if schedules %}
+<div class="table-responsive">
+<table class="table table-hover mb-0">
+    <thead class="table-light">
+        <tr>
+            <th style="width:32px;"><input type="checkbox" class="form-check-input" id="selectAllSchedules"></th>
+            <th>Name</th><th>Playlist</th><th>Target</th>
+            <th>Date Range</th><th>Time Range</th><th>Days</th>
+            <th>Priority</th><th>Status</th><th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for s in schedules %}
+    {% set is_override = s.name.startswith('__play_now__') %}
+    <tr data-schedule-id="{{ s.id }}"
+        data-filter-search="{{ (s.name ~ ' ' ~ s.playlist.name ~ ' ' ~ (s.display.name if s.display else '') ~ ' ' ~ (s.group.name if s.group else ''))|lower }}"
+        data-filter-playlist="{{ s.playlist_id }}"
+        data-filter-target="{% if s.display %}display{% elif s.group %}group{% else %}all{% endif %}"
+        data-filter-status="{% if is_override %}override{% elif s.is_active %}active{% else %}inactive{% endif %}"
+        data-filter-days="{% if s.days_of_week %}limited{% else %}every{% endif %}">
+        <td>{% if not is_override %}<input type="checkbox" class="form-check-input schedule-row-check" value="{{ s.id }}">{% endif %}</td>
+        <td>
+            {% if is_override %}
+                <i class="bi bi-play-circle-fill text-success me-1" title="Play-Now override"></i><em>{{ s.name[11:] }}</em>
+            {% else %}{{ s.name }}{% endif %}
+            <span class="badge bg-primary ms-1 now-badge d-none">&#9654; Now Playing</span>
+        </td>
+        <td>{{ s.playlist.name }}</td>
+        <td>
+            {% if s.display %}<i class="bi bi-display me-1 text-muted"></i>{{ s.display.name }}
+            {% elif s.group %}
+                <i class="bi bi-collection me-1 text-muted"></i>
+                {% if s.group.parent %}
+                    <span class="text-muted small">{{ s.group.parent.name }} /</span> {{ s.group.name }}
+                {% else %}
+                    {{ s.group.name }}
+                {% endif %}
+            {% else %}<span class="text-muted">All</span>{% endif %}
+        </td>
+        <td>
+            {% if s.start_date or s.end_date %}
+                {{ s.start_date or '' }} &rarr; {{ s.end_date or '&infin;' }}
+            {% else %}<span class="text-muted">All dates</span>{% endif %}
+        </td>
+        <td>
+            {% if s.start_time or s.end_time %}
+                {{ s.start_time.strftime('%H:%M') if s.start_time else '00:00' }} &ndash; {{ s.end_time.strftime('%H:%M') if s.end_time else '24:00' }}
+            {% else %}<span class="text-muted">All day</span>{% endif %}
+        </td>
+        <td>
+            {% if s.days_of_week %}
+                {% set dmap = {'1':'Mon','2':'Tue','3':'Wed','4':'Thu','5':'Fri','6':'Sat','7':'Sun'} %}
+                {% for d in s.days_of_week.split(',') %}
+                    <span class="badge bg-secondary">{{ dmap.get(d,d) }}</span>
+                {% endfor %}
+            {% else %}<span class="text-muted">Every day</span>{% endif %}
+        </td>
+        <td>{% if s.priority == 999 %}<span class="badge bg-success">Override</span>{% else %}{{ s.priority }}{% endif %}</td>
+        <td>{% if s.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</td>
+        <td>
+            {% if is_override %}
+                <button class="btn btn-sm btn-outline-danger" onclick="cancelPlayNow({{ s.id }})"><i class="bi bi-stop-fill"></i> Stop</button>
+            {% else %}
+                <button class="btn btn-sm btn-outline-primary" onclick="editSchedule({{ s.id }})"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteSchedule({{ s.id }})"><i class="bi bi-trash"></i></button>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-calendar-x fs-1 d-block mb-3"></i>
+    <p>No schedules yet.</p>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addScheduleModal">Create Schedule</button>
+</div>
+{% endif %}
+</div>
+</div>
+</div>
+
+<!-- Weekly Timeline -->
+<div class="tab-pane fade" id="tab-timeline">
+<div class="card">
+    <div class="card-header"><i class="bi bi-bar-chart-steps me-2"></i>This Week — Daily Time View</div>
+    <div class="card-body p-2" id="timeline-wrap">
+        <div id="tl-grid" class="tl-grid"></div>
+    </div>
+</div>
+</div>
+
+<!-- Emergency tab -->
+<div class="tab-pane fade" id="tab-emergency">
+<p class="text-muted small mb-3">
+    Emergency templates and broadcasts use the <strong>Active tenant</strong> from the sidebar
+    {% if active_tenant_name %} (<span id="eb-tenant-label">{{ active_tenant_name }}</span>){% else %}
+    <span class="text-warning">— select a tenant in the sidebar first</span>{% endif %}.
+    Switch tenant there, then reload this page if templates look wrong.
+</p>
+<div class="row g-3">
+
+  <!-- Saved Templates -->
+  <div class="col-lg-5">
+  <div class="card h-100" id="emergency-panel">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span><i class="bi bi-bookmark-fill text-danger me-2"></i>Saved Templates</span>
+      <button class="btn btn-sm btn-outline-danger" id="newTemplateBtn"><i class="bi bi-plus-lg me-1"></i>New Template</button>
+    </div>
+    <div class="card-body p-2" id="eb-templates-body"><div class="text-muted text-center py-4">Loading&hellip;</div></div>
+  </div>
+  </div>
+
+  <!-- Broadcast History -->
+  <div class="col-lg-7">
+  <div class="card h-100">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span><i class="bi bi-clock-history text-danger me-2"></i>Broadcast History</span>
+      <button class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#emergencyModal"><i class="bi bi-broadcast me-1"></i>Send New</button>
+    </div>
+    <div class="card-body p-2" id="eb-history-body"><div class="text-muted text-center py-4">Loading&hellip;</div></div>
+  </div>
+  </div>
+
+</div>
+</div>
+
+</div><!-- /tab-content -->
+
+<!-- ── MODALS ──────────────────────────────────────────────────── -->
+
+<!-- Emergency Broadcast -->
+<div class="modal fade" id="emergencyModal" tabindex="-1">
+<div class="modal-dialog"><div class="modal-content border-danger">
+<div class="modal-header bg-danger text-white">
+    <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill me-2"></i>Emergency Broadcast</h5>
+    <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+</div>
+<div class="modal-body">
+<div class="alert alert-danger small mb-3">
+    <i class="bi bi-broadcast me-1"></i>
+    <strong>Immediate full-screen takeover.</strong> All targeted displays will stop current content and show this alert instantly. The emergency stays locked on screen until you explicitly clear it — it will <strong>not</strong> auto-expire.
+</div>
+<input type="hidden" id="eb-template-id" value="">
+<div class="mb-3">
+    <label class="form-label">Load from Saved Template <span class="text-muted small">(optional — fills fields below)</span></label>
+    <div class="input-group">
+        <select class="form-select" id="eb-template-select"><option value="">-- Custom broadcast --</option></select>
+        <button class="btn btn-outline-secondary" type="button" id="eb-load-template-btn">Load</button>
+    </div>
+</div>
+<hr class="my-2">
+<div class="mb-3">
+    <label class="form-label fw-bold">Alert Level <span class="text-danger">*</span></label>
+    <div class="d-flex gap-2">
+        <input type="radio" class="btn-check" name="eb-level" id="eb-level-critical" value="critical" checked autocomplete="off">
+        <label class="btn btn-outline-danger flex-fill" for="eb-level-critical"><i class="bi bi-exclamation-octagon-fill me-1"></i>Critical</label>
+        <input type="radio" class="btn-check" name="eb-level" id="eb-level-warning" value="warning" autocomplete="off">
+        <label class="btn btn-outline-warning flex-fill" for="eb-level-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>Warning</label>
+        <input type="radio" class="btn-check" name="eb-level" id="eb-level-info" value="info" autocomplete="off">
+        <label class="btn btn-outline-primary flex-fill" for="eb-level-info"><i class="bi bi-info-circle-fill me-1"></i>Info</label>
+    </div>
+</div>
+<div class="mb-3"><label class="form-label fw-bold">Headline <span class="text-danger">*</span></label>
+    <input type="text" class="form-control form-control-lg" id="eb-title" placeholder="e.g. EVACUATE IMMEDIATELY" required></div>
+<div class="mb-3"><label class="form-label">Instruction Message <span class="text-muted small">(optional)</span></label>
+    <textarea class="form-control" id="eb-message" rows="3" placeholder="e.g. Use stairwell B. Assemble at car park A."></textarea></div>
+<div class="mb-3">
+    <label class="form-label">Override Colors <span class="text-muted small">(auto-set by level — change only if needed)</span></label>
+    <div class="row g-2">
+        <div class="col-6"><label class="form-label small">Background</label>
+            <input type="color" class="form-control form-control-color w-100" id="eb-bg" value="#b71c1c"></div>
+        <div class="col-6"><label class="form-label small">Text</label>
+            <input type="color" class="form-control form-control-color w-100" id="eb-fg" value="#ffffff"></div>
+    </div>
+</div>
+<div class="mb-3"><label class="form-label">Target Displays</label>
+    <select class="form-select" id="eb-target">
+        <option value="all">All Displays</option>
+    </select>
+</div>
+<div class="alert alert-secondary small mb-0">
+    <i class="bi bi-shield-lock me-1"></i>
+    This action is logged. To clear the emergency, use the <strong>Clear</strong> button in the Emergency History tab.
+</div>
+</div>
+<div class="modal-footer">
+    <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button class="btn btn-danger" id="sendEmergencyBtn"><i class="bi bi-broadcast me-1"></i>Send Emergency Broadcast</button>
+</div>
+</div></div>
+</div>
+
+<!-- Saved Template create/edit modal -->
+<div class="modal fade" id="templateModal" tabindex="-1">
+<div class="modal-dialog"><div class="modal-content border-danger">
+<div class="modal-header bg-danger text-white">
+    <h5 class="modal-title" id="templateModalTitle"><i class="bi bi-bookmark-fill me-2"></i>Saved Template</h5>
+    <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+</div>
+<div class="modal-body">
+    <input type="hidden" id="tmpl-id" value="">
+    <div class="mb-3"><label class="form-label fw-bold">Template Name <span class="text-danger">*</span></label>
+        <input type="text" class="form-control" id="tmpl-name" placeholder="e.g. Fire Evacuation, Severe Weather"></div>
+    <div class="mb-3">
+        <label class="form-label fw-bold">Alert Level <span class="text-danger">*</span></label>
+        <div class="d-flex gap-2">
+            <input type="radio" class="btn-check" name="tmpl-level" id="tmpl-level-critical" value="critical" checked autocomplete="off">
+            <label class="btn btn-outline-danger flex-fill" for="tmpl-level-critical"><i class="bi bi-exclamation-octagon-fill me-1"></i>Critical</label>
+            <input type="radio" class="btn-check" name="tmpl-level" id="tmpl-level-warning" value="warning" autocomplete="off">
+            <label class="btn btn-outline-warning flex-fill" for="tmpl-level-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>Warning</label>
+            <input type="radio" class="btn-check" name="tmpl-level" id="tmpl-level-info" value="info" autocomplete="off">
+            <label class="btn btn-outline-primary flex-fill" for="tmpl-level-info"><i class="bi bi-info-circle-fill me-1"></i>Info</label>
+        </div>
+    </div>
+    <div class="mb-3"><label class="form-label fw-bold">Headline <span class="text-danger">*</span></label>
+        <input type="text" class="form-control form-control-lg" id="tmpl-title" placeholder="e.g. EVACUATE IMMEDIATELY"></div>
+    <div class="mb-3"><label class="form-label">Instruction Message <span class="text-muted small">(optional)</span></label>
+        <textarea class="form-control" id="tmpl-message" rows="3" placeholder="e.g. Use stairwell B. Assemble at car park A."></textarea></div>
+    <div class="mb-3">
+        <label class="form-label">Colors <span class="text-muted small">(auto-set by level)</span></label>
+        <div class="row g-2">
+            <div class="col-6"><label class="form-label small">Background</label>
+                <input type="color" class="form-control form-control-color w-100" id="tmpl-bg" value="#b71c1c"></div>
+            <div class="col-6"><label class="form-label small">Text</label>
+                <input type="color" class="form-control form-control-color w-100" id="tmpl-fg" value="#ffffff"></div>
+        </div>
+    </div>
+</div>
+<div class="modal-footer">
+    <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button class="btn btn-danger" id="saveTemplateBtn"><i class="bi bi-bookmark-check me-1"></i>Save Template</button>
+</div>
+</div></div>
+</div>
+
+<!-- Play Now -->
+<div class="modal fade" id="playNowModal" tabindex="-1">
+<div class="modal-dialog"><div class="modal-content">
+<div class="modal-header bg-success text-white">
+    <h5 class="modal-title"><i class="bi bi-play-circle-fill me-2"></i>Play Now Override</h5>
+    <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+</div>
+<div class="modal-body">
+<p class="text-muted small">Force-plays a playlist immediately, bypassing the schedule. Creates a temporary priority-999 schedule — stop it from the Schedule List when done.</p>
+<div class="mb-3"><label class="form-label fw-bold">Playlist <span class="text-danger">*</span></label>
+    <select class="form-select" id="pn-playlist">
+        <option value="">Select a playlist&hellip;</option>
+        {% for p in playlists %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+    </select></div>
+<div class="mb-3"><label class="form-label">Target Type</label>
+    <select class="form-select" id="pn-target-type" onchange="togglePnTarget()">
+        <option value="display">Display</option>
+        <option value="group">Display Group</option>
+    </select></div>
+<div id="pn-display-wrap" class="mb-3"><label class="form-label">Display</label>
+    <select class="form-select" id="pn-display">
+        <option value="">Select a display&hellip;</option>
+        {% for d in displays %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+    </select></div>
+<div id="pn-group-wrap" class="mb-3" style="display:none"><label class="form-label">Group</label>
+    <select class="form-select" id="pn-group">
+        <option value="">Select a group&hellip;</option>
+        {% for g in groups %}
+        <option value="{{ g.id }}">{% if g.parent %}{{ g.parent.name }} / {{ g.name }}{% else %}{{ g.name }}{% endif %}</option>
+        {% endfor %}
+    </select></div>
+</div>
+<div class="modal-footer">
+    <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button class="btn btn-success" id="playNowBtn"><i class="bi bi-play-fill me-1"></i>Play Now</button>
+</div>
+</div></div>
+</div>
+
+<!-- Add Schedule -->
+<div class="modal fade" id="addScheduleModal" tabindex="-1">
+<div class="modal-dialog modal-lg"><div class="modal-content">
+<div class="modal-header"><h5 class="modal-title">Create Schedule</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+<div class="modal-body"><form id="addScheduleForm">{% include "schedules/_schedule_form_fields.html" %}</form></div>
+<div class="modal-footer">
+    <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button class="btn btn-primary" id="saveSchedule">Create Schedule</button>
+</div>
+</div></div>
+</div>
+
+<!-- Edit Schedule -->
+<div class="modal fade" id="editScheduleModal" tabindex="-1">
+<div class="modal-dialog modal-lg"><div class="modal-content">
+<div class="modal-header"><h5 class="modal-title">Edit Schedule</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+<div class="modal-body"><form id="editScheduleForm">{% include "schedules/_schedule_form_fields.html" %}</form></div>
+<div class="modal-footer">
+    <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button class="btn btn-primary" id="updateScheduleBtn">Save Changes</button>
+</div>
+</div></div>
+</div>
+
+<!-- Bulk Edit Schedules -->
+<div class="modal fade" id="bulkEditScheduleModal" tabindex="-1">
+<div class="modal-dialog"><div class="modal-content">
+<div class="modal-header"><h5 class="modal-title">Bulk edit schedules</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+<div class="modal-body">
+    <p class="text-muted small">Apply to <strong><span id="scheduleBulkEditCount">0</span></strong> selected schedule(s). Play-now override rows are excluded.</p>
+    <div class="mb-3">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="bulkChkScheduleActive">
+            <label class="form-check-label small text-muted" for="bulkChkScheduleActive">Set active status</label>
+        </div>
+        <select class="form-select form-select-sm mt-1" id="bulkValScheduleActive" disabled>
+            <option value="1">Active</option>
+            <option value="0">Inactive</option>
+        </select>
+    </div>
+    <div class="mb-3">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="bulkChkSchedulePlaylist">
+            <label class="form-check-label small text-muted" for="bulkChkSchedulePlaylist">Set playlist</label>
+        </div>
+        <select class="form-select form-select-sm mt-1" id="bulkValSchedulePlaylist" disabled>
+            {% for p in playlists %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="bulkChkSchedulePriority">
+            <label class="form-check-label small text-muted" for="bulkChkSchedulePriority">Set priority</label>
+        </div>
+        <input type="number" class="form-control form-control-sm mt-1" id="bulkValSchedulePriority" value="0" step="1" disabled>
+    </div>
+    <div class="mb-3">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="bulkChkScheduleTimezone">
+            <label class="form-check-label small text-muted" for="bulkChkScheduleTimezone">Set timezone</label>
+        </div>
+        <select class="form-select form-select-sm mt-1 tz-select" id="bulkValScheduleTimezone" data-tz-include-blank="1" disabled></select>
+    </div>
+</div>
+<div class="modal-footer">
+    <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button class="btn btn-primary" id="scheduleBulkApply">Apply changes</button>
+</div>
+</div></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Timezone dropdown population (mirrors admin_domains.html) ──────────
+const TZ_FALLBACK = [
+    'UTC',
+    'America/New_York', 'America/Chicago', 'America/Denver',
+    'America/Phoenix', 'America/Los_Angeles', 'America/Anchorage',
+    'America/Honolulu', 'America/Toronto', 'America/Vancouver',
+    'America/Mexico_City', 'America/Sao_Paulo', 'America/Argentina/Buenos_Aires',
+    'Europe/London', 'Europe/Dublin', 'Europe/Lisbon', 'Europe/Madrid',
+    'Europe/Paris', 'Europe/Berlin', 'Europe/Amsterdam', 'Europe/Rome',
+    'Europe/Stockholm', 'Europe/Athens', 'Europe/Helsinki', 'Europe/Warsaw',
+    'Europe/Moscow', 'Europe/Istanbul',
+    'Africa/Cairo', 'Africa/Johannesburg', 'Africa/Lagos', 'Africa/Nairobi',
+    'Asia/Dubai', 'Asia/Karachi', 'Asia/Kolkata', 'Asia/Dhaka',
+    'Asia/Bangkok', 'Asia/Singapore', 'Asia/Hong_Kong', 'Asia/Shanghai',
+    'Asia/Tokyo', 'Asia/Seoul', 'Asia/Taipei', 'Asia/Manila',
+    'Australia/Perth', 'Australia/Adelaide', 'Australia/Sydney',
+    'Australia/Brisbane', 'Pacific/Auckland', 'Pacific/Fiji',
+];
+function _tzEsc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function _tzList(){
+    try {
+        if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
+            const all = Intl.supportedValuesOf('timeZone');
+            if (Array.isArray(all) && all.length) return all;
+        }
+    } catch(_) {}
+    return TZ_FALLBACK.slice();
+}
+function populateTzSelect(sel){
+    if (!sel || sel.dataset.tzPopulated === '1') return;
+    const list = _tzList();
+    let browserGuess = '';
+    try { browserGuess = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch(_) {}
+    let opts = '';
+    if (sel.dataset.tzIncludeBlank === '1') {
+        opts += `<option value="">(use domain default${browserGuess ? ' \u2014 ' + _tzEsc(browserGuess) : ''})</option>`;
+    }
+    for (const tz of list) opts += `<option value="${_tzEsc(tz)}">${_tzEsc(tz)}</option>`;
+    sel.innerHTML = opts;
+    sel.dataset.tzPopulated = '1';
+}
+function setTzValue(sel, value){
+    if (!sel) return;
+    populateTzSelect(sel);
+    const v = value || '';
+    if (v && !Array.from(sel.options).some(o => o.value === v)) {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v + ' (custom)';
+        sel.appendChild(o);
+    }
+    sel.value = v;
+}
+document.querySelectorAll('.tz-select').forEach(populateTzSelect);
+
+// List filters and bulk edit.
+function scheduleRows() {
+    return Array.from(document.querySelectorAll('tr[data-schedule-id]'));
+}
+function visibleScheduleRows() {
+    return scheduleRows().filter(r => r.style.display !== 'none');
+}
+function applyScheduleFilters() {
+    const q = (document.getElementById('scheduleFilterSearch')?.value || '').trim().toLowerCase();
+    const playlist = document.getElementById('scheduleFilterPlaylist')?.value || '';
+    const target = document.getElementById('scheduleFilterTarget')?.value || '';
+    const status = document.getElementById('scheduleFilterStatus')?.value || '';
+    const days = document.getElementById('scheduleFilterDays')?.value || '';
+    let shown = 0;
+    scheduleRows().forEach(row => {
+        let ok = true;
+        if (q && !(row.dataset.filterSearch || '').includes(q)) ok = false;
+        if (playlist && row.dataset.filterPlaylist !== playlist) ok = false;
+        if (target && row.dataset.filterTarget !== target) ok = false;
+        if (status && row.dataset.filterStatus !== status) ok = false;
+        if (days && row.dataset.filterDays !== days) ok = false;
+        row.style.display = ok ? '' : 'none';
+        if (ok) shown++;
+    });
+    const countEl = document.getElementById('scheduleFilterCount');
+    if (countEl) countEl.textContent = shown;
+    refreshScheduleBulkBar();
+}
+function selectedScheduleIds() {
+    return Array.from(document.querySelectorAll('.schedule-row-check:checked'))
+        .filter(c => c.closest('tr')?.style.display !== 'none')
+        .map(c => parseInt(c.value, 10));
+}
+function refreshScheduleBulkBar() {
+    const ids = selectedScheduleIds();
+    const countEl = document.getElementById('scheduleBulkCount');
+    const editCountEl = document.getElementById('scheduleBulkEditCount');
+    const barEl = document.getElementById('scheduleBulkBar');
+    if (countEl) countEl.textContent = ids.length;
+    if (editCountEl) editCountEl.textContent = ids.length;
+    if (barEl) barEl.style.setProperty('display', ids.length ? 'flex' : 'none', 'important');
+    const selectAll = document.getElementById('selectAllSchedules');
+    if (!selectAll) return;
+    const visibleChecks = visibleScheduleRows().map(r => r.querySelector('.schedule-row-check')).filter(Boolean);
+    selectAll.checked = visibleChecks.length > 0 && visibleChecks.every(c => c.checked);
+    selectAll.indeterminate = visibleChecks.some(c => c.checked) && !selectAll.checked;
+}
+['scheduleFilterSearch', 'scheduleFilterPlaylist', 'scheduleFilterTarget', 'scheduleFilterStatus', 'scheduleFilterDays']
+    .forEach(id => document.getElementById(id)?.addEventListener('input', applyScheduleFilters));
+document.getElementById('scheduleFilterReset')?.addEventListener('click', () => {
+    ['scheduleFilterSearch', 'scheduleFilterPlaylist', 'scheduleFilterTarget', 'scheduleFilterStatus', 'scheduleFilterDays']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    applyScheduleFilters();
+});
+document.querySelectorAll('.schedule-row-check').forEach(c => c.addEventListener('change', refreshScheduleBulkBar));
+document.getElementById('selectAllSchedules')?.addEventListener('change', e => {
+    visibleScheduleRows().forEach(row => {
+        const c = row.querySelector('.schedule-row-check');
+        if (c) c.checked = e.target.checked;
+    });
+    refreshScheduleBulkBar();
+});
+document.getElementById('scheduleBulkClear')?.addEventListener('click', () => {
+    document.querySelectorAll('.schedule-row-check').forEach(c => { c.checked = false; });
+    refreshScheduleBulkBar();
+});
+[
+    ['bulkChkScheduleActive', 'bulkValScheduleActive'],
+    ['bulkChkSchedulePlaylist', 'bulkValSchedulePlaylist'],
+    ['bulkChkSchedulePriority', 'bulkValSchedulePriority'],
+    ['bulkChkScheduleTimezone', 'bulkValScheduleTimezone'],
+].forEach(([chk, val]) => {
+    document.getElementById(chk)?.addEventListener('change', e => {
+        document.getElementById(val).disabled = !e.target.checked;
+    });
+});
+document.getElementById('scheduleBulkApply')?.addEventListener('click', () => {
+    const ids = selectedScheduleIds();
+    if (!ids.length) return;
+    const changes = {};
+    if (document.getElementById('bulkChkScheduleActive').checked) {
+        changes.is_active = document.getElementById('bulkValScheduleActive').value === '1';
+    }
+    if (document.getElementById('bulkChkSchedulePlaylist').checked) {
+        changes.playlist_id = parseInt(document.getElementById('bulkValSchedulePlaylist').value, 10);
+    }
+    if (document.getElementById('bulkChkSchedulePriority').checked) {
+        changes.priority = parseInt(document.getElementById('bulkValSchedulePriority').value, 10);
+    }
+    if (document.getElementById('bulkChkScheduleTimezone').checked) {
+        changes.timezone = document.getElementById('bulkValScheduleTimezone').value || null;
+    }
+    if (!Object.keys(changes).length) { alert('Choose at least one field to update.'); return; }
+    fetch('/api/schedules/bulk-update', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids, changes}),
+    }).then(r => r.json()).then(d => {
+        if (d.status === 'success') window.location.reload();
+        else alert('Error: ' + (d.message || 'Bulk update failed'));
+    });
+});
+applyScheduleFilters();
+
+const SCHED_DATA = [
+{% for s in schedules %}
+{id:{{ s.id }},name:{{ s.name|tojson }},playlist:{{ s.playlist.name|tojson }},
+ start_time:{{ (s.start_time.strftime("%H:%M") if s.start_time else None)|tojson }},
+ end_time:{{ (s.end_time.strftime("%H:%M") if s.end_time else None)|tojson }},
+ days:{{ (s.days_of_week.split(",") if s.days_of_week else [])|tojson }},
+ is_active:{{ s.is_active|tojson }}, priority:{{ s.priority }},
+ play_now:{{ ('true' if s.name.startswith('__play_now__') else 'false') }}},
+{% endfor %}
+];
+const DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const COLORS = ['#0d6efd','#198754','#6f42c1','#fd7e14','#0dcaf0','#d63384','#20c997','#ffc107'];
+
+// Now-playing badges
+function refreshNowPlaying() {
+    fetch('/api/schedules/active-now').then(r=>r.json()).then(d=>{
+        document.querySelectorAll('.now-badge').forEach(el=>el.classList.add('d-none'));
+        (d.active_ids||[]).forEach(id=>{
+            const row = document.querySelector(`tr[data-schedule-id="${id}"]`);
+            if(row){ const b=row.querySelector('.now-badge'); if(b) b.classList.remove('d-none'); }
+        });
+    }).catch(()=>{});
+}
+refreshNowPlaying();
+setInterval(refreshNowPlaying, 30000);
+
+// Weekly timeline
+function timeToH(t){ const[h,m]=t.split(':').map(Number); return h+m/60; }
+function buildTimeline(){
+    const grid = document.getElementById('tl-grid');
+    grid.innerHTML = '';
+    // Header
+    const c0 = Object.assign(document.createElement('div'),{className:'tl-header',style:'grid-column:1;grid-row:1'});
+    c0.textContent='Day';
+    grid.appendChild(c0);
+    for(let h=0;h<24;h++){
+        const hdr=Object.assign(document.createElement('div'),{className:'tl-header'});
+        hdr.style.cssText=`grid-column:${h+2};grid-row:1`;
+        hdr.textContent=String(h).padStart(2,'0');
+        grid.appendChild(hdr);
+    }
+    for(let di=0;di<7;di++){
+        const dayNum=String(di+1);
+        const lbl=Object.assign(document.createElement('div'),{className:'tl-label'});
+        lbl.style.cssText=`grid-column:1;grid-row:${di+2}`;
+        lbl.textContent=DAY_NAMES[di];
+        grid.appendChild(lbl);
+        for(let h=0;h<24;h++){
+            const cell=Object.assign(document.createElement('div'),{className:'tl-cell'});
+            cell.style.cssText=`grid-column:${h+2};grid-row:${di+2}`;
+            grid.appendChild(cell);
+        }
+        SCHED_DATA.filter(s=>s.is_active&&(s.days.length===0||s.days.includes(dayNum))).forEach((s,ci)=>{
+            const color=COLORS[ci%COLORS.length];
+            const start=s.start_time?timeToH(s.start_time):0;
+            const end=s.end_time?timeToH(s.end_time):24;
+            const startCol=Math.floor(start)+2;
+            const span=Math.max(1,Math.ceil(end)-Math.floor(start));
+            const block=document.createElement('div');
+            block.className='tl-block';
+            block.title=`${s.name} (${s.playlist})\n${s.start_time||'00:00'} - ${s.end_time||'24:00'}`;
+            block.textContent=(s.play_now?'▶ ':'')+s.name;
+            block.style.cssText=`background:${color};grid-column:${startCol}/span ${span};grid-row:${di+2};position:relative;margin:3px 1px;border-radius:4px;padding:2px 4px;color:#fff;font-size:.7rem;overflow:hidden;z-index:2;display:flex;align-items:center`;
+            grid.appendChild(block);
+        });
+    }
+}
+document.getElementById('timelineTab')?.addEventListener('shown.bs.tab', buildTimeline);
+
+function esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Emergency broadcast — scoped to sidebar Active tenant (same as schedules)
+let activeBroadcastId = null;
+const ACTIVE_DOMAIN_ID = {{ active_domain_id|tojson }};
+
+/** Active tenant: sidebar switcher wins over page-render value (stays in sync after switch). */
+function getActiveDomainId() {
+    const sel = document.getElementById('domainSwitcher');
+    if (sel && sel.value) {
+        const id = parseInt(sel.value, 10);
+        if (id > 0) return id;
+    }
+    return ACTIVE_DOMAIN_ID || null;
+}
+
+function ebDomainQs() {
+    const id = getActiveDomainId();
+    return id ? `?domain_id=${id}` : '';
+}
+
+function ebDomainBody(payload) {
+    const body = Object.assign({}, payload || {});
+    const id = getActiveDomainId();
+    if (id) body.domain_id = id;
+    return body;
+}
+
+function renderEbTargets(displays, groups) {
+    const sel = document.getElementById('eb-target');
+    if (!sel) return;
+    let html = '<option value="all">All Displays</option>';
+    (groups || []).forEach(g => {
+        html += `<option value="group:${g.id}">Group: ${esc(g.name)}</option>`;
+    });
+    (displays || []).forEach(d => {
+        html += `<option value="display:${d.id}">Display: ${esc(d.name)}</option>`;
+    });
+    sel.innerHTML = html;
+}
+
+async function loadEbTargets() {
+    if (!getActiveDomainId()) {
+        const sel = document.getElementById('eb-target');
+        if (sel) sel.innerHTML = '<option value="all">Select Active tenant in sidebar</option>';
+        return;
+    }
+    try {
+        const r = await fetch('/api/emergency/targets' + ebDomainQs());
+        const j = await r.json();
+        if (j.status === 'success') renderEbTargets(j.displays, j.groups);
+    } catch (_) {}
+}
+
+async function refreshEmergencyTab() {
+    await loadEbTargets();
+    checkActiveBroadcast();
+    loadEbHistory();
+    loadTemplates();
+}
+
+function checkActiveBroadcast(){
+    if (!getActiveDomainId()) return;
+    fetch('/api/emergency/active' + ebDomainQs()).then(r=>r.json()).then(d=>{
+        const live=(d.broadcasts||[])[0];
+        const banner=document.getElementById('active-emergency-banner');
+        const titleEl=document.getElementById('eb-banner-title');
+        if (!banner || !titleEl) return;
+        if(live){
+            activeBroadcastId=live.id;
+            titleEl.textContent=live.title;
+            banner.classList.remove('d-none');
+            banner.style.display='flex';
+        } else {
+            activeBroadcastId=null;
+            banner.classList.add('d-none');
+            banner.style.display='';
+        }
+    }).catch(()=>{});
+}
+document.getElementById('eb-banner-cancel')?.addEventListener('click',()=>{ if(activeBroadcastId) cancelBroadcast(activeBroadcastId); });
+
+// ── Broadcast history ────────────────────────────────────────────────────────
+function ebShowError(panelId, message) {
+    const el = document.getElementById(panelId);
+    if (el) el.innerHTML = `<p class="text-danger text-center py-3 small">${esc(message)}</p>`;
+}
+
+async function loadEbHistory(){
+    const body = document.getElementById('eb-history-body');
+    if (!body) return;
+    if (!getActiveDomainId()) {
+        body.innerHTML = '<p class="text-muted text-center py-3">Select <strong>Active tenant</strong> in the sidebar.</p>';
+        return;
+    }
+    try {
+        const r = await fetch('/api/emergency' + ebDomainQs());
+        const d = await r.json();
+        if (d.status !== 'success') {
+            ebShowError('eb-history-body', d.message || ('Failed to load history (' + r.status + ')'));
+            return;
+        }
+        if(!d.broadcasts||!d.broadcasts.length){
+            body.innerHTML='<p class="text-muted text-center py-3">No emergency broadcasts recorded.</p>';
+            return;
+        }
+        const LEVEL_BADGE={critical:'danger',warning:'warning',info:'primary'};
+        body.innerHTML=d.broadcasts.map(b=>`
+        <div class="card mb-2 border-start border-3 border-${b.is_active?'danger':'secondary'}">
+          <div class="card-body py-2">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <span class="badge bg-${LEVEL_BADGE[b.level]||'danger'} me-1">${esc(b.level||'critical').toUpperCase()}</span>
+                <span class="fw-bold">${esc(b.title)}</span>
+                ${b.is_active?'<span class="badge bg-danger ms-2 eb-live">LIVE</span>':''}
+                ${b.message?`<br><small class="text-muted">${esc(b.message)}</small>`:''}
+                <br><small class="text-muted">Target: ${esc(b.target)} &bull; ${b.created_at?new Date(b.created_at).toLocaleString():''} &bull; By: ${esc(b.created_by||'?')}</small>
+                ${b.cleared_at?`<br><small class="text-muted">Cleared: ${new Date(b.cleared_at).toLocaleString()} by ${esc(b.cleared_by||'?')}</small>`:''}
+              </div>
+              <div class="d-flex gap-1 ms-2 flex-shrink-0">
+                ${b.is_active?`<button class="btn btn-sm btn-danger" onclick="cancelBroadcast(${b.id})"><i class="bi bi-x-circle me-1"></i>Clear</button>`:'<span class="badge bg-secondary align-self-center">Cleared</span>'}
+                <button class="btn btn-sm btn-outline-secondary" onclick="deleteBroadcast(${b.id})" ${b.is_active?'disabled title="Clear first"':''}><i class="bi bi-trash"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>`).join('');
+    } catch (e) {
+        ebShowError('eb-history-body', 'Could not load broadcast history.');
+    }
+}
+
+// ── Saved templates ──────────────────────────────────────────────────────────
+let _templates = [];
+async function loadTemplates(){
+    const body = document.getElementById('eb-templates-body');
+    if (!body) return;
+    if (!getActiveDomainId()) {
+        body.innerHTML = '<p class="text-muted text-center py-3">Select <strong>Active tenant</strong> in the sidebar.</p>';
+        return;
+    }
+    try {
+        const r = await fetch('/api/emergency/templates' + ebDomainQs());
+        const d = await r.json();
+        if (d.status !== 'success') {
+            ebShowError('eb-templates-body', d.message || ('Failed to load templates (' + r.status + ')'));
+            return;
+        }
+        _templates = d.templates || [];
+        renderTemplates();
+        populateTemplateDropdown();
+    } catch (e) {
+        ebShowError('eb-templates-body', 'Could not load templates.');
+    }
+}
+
+document.getElementById('emergencyTab')?.addEventListener('shown.bs.tab', () => refreshEmergencyTab());
+
+function renderTemplates(){
+    const body=document.getElementById('eb-templates-body');
+    if(!_templates.length){ body.innerHTML='<p class="text-muted text-center py-3">No saved templates yet.<br>Create one to re-use common alerts.</p>'; return; }
+    const LEVEL_BADGE={critical:'danger',warning:'warning',info:'primary'};
+    const LEVEL_ICON={critical:'exclamation-octagon-fill',warning:'exclamation-triangle-fill',info:'info-circle-fill'};
+    body.innerHTML=_templates.map(t=>`
+    <div class="card mb-2 border-start border-3 border-${LEVEL_BADGE[t.level]||'danger'}">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <span class="badge bg-${LEVEL_BADGE[t.level]||'danger'} me-1"><i class="bi bi-${LEVEL_ICON[t.level]||'exclamation-octagon-fill'}"></i></span>
+            <strong>${esc(t.name)}</strong>
+            <br><span class="text-muted small">${esc(t.title)}</span>
+            ${t.message?`<br><span class="text-muted small fst-italic">${esc(t.message)}</span>`:''}
+          </div>
+          <div class="d-flex gap-1 ms-2 flex-shrink-0">
+            <button class="btn btn-sm btn-danger" onclick="activateTemplate(${t.id})" title="Send now"><i class="bi bi-broadcast"></i></button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="editTemplate(${t.id})" title="Edit"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="deleteTemplate(${t.id})" title="Delete"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function populateTemplateDropdown(){
+    const sel=document.getElementById('eb-template-select');
+    if (!sel) return;
+    sel.innerHTML='<option value="">-- Custom broadcast --</option>';
+    _templates.forEach(t=>{ const o=document.createElement('option'); o.value=t.id; o.textContent=t.name+' ('+t.level+')'; sel.appendChild(o); });
+}
+
+document.getElementById('newTemplateBtn')?.addEventListener('click', () => {
+    if (!getActiveDomainId()) {
+        alert('Select Active tenant in the sidebar first.');
+        return;
+    }
+    document.getElementById('tmpl-id').value='';
+    document.getElementById('tmpl-name').value='';
+    document.getElementById('tmpl-title').value='';
+    document.getElementById('tmpl-message').value='';
+    const crit = document.querySelector('input[name="tmpl-level"][value="critical"]');
+    if (crit) crit.checked = true;
+    document.getElementById('tmpl-bg').value='#b71c1c';
+    document.getElementById('tmpl-fg').value='#ffffff';
+    document.getElementById('templateModalTitle').textContent='New Template';
+    const modalEl = document.getElementById('templateModal');
+    if (!modalEl || typeof bootstrap === 'undefined') {
+        alert('Template dialog could not open. Reload the page and try again.');
+        return;
+    }
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+});
+
+function editTemplate(id){
+    const t=_templates.find(x=>x.id===id); if(!t)return;
+    document.getElementById('tmpl-id').value=t.id;
+    document.getElementById('tmpl-name').value=t.name;
+    document.getElementById('tmpl-title').value=t.title;
+    document.getElementById('tmpl-message').value=t.message||'';
+    const lvlRadio=document.querySelector(`input[name="tmpl-level"][value="${t.level}"]`);
+    if(lvlRadio) lvlRadio.checked=true;
+    document.getElementById('tmpl-bg').value=t.background_color||'#b71c1c';
+    document.getElementById('tmpl-fg').value=t.text_color||'#ffffff';
+    document.getElementById('templateModalTitle').textContent='Edit Template';
+    new bootstrap.Modal(document.getElementById('templateModal')).show();
+}
+
+document.querySelectorAll('input[name="tmpl-level"]').forEach(r=>r.addEventListener('change',function(){
+    const c={critical:{bg:'#b71c1c',fg:'#ffffff'},warning:{bg:'#e65100',fg:'#ffffff'},info:{bg:'#1565c0',fg:'#ffffff'}}[this.value]||{bg:'#b71c1c',fg:'#ffffff'};
+    document.getElementById('tmpl-bg').value=c.bg;
+    document.getElementById('tmpl-fg').value=c.fg;
+}));
+
+document.getElementById('saveTemplateBtn').addEventListener('click',function(){
+    const activeDid = getActiveDomainId();
+    if (!activeDid) {
+        alert('Select Active tenant in the sidebar, then open Schedules → Emergency again.');
+        return;
+    }
+    const id=document.getElementById('tmpl-id').value;
+    const name=document.getElementById('tmpl-name').value.trim();
+    const title=document.getElementById('tmpl-title').value.trim();
+    if(!name||!title){alert('Template Name and Headline are required.');return;}
+    const payload={
+        name, title,
+        message:document.getElementById('tmpl-message').value,
+        level:document.querySelector('input[name="tmpl-level"]:checked')?.value||'critical',
+        background_color:document.getElementById('tmpl-bg').value,
+        text_color:document.getElementById('tmpl-fg').value,
+    };
+    const url=id?`/api/emergency/templates/${id}`:'/api/emergency/templates';
+    const method=id?'PUT':'POST';
+    this.disabled=true;
+    fetch(url + ebDomainQs(),{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(ebDomainBody(payload))})
+    .then(async r=>{
+        const d = await r.json().catch(() => ({}));
+        if(d.status==='success'){
+            bootstrap.Modal.getInstance(document.getElementById('templateModal')).hide();
+            loadTemplates();
+        } else {
+            let msg = d.message || ('HTTP ' + r.status);
+            if (d.permission) msg += '\n(Requires emergency access in the active tenant.)';
+            alert('Error: ' + msg);
+        }
+    }).finally(()=>{this.disabled=false;});
+});
+
+function deleteTemplate(id){
+    if(!confirm('Delete this saved template?'))return;
+    fetch(`/api/emergency/templates/${id}` + ebDomainQs(), {method:'DELETE'})
+        .then(r=>r.json()).then(d=>{
+            if (d.status === 'success') loadTemplates();
+            else alert('Error: ' + (d.message || 'Delete failed'));
+        });
+}
+
+function activateTemplate(id){
+    const t=_templates.find(x=>x.id===id); if(!t)return;
+    if(!confirm(`Send emergency broadcast:\n"${t.title}"\n\nThis will immediately take over all targeted displays.`))return;
+    fetch(`/api/emergency/templates/${id}/activate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ebDomainBody({target:document.getElementById('eb-target')?.value||'all'}))})
+    .then(r=>r.json()).then(d=>{
+        if(d.status==='success'){checkActiveBroadcast();loadEbHistory();alert('Emergency broadcast sent.');}
+        else alert('Error: '+d.message);
+    });
+}
+
+// Load template into send modal
+document.getElementById('eb-load-template-btn').addEventListener('click',()=>{
+    const id=parseInt(document.getElementById('eb-template-select').value);
+    if(!id){return;}
+    const t=_templates.find(x=>x.id===id); if(!t)return;
+    document.getElementById('eb-template-id').value=t.id;
+    document.getElementById('eb-title').value=t.title;
+    document.getElementById('eb-message').value=t.message||'';
+    const lvlRadio=document.querySelector(`input[name="eb-level"][value="${t.level}"]`);
+    if(lvlRadio){ lvlRadio.checked=true; lvlRadio.dispatchEvent(new Event('change')); }
+    document.getElementById('eb-bg').value=t.background_color||'#b71c1c';
+    document.getElementById('eb-fg').value=t.text_color||'#ffffff';
+});
+
+document.getElementById('sendEmergencyBtn').addEventListener('click',function(){
+    const title=document.getElementById('eb-title').value.trim();
+    if(!title){alert('Headline is required.');return;}
+    const level=document.querySelector('input[name="eb-level"]:checked')?.value||'critical';
+    const tmplId=document.getElementById('eb-template-id').value;
+    const payload={
+        title, level,
+        message:document.getElementById('eb-message').value,
+        background_color:document.getElementById('eb-bg').value,
+        text_color:document.getElementById('eb-fg').value,
+        target:document.getElementById('eb-target').value,
+    };
+    if(tmplId) payload.template_id=parseInt(tmplId);
+    this.disabled=true;
+    fetch('/api/emergency',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ebDomainBody(payload))})
+    .then(r=>r.json()).then(d=>{
+        if(d.status==='success'){
+            bootstrap.Modal.getInstance(document.getElementById('emergencyModal')).hide();
+            checkActiveBroadcast(); loadEbHistory();
+        } else alert('Error: '+d.message);
+    }).finally(()=>{this.disabled=false;});
+});
+
+// Reset template-id when modal is closed
+document.getElementById('emergencyModal').addEventListener('hidden.bs.modal',()=>{
+    document.getElementById('eb-template-id').value='';
+    document.getElementById('eb-template-select').value='';
+});
+
+// Auto-update colours when level radio changes
+document.querySelectorAll('input[name="eb-level"]').forEach(r=>r.addEventListener('change',function(){
+    const c={critical:{bg:'#b71c1c',fg:'#ffffff'},warning:{bg:'#e65100',fg:'#ffffff'},info:{bg:'#1565c0',fg:'#ffffff'}}[this.value]||{bg:'#b71c1c',fg:'#ffffff'};
+    document.getElementById('eb-bg').value=c.bg;
+    document.getElementById('eb-fg').value=c.fg;
+}));
+
+function cancelBroadcast(id){
+    if(!confirm('Clear this emergency? All targeted displays will return to normal playback.'))return;
+    fetch(`/api/emergency/${id}/cancel`,{method:'POST'}).then(()=>{checkActiveBroadcast();loadEbHistory();});
+}
+function deleteBroadcast(id){ if(!confirm('Delete this record?'))return; fetch(`/api/emergency/${id}`,{method:'DELETE'}).then(()=>loadEbHistory()); }
+
+// Pre-load templates when emergency modal opens (so dropdown is populated)
+document.getElementById('emergencyModal').addEventListener('show.bs.modal',()=>loadTemplates());
+
+// Play Now
+function togglePnTarget(){
+    const t=document.getElementById('pn-target-type').value;
+    document.getElementById('pn-display-wrap').style.display=t==='display'?'':'none';
+    document.getElementById('pn-group-wrap').style.display=t==='group'?'':'none';
+}
+window.togglePnTarget=togglePnTarget;
+document.getElementById('playNowBtn').addEventListener('click',function(){
+    const pid=parseInt(document.getElementById('pn-playlist').value);
+    if(!pid){alert('Select a playlist.');return;}
+    const tt=document.getElementById('pn-target-type').value;
+    const payload={playlist_id:pid};
+    if(tt==='display'){const v=parseInt(document.getElementById('pn-display').value);if(!v){alert('Select a display.');return;}payload.display_id=v;}
+    else{const v=parseInt(document.getElementById('pn-group').value);if(!v){alert('Select a group.');return;}payload.group_id=v;}
+    this.disabled=true;
+    fetch('/api/schedules/play-now',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+    .then(r=>r.json()).then(d=>{
+        if(d.status==='success'){bootstrap.Modal.getInstance(document.getElementById('playNowModal')).hide();window.location.reload();}
+        else alert('Error: '+d.message);
+    }).finally(()=>{this.disabled=false;});
+});
+function cancelPlayNow(id){ if(!confirm('Stop this play-now override?'))return; fetch(`/api/schedules/play-now/${id}/cancel`,{method:'POST'}).then(()=>window.location.reload()); }
+window.cancelPlayNow=cancelPlayNow;
+
+// Schedule CRUD
+function toggleTargetSelect(formId){
+    const form=document.getElementById(formId);
+    const tt=form.elements.target_type.value;
+    form.querySelector('#display_select_container').style.display=tt==='display'?'':'none';
+    form.querySelector('#group_select_container').style.display=tt==='group'?'':'none';
+}
+window.toggleTargetSelect=toggleTargetSelect;
+
+document.getElementById('saveSchedule').addEventListener('click',function(){
+    const form=document.getElementById('addScheduleForm');
+    fetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(getFormData(form))})
+    .then(r=>r.json()).then(d=>{if(d.status==='success')window.location.reload();else alert('Error: '+d.message);});
+});
+function editSchedule(id){
+    fetch('/api/schedules/'+id).then(r=>r.json()).then(d=>{
+        if(d.status==='success'){populateEdit(d.schedule);new bootstrap.Modal(document.getElementById('editScheduleModal')).show();}
+    });
+}
+window.editSchedule=editSchedule;
+function populateEdit(s){
+    const form=document.getElementById('editScheduleForm');
+    form.elements.name.value=s.name; form.elements.playlist_id.value=s.playlist_id;
+    form.elements.priority.value=s.priority; form.elements.is_active.checked=s.is_active;
+    if (form.elements.timezone) setTzValue(form.elements.timezone, s.timezone || '');
+    form.elements.start_date.value=s.start_date||''; form.elements.end_date.value=s.end_date||'';
+    form.elements.start_time.value=s.start_time?s.start_time.slice(0,5):'';
+    form.elements.end_time.value=s.end_time?s.end_time.slice(0,5):'';
+    for(let i=1;i<=7;i++) form.elements['day'+i].checked=s.days_of_week?s.days_of_week.split(',').includes(String(i)):true;
+    if(s.display_id){form.elements.target_type.value='display';form.elements.display_id.value=s.display_id;form.elements.group_id.value='';}
+    else if(s.group_id){form.elements.target_type.value='group';form.elements.group_id.value=s.group_id;form.elements.display_id.value='';}
+    else form.elements.target_type.value='';
+    toggleTargetSelect('editScheduleForm');
+    form.dataset.scheduleId=s.id;
+}
+document.getElementById('updateScheduleBtn').addEventListener('click',function(){
+    const form=document.getElementById('editScheduleForm');
+    fetch('/api/schedules/'+form.dataset.scheduleId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(getFormData(form))})
+    .then(r=>r.json()).then(d=>{if(d.status==='success')window.location.reload();else alert('Error: '+d.message);});
+});
+function deleteSchedule(id){ if(!confirm('Delete this schedule?'))return; fetch('/api/schedules/'+id,{method:'DELETE'}).then(r=>r.json()).then(d=>{if(d.status==='success')window.location.reload();else alert('Error: '+d.message);}); }
+window.deleteSchedule=deleteSchedule;
+function getFormData(form){
+    const days=[];for(let i=1;i<=7;i++){if(form.elements['day'+i].checked)days.push(i);}
+    const fd={name:form.elements.name.value,playlist_id:parseInt(form.elements.playlist_id.value),
+        priority:parseInt(form.elements.priority.value),is_active:form.elements.is_active.checked,days_of_week:days.join(',')};
+    if(form.elements.timezone) fd.timezone = form.elements.timezone.value || null;
+    if(form.elements.start_date.value)fd.start_date=form.elements.start_date.value;
+    if(form.elements.end_date.value)fd.end_date=form.elements.end_date.value;
+    if(form.elements.start_time.value)fd.start_time=form.elements.start_time.value;
+    if(form.elements.end_time.value)fd.end_time=form.elements.end_time.value;
+    const tt=form.elements.target_type.value;
+    if(tt==='display'&&form.elements.display_id.value)fd.display_id=parseInt(form.elements.display_id.value);
+    else if(tt==='group'&&form.elements.group_id.value)fd.group_id=parseInt(form.elements.group_id.value);
+    return fd;
+}
+document.getElementById('addScheduleModal').addEventListener('hidden.bs.modal',()=>{document.getElementById('addScheduleForm').reset();toggleTargetSelect('addScheduleForm');});
+document.getElementById('editScheduleModal').addEventListener('hidden.bs.modal',()=>{document.getElementById('editScheduleForm').reset();toggleTargetSelect('editScheduleForm');});
+</script>
+{% endblock %}

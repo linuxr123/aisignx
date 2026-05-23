@@ -1,0 +1,156 @@
+{% extends 'base.html' %}
+
+{% block title %}System Logs - AISignX{% endblock %}
+
+{% block head %}
+<style>
+    #log-output {
+        background: #0d1117;
+        color: #c9d1d9;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        padding: 1rem;
+        border-radius: 0.375rem;
+        height: 65vh;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    .log-line { display: block; }
+    .log-line.level-ERROR, .log-line.level-CRITICAL { color: #ff7b72; }
+    .log-line.level-WARNING { color: #e3b341; }
+    .log-line.level-INFO    { color: #c9d1d9; }
+    .log-line.level-DEBUG   { color: #8b949e; }
+
+    #live-badge {
+        display: inline-block;
+        width: 10px; height: 10px;
+        border-radius: 50%;
+        background: #6c757d;
+        margin-right: 6px;
+        vertical-align: middle;
+        transition: background 0.3s;
+    }
+    #live-badge.connected { background: #28a745; animation: pulse 2s infinite; }
+    @keyframes pulse {
+        0%,100% { opacity: 1; } 50% { opacity: 0.4; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-terminal me-2"></i>System Logs</h2>
+    <div class="d-flex gap-2 align-items-center">
+        <span class="text-muted small">
+            <span id="live-badge"></span>
+            <span id="live-status">Connecting...</span>
+        </span>
+        <select id="line-count" class="form-select form-select-sm" style="width:auto;">
+            <option value="100">Last 100 lines</option>
+            <option value="200" selected>Last 200 lines</option>
+            <option value="500">Last 500 lines</option>
+            <option value="1000">Last 1000 lines</option>
+        </select>
+        <button id="btn-reload" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-clockwise"></i> Reload
+        </button>
+        <button id="btn-scroll" class="btn btn-sm btn-outline-secondary active" title="Auto-scroll to bottom">
+            <i class="bi bi-arrow-bar-down"></i> Auto-scroll
+        </button>
+        <button id="btn-clear" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-x-circle"></i> Clear view
+        </button>
+    </div>
+</div>
+
+<div id="log-output"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const output   = document.getElementById('log-output');
+const badge    = document.getElementById('live-badge');
+const status   = document.getElementById('live-status');
+const btnReload  = document.getElementById('btn-reload');
+const btnScroll  = document.getElementById('btn-scroll');
+const btnClear   = document.getElementById('btn-clear');
+const lineSelect = document.getElementById('line-count');
+
+let autoScroll = true;
+let evtSource  = null;
+
+function levelClass(line) {
+    if (/\bERROR\b|\bCRITICAL\b/.test(line)) return 'level-ERROR';
+    if (/\bWARNING\b/.test(line))             return 'level-WARNING';
+    if (/\bDEBUG\b/.test(line))               return 'level-DEBUG';
+    return 'level-INFO';
+}
+
+function appendLine(text) {
+    const span = document.createElement('span');
+    span.className = 'log-line ' + levelClass(text);
+    span.textContent = text;
+    output.appendChild(span);
+    output.appendChild(document.createTextNode('\n'));
+    if (autoScroll) output.scrollTop = output.scrollHeight;
+}
+
+function loadHistory() {
+    const n = lineSelect.value;
+    output.innerHTML = '';
+    fetch(`/api/logs/tail?lines=${n}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.lines) data.lines.forEach(appendLine);
+            if (autoScroll) output.scrollTop = output.scrollHeight;
+        })
+        .catch(() => appendLine('[ERROR] Could not load log history.'));
+}
+
+function connectStream() {
+    if (evtSource) evtSource.close();
+    evtSource = new EventSource('/api/logs/stream');
+
+    evtSource.onopen = () => {
+        badge.classList.add('connected');
+        status.textContent = 'Live';
+    };
+    evtSource.onmessage = e => {
+        if (e.data) appendLine(e.data);
+    };
+    evtSource.onerror = () => {
+        badge.classList.remove('connected');
+        status.textContent = 'Reconnecting...';
+    };
+}
+
+// Auto-scroll toggle
+btnScroll.addEventListener('click', () => {
+    autoScroll = !autoScroll;
+    btnScroll.classList.toggle('active', autoScroll);
+    if (autoScroll) output.scrollTop = output.scrollHeight;
+});
+
+// Clear the view (does not delete the log file)
+btnClear.addEventListener('click', () => { output.innerHTML = ''; });
+
+// Reload history
+btnReload.addEventListener('click', loadHistory);
+lineSelect.addEventListener('change', loadHistory);
+
+// Stop auto-scroll when user manually scrolls up
+output.addEventListener('scroll', () => {
+    const atBottom = output.scrollHeight - output.scrollTop - output.clientHeight < 40;
+    if (!atBottom && autoScroll) {
+        autoScroll = false;
+        btnScroll.classList.remove('active');
+    }
+});
+
+// Init
+loadHistory();
+connectStream();
+</script>
+{% endblock %}

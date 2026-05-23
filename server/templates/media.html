@@ -1,0 +1,1928 @@
+{% extends "base.html" %}
+{% block title %}Media Library{% endblock %}
+
+{% block head %}
+<style>
+  .media-thumbnail {
+    width: 80px;
+    height: 60px;
+    object-fit: cover;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+  }
+  .media-thumbnail-container {
+    width: 56px;
+    height: 42px;
+    position: relative;
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+  }
+  .media-thumbnail-container .preview-overlay {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    color: #fff;
+    transition: opacity .15s ease-in-out;
+    font-size: .7rem;
+  }
+  .media-thumbnail-container:hover .preview-overlay {
+    opacity: 1;
+  }
+  .media-icon {
+    display: flex;
+    width: 56px;
+    height: 42px;
+    align-items: center;
+    justify-content: center;
+    color: #0d6efd;
+    font-size: 1.2rem;
+  }
+  /* Compact media table rows so the list fits more on screen. */
+  #mediaTable { font-size: .85rem; }
+  #mediaTable td, #mediaTable th { padding: .25rem .5rem; vertical-align: middle; }
+  #mediaTable .btn-sm { padding: .15rem .4rem; font-size: .75rem; }
+  #mediaTable .badge { font-size: .65rem; }
+  /* Modern, professional row styling: subtle separators, hover lift,
+     no jagged wrapping in the actions cell. */
+  .media-table-modern { border-collapse: separate; border-spacing: 0; }
+  .media-table-modern thead th {
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6 !important;
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #6c757d;
+    font-weight: 600;
+  }
+  .media-table-modern tbody tr {
+    border-bottom: 1px solid #f1f3f5;
+    transition: background-color .12s ease-in-out;
+  }
+  .media-table-modern tbody tr:hover {
+    background-color: #f8fbff !important;
+  }
+  .media-table-modern td { white-space: nowrap; }
+  .media-table-modern .media-row-actions { white-space: nowrap; }
+  .media-table-modern .media-row-actions .btn {
+    padding: .2rem .45rem;
+    line-height: 1;
+  }
+  .media-table-modern .dropdown-item {
+    font-size: .85rem;
+    padding: .35rem .8rem;
+  }
+  .media-table-modern .tag-chips .badge {
+    margin-right: .15rem;
+  }
+  .media-table-modern tr.folder-row td {
+    background: #fbfcfd;
+  }
+  .media-folder-icon {
+    width: 56px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffc107;
+    font-size: 1.6rem;
+  }
+  .thumb-badge {
+    position: absolute;
+    top: 2px; right: 2px;
+    font-size: 0.6rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+    color: #fff;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .thumb-badge.pending { background: #6c757d; }
+  .thumb-badge.failed  { background: #dc3545; }
+  #bulkBar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: .5rem .75rem;
+    margin-bottom: .5rem;
+    display: none;
+  }
+  #bulkBar.active { display: flex; }
+  /* Folder sidebar */
+  #folderSidebar {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+    background: #fff;
+    position: sticky;
+    top: 0.5rem;
+    max-height: calc(100vh - 1rem);
+    overflow-y: auto;
+  }
+  .folder-item {
+    display: flex; align-items: center; gap: .35rem;
+    padding: .25rem .4rem; border-radius: .25rem;
+    cursor: pointer; user-select: none;
+    font-size: .9rem;
+  }
+  .folder-item:hover { background: #f1f3f5; }
+  .folder-item.active { background: #cfe2ff; }
+  .folder-item .fcount {
+    margin-left: auto; color: #6c757d; font-size: .75rem;
+  }
+  .folder-item .factions {
+    display: none; gap: .15rem;
+  }
+  .folder-item:hover .factions { display: inline-flex; }
+  .folder-item .factions button {
+    border: none; background: transparent; padding: 0 .25rem;
+    color: #6c757d; line-height: 1;
+  }
+  .folder-item .factions button:hover { color: #0d6efd; }
+  .folder-item .ftoggle {
+    width: 14px; display: inline-flex; justify-content: center;
+    color: #6c757d; font-size: .8rem;
+  }
+  .folder-item .ftoggle.empty { visibility: hidden; }
+  .folder-children { display: block; }
+  .folder-children.collapsed { display: none; }
+  /* Drag-and-drop into folders */
+  .folder-item.drop-target {
+    background: #d1e7dd; outline: 2px dashed #198754;
+  }
+  #mediaTable tbody tr[draggable="true"] { cursor: grab; }
+  .folder-breadcrumb a {
+    text-decoration: none;
+  }
+  .folder-breadcrumb a:hover { text-decoration: underline; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Media Library</h2>
+    <div class="btn-group">
+      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">Upload Media</button>
+      <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#webpageModal">Add Webpage</button>
+      <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#fromUrlModal">Add From URL</button>
+      <button class="btn btn-outline-secondary" id="folderNewBtn" type="button">
+        <i class="bi bi-folder-plus"></i> New Folder
+      </button>
+      <button class="btn btn-outline-dark" id="btnMaintenance" type="button" title="Scan for orphaned files">Maintenance</button>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12">
+      <div id="bulkBar" class="align-items-center gap-3">
+        <span><strong id="bulkCount">0</strong> selected</span>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="bulkSetDurationBtn">Set duration…</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="bulkUseVideoLengthBtn">Use video length</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="bulkTagBtn">Edit tags…</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="bulkMoveBtn">Move to folder…</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="bulkRenameBtn">Rename…</button>
+        <button type="button" class="btn btn-sm btn-danger" id="bulkDeleteBtn">Delete selected</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="bulkClearBtn">Clear</button>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-body py-2">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label small text-muted mb-1" for="filterInput">Search</label>
+          <input type="search" id="filterInput" class="form-control form-control-sm" placeholder="Name, ID, folder..." oninput="filterTable()" />
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small text-muted mb-1" for="typeFilterInput">Type</label>
+          <select id="typeFilterInput" class="form-select form-select-sm">
+            <option value="">All types</option>
+            <option value="image">Images</option>
+            <option value="video">Videos</option>
+            <option value="webpage">Webpages</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small text-muted mb-1" for="tagFilterInput">Tag</label>
+          <select id="tagFilterInput" class="form-select form-select-sm">
+            <option value="">All tags</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small text-muted mb-1" for="thumbFilterInput">Thumbnail</label>
+          <select id="thumbFilterInput" class="form-select form-select-sm">
+            <option value="">Any</option>
+            <option value="ok">Ready</option>
+            <option value="pending">Pending</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small text-muted mb-1" for="durationFilterInput">Duration</label>
+          <select id="durationFilterInput" class="form-select form-select-sm">
+            <option value="">Any</option>
+            <option value="zero">0 seconds</option>
+            <option value="short">1-15 seconds</option>
+            <option value="medium">16-60 seconds</option>
+            <option value="long">Over 60 seconds</option>
+          </select>
+        </div>
+        <div class="col-md-1 d-grid">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="mediaFilterReset">Reset</button>
+        </div>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mt-2">
+        <div class="small text-muted">
+          Showing <span id="mediaFilterCount">{{ media_items|length }}</span> item(s)
+        </div>
+        <div id="tagCloud" class="small text-muted"></div>
+      </div>
+        </div>
+      </div>
+
+      <div id="folderBreadcrumb" class="small text-muted mb-2"></div>
+
+      <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle media-table-modern" id="mediaTable">
+      <thead class="table-light">
+        <tr>
+          <th style="width: 32px;"><input type="checkbox" id="bulkSelectAll" class="form-check-input"></th>
+          <th style="width: 60px;">Preview</th>
+          <th>Name</th>
+          <th style="width: 70px;">Type</th>
+          <th style="width: 140px;">Folder</th>
+          <th style="width: 160px;">Tags</th>
+          <th style="width: 70px;" class="text-end">Dur</th>
+          <th style="width: 80px;" class="text-end">Size</th>
+          <th style="width: 110px;">Updated</th>
+          <th style="width: 130px;" class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="mediaTableBody">
+        {% for m in media_items %}
+        {% set preview_url =
+            (m.file_path if m.media_type == 'webpage' else
+             (storage.signed_url(m.file_path, external=False) if m.file_path else
+              (url_for('media.uploaded_file', filename='images/' ~ m.filename) if m.media_type == 'image' else
+               url_for('media.uploaded_file', filename='videos/' ~ m.filename)))) %}
+        {% set content_path = preview_url %}
+        <tr data-row-kind="media"
+            data-folder="{{ (m.folder or '')|e }}"
+            data-id="{{ m.id }}"
+            data-type="{{ m.media_type }}"
+            data-name="{{ m.name|lower|e }}"
+            data-thumb-status="{{ (m.thumbnail_status or 'ok') }}"
+            data-duration="{{ m.duration or 0 }}"
+            draggable="true">
+          <td><input type="checkbox" class="form-check-input bulk-select" data-id="{{ m.id }}"></td>
+          <td>
+            <div class="media-thumbnail-container preview-trigger"
+                 role="button"
+                 title="Click to preview"
+                 data-media-type="{{ m.media_type }}"
+                 data-media-url="{{ preview_url|e }}">
+              {% set tstatus = m.thumbnail_status or 'ok' %}
+              {% if tstatus == 'pending' %}
+                <span class="thumb-badge pending" title="Thumbnail pending">…</span>
+              {% elif tstatus == 'failed' %}
+                <span class="thumb-badge failed" title="Thumbnail generation failed">!</span>
+              {% endif %}
+              {% if m.thumbnail_path %}
+                <img src="{{ storage.signed_url(m.thumbnail_path, external=False) }}"
+                     alt="thumb"
+                     class="media-thumbnail" />
+              {% else %}
+                <div class="media-icon">
+                  {% if m.media_type == 'image' %}
+                    <i class="bi bi-image"></i>
+                  {% elif m.media_type == 'video' %}
+                    <i class="bi bi-film"></i>
+                  {% elif m.media_type == 'webpage' %}
+                    <i class="bi bi-globe"></i>
+                  {% else %}
+                    <i class="bi bi-file-earmark"></i>
+                  {% endif %}
+                </div>
+              {% endif %}
+              <div class="preview-overlay">
+                <i class="bi bi-eye"></i>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="fw-semibold text-truncate" style="max-width: 28ch;" title="{{ m.name }}">{{ m.name }}</div>
+            <div class="small text-muted">
+              <code class="small">#{{ m.id }}</code>
+            </div>
+          </td>
+          <td>
+            {% set _tcls = 'bg-primary' if m.media_type == 'image' else ('bg-danger' if m.media_type == 'video' else ('bg-success' if m.media_type == 'webpage' else 'bg-secondary')) %}
+            <span class="badge {{ _tcls }} text-uppercase">{{ m.media_type }}</span>
+          </td>
+          <td class="small text-muted text-truncate" style="max-width: 140px;" title="{{ m.folder or '' }}">
+            {% if m.folder %}<i class="bi bi-folder2"></i> {{ m.folder }}{% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="media-tags-cell" data-id="{{ m.id }}"
+              data-tags="{{ (m.tags or '')|e }}">
+            <span class="tag-chips small"></span>
+            <button type="button" class="btn btn-link btn-sm p-0 ms-1 edit-tags-btn"
+                    title="Edit tags"><i class="bi bi-tags"></i></button>
+          </td>
+          <td class="text-end small">{{ m.duration or 0 }}s</td>
+          <td class="text-end small">
+            {% if m.file_size %}
+              {% set kb = (m.file_size / 1024.0) %}
+              {% if kb < 1024 %}{{ "%.0f"|format(kb) }} KB{% else %}{{ "%.1f"|format(kb/1024.0) }} MB{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="small text-muted">{{ m.updated_at.strftime("%Y-%m-%d %H:%M") if m.updated_at else (m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else '') }}</td>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm media-row-actions" role="group">
+              <button
+                class="btn btn-outline-primary btn-edit-media"
+                type="button"
+                data-id="{{ m.id }}"
+                data-type="{{ m.media_type }}"
+                data-name="{{ m.name|e }}"
+                data-description="{{ m.description|default('', true)|e }}"
+                data-duration="{{ m.duration or 0 }}"
+                data-duration-seconds="{{ m.duration_seconds or '' }}"
+                data-url="{{ (m.file_path if m.media_type == 'webpage' else '')|e }}"
+                data-refresh="{{ m.refresh_interval|default(0) }}"
+                data-scrolling="{{ 'true' if m.scrolling|default(false) else 'false' }}"
+                data-audio-enabled="{{ 'true' if m.audio_enabled else 'false' }}"
+                title="Edit">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button type="button" class="btn btn-outline-secondary dropdown-toggle"
+                      data-bs-toggle="dropdown" aria-expanded="false" title="More actions">
+                <i class="bi bi-three-dots"></i>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><h6 class="dropdown-header">Copy</h6></li>
+                <li><button class="dropdown-item" type="button" onclick="copyText('{{ m.id }}')"><i class="bi bi-hash me-2"></i>Copy ID</button></li>
+                {% if m.media_type == 'webpage' %}
+                <li><button class="dropdown-item copy-url-btn" type="button"
+                            data-content-absolute="{{ m.file_path|e }}"><i class="bi bi-link-45deg me-2"></i>Copy URL</button></li>
+                {% else %}
+                <li><button class="dropdown-item copy-url-btn" type="button"
+                            data-content-path="{{ content_path|e }}"><i class="bi bi-link-45deg me-2"></i>Copy URL</button></li>
+                {% endif %}
+                <li><button class="dropdown-item copy-api-btn" type="button"
+                            data-api-path="/api/media/{{ m.id }}"><i class="bi bi-code-slash me-2"></i>Copy API URL</button></li>
+                {% if m.media_type != 'webpage' %}
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">File</h6></li>
+                <li><button class="dropdown-item" type="button" onclick="triggerReplaceFile({{ m.id }})"><i class="bi bi-arrow-repeat me-2"></i>Replace file…</button></li>
+                <li><button class="dropdown-item" type="button" onclick="replaceByUrl({{ m.id }})"><i class="bi bi-cloud-arrow-down me-2"></i>Replace by URL…</button></li>
+                <li><button class="dropdown-item" type="button" onclick="regenThumb({{ m.id }})"><i class="bi bi-image me-2"></i>Regenerate thumbnail</button></li>
+                <input type="file" id="fileInput-{{ m.id }}" class="d-none" onchange="replaceFile({{ m.id }}, this.files[0])" accept="{{ '.jpg,.jpeg,.png,.gif' if m.media_type == 'image' else '.mp4,.webm,.ogg' if m.media_type == 'video' else '' }}">
+                {% endif %}
+                <li><hr class="dropdown-divider"></li>
+                <li><button class="dropdown-item text-danger" type="button" onclick="deleteMedia({{ m.id }})"><i class="bi bi-trash me-2"></i>Delete</button></li>
+              </ul>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+    </div><!-- /col main -->
+  </div><!-- /row -->
+</div>
+
+<!-- Upload Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="uploadForm" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="uploadLabel">Upload Media (Image/Video)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">File(s)</label>
+          <div id="uploadDropZone"
+               class="border border-2 border-dashed rounded p-4 text-center"
+               style="cursor:pointer; background:#f8f9fa; transition:background .15s, border-color .15s;">
+            <div style="font-size:2rem; line-height:1;">⬆️</div>
+            <div class="fw-semibold mt-2">Drag &amp; drop files here</div>
+            <div class="text-muted small">or click to browse — images and videos, multiple files OK</div>
+            <div id="uploadFileSummary" class="small mt-2 text-primary"></div>
+          </div>
+          <input type="file" name="file" id="uploadFileInput"
+                 accept=".jpg,.jpeg,.png,.gif,.mp4,.webm,.ogg" multiple
+                 style="display:none;">
+          <div class="form-text">Each file is uploaded individually so quota and dedupe are checked per file.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Name (single-file upload)</label>
+          <input type="text" name="name" class="form-control" placeholder="Display name">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Bulk name prefix (multi-file upload)</label>
+          <input type="text" name="name_prefix" id="uploadNamePrefix" class="form-control"
+                 placeholder="e.g. photo">
+          <div class="form-text">When set, files are named <code>prefix-0001</code>, <code>prefix-0002</code>, … in upload order.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Folder</label>
+          <div class="input-group">
+            <select id="uploadFolderSelect" class="form-select">
+              <option value="">— Root —</option>
+            </select>
+            <button class="btn btn-outline-secondary" type="button" id="uploadFolderNewBtn"
+                    title="Create a new folder">
+              <i class="bi bi-folder-plus"></i> New
+            </button>
+          </div>
+          <input type="hidden" name="folder" id="uploadFolder" value="">
+          <div class="form-text">Pick an existing folder or create a new one. Use <code>/</code> to nest sub-folders (e.g. <code>campaigns/winter</code>).</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Duration (seconds, optional)</label>
+          <input type="number" name="duration" class="form-control" min="0" step="1" placeholder="auto for videos">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Description (optional)</label>
+          <textarea name="description" class="form-control" rows="2"></textarea>
+        </div>
+        <div id="uploadProgress" class="small mt-2" style="display:none;">
+          <div class="progress mb-1"><div id="uploadBar" class="progress-bar" style="width:0%"></div></div>
+          <div id="uploadStatus" class="text-muted"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancel</button>
+        <button class="btn btn-primary" type="submit">Upload</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add Webpage Modal -->
+<div class="modal fade" id="webpageModal" tabindex="-1" aria-labelledby="webpageLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="webpageForm" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="webpageLabel">Add Webpage</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Name <span class="text-muted small">(optional — defaults to site hostname)</span></label>
+          <input type="text" name="name" class="form-control" placeholder="e.g. Company Dashboard">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">URL</label>
+          <input type="url" name="url" class="form-control" placeholder="https://example.com" required>
+          <div id="webpage-embed-warning" class="alert alert-warning mt-2 mb-0 py-2 px-3 small" style="display:none;">
+            ⚠️ <strong>This site may block embedding.</strong>
+            Many sites (Google, Facebook, etc.) use <code>X-Frame-Options</code> to prevent being shown inside another page.
+            You can still add it, but it may show a "refused to connect" error on the display.
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Duration (seconds)</label>
+          <input type="number" name="duration" class="form-control" value="30" min="1" step="1" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Description (optional)</label>
+          <textarea name="description" class="form-control" rows="2"></textarea>
+        </div>
+        <div class="row">
+          <div class="col-6 mb-3">
+            <label class="form-label">Refresh interval (s)</label>
+            <input type="number" name="refresh_interval" class="form-control" min="0" step="1" value="0">
+          </div>
+          <div class="col-6 mb-3">
+            <label class="form-label">Scrolling</label>
+            <select name="scrolling" class="form-select">
+              <option value="true" selected>Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancel</button>
+        <button class="btn btn-primary" type="submit">Add Webpage</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add From URL Modal -->
+<div class="modal fade" id="fromUrlModal" tabindex="-1" aria-labelledby="fromUrlLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="fromUrlForm" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="fromUrlLabel">Add Media From URL (Server Download)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Source URL</label>
+          <input type="url" name="source_url" class="form-control" placeholder="https://example.com/file.jpg or .mp4" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Name (optional)</label>
+          <input type="text" name="name" class="form-control" placeholder="Display name">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Duration (seconds, optional)</label>
+          <input type="number" name="duration" class="form-control" min="0" step="1" placeholder="auto for videos">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Description (optional)</label>
+          <textarea name="description" class="form-control" rows="2"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">External ID (optional)</label>
+          <input type="text" name="external_id" class="form-control" placeholder="stable key for automation">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancel</button>
+        <button class="btn btn-primary" type="submit">Add From URL</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Media Modal -->
+<div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="editForm" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editLabel">Edit Media</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit_id" name="id">
+
+        <div class="mb-3">
+          <label class="form-label">Name</label>
+          <input type="text" id="edit_name" name="name" class="form-control">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Duration (seconds)</label>
+          <div class="input-group">
+            <input type="number" id="edit_duration" name="duration" class="form-control" min="0" step="1">
+            <button type="button" class="btn btn-outline-secondary" id="edit_reset_video_duration" style="display:none;">
+              Use detected length
+            </button>
+          </div>
+          <div class="form-text" id="edit_duration_help"></div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Description</label>
+          <textarea id="edit_description" name="description" class="form-control" rows="2"></textarea>
+        </div>
+
+        <!-- Video-only fields -->
+        <div id="edit_video_fields" style="display:none;">
+          <div class="mb-3 form-check">
+            <input class="form-check-input" type="checkbox" id="edit_audio_enabled" name="audio_enabled">
+            <label class="form-check-label" for="edit_audio_enabled">
+              Play audio for this video by default
+            </label>
+            <div class="form-text">
+              Default audio behavior when this video appears in a playlist.
+              Playlists can override this (Inherit / Force on / Force off),
+              and individual playlist items can mute audio explicitly.
+            </div>
+          </div>
+        </div>
+
+        <!-- Webpage-only fields -->
+        <div id="edit_webpage_fields" style="display:none;">
+          <div class="mb-3">
+            <label class="form-label">URL</label>
+            <input type="url" id="edit_url" name="url" class="form-control" placeholder="https://example.com/page">
+          </div>
+          <div class="row">
+            <div class="col-6 mb-3">
+              <label class="form-label">Refresh interval (s)</label>
+              <input type="number" id="edit_refresh_interval" name="refresh_interval" class="form-control" min="0" step="1" value="0">
+            </div>
+            <div class="col-6 mb-3">
+              <label class="form-label">Scrolling</label>
+              <select id="edit_scrolling" name="scrolling" class="form-select">
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancel</button>
+        <button class="btn btn-primary" type="submit">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Media Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div id="preview-container" class="d-flex justify-content-center align-items-center" style="min-height: 500px; background-color: #000;">
+          <!-- Preview content will be inserted here -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Maintenance Modal: orphan scan + cleanup -->
+<div class="modal fade" id="maintenanceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Media Maintenance</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-2">
+          Scans for media rows whose underlying file is missing on disk and
+          for files in your tenant's uploads tree that no media row references.
+          Cleanup only removes orphaned files; database rows are never auto-deleted.
+        </p>
+        <div class="d-flex gap-2 mb-3">
+          <button type="button" class="btn btn-sm btn-primary" id="orphanScanBtn">Scan</button>
+          <button type="button" class="btn btn-sm btn-outline-danger" id="orphanCleanupBtn" disabled>Delete orphan files</button>
+          <span id="orphanStatus" class="ms-auto small text-muted"></span>
+        </div>
+        <div id="orphanResults" class="small">
+          <em class="text-muted">No scan run yet.</em>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div> <!-- /container -->
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Known domains that block iframe embedding
+const IFRAME_BLOCKED_DOMAINS = [
+  'google.com','www.google.com','mail.google.com','drive.google.com',
+  'facebook.com','www.facebook.com',
+  'instagram.com','www.instagram.com',
+  'twitter.com','www.twitter.com','x.com','www.x.com',
+  'linkedin.com','www.linkedin.com',
+  'netflix.com','www.netflix.com',
+  'amazon.com','www.amazon.com',
+  'microsoft.com','www.microsoft.com',
+  'apple.com','www.apple.com',
+  'github.com','www.github.com',
+];
+
+function checkEmbedWarning(urlValue) {
+  const warning = document.getElementById('webpage-embed-warning');
+  if (!warning) return;
+  try {
+    const host = new URL(urlValue).hostname.toLowerCase();
+    const blocked = IFRAME_BLOCKED_DOMAINS.some(d => host === d || host.endsWith('.' + d));
+    warning.style.display = blocked ? '' : 'none';
+  } catch {
+    warning.style.display = 'none';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const urlInput = document.querySelector('#webpageForm input[name="url"]');
+  if (urlInput) {
+    urlInput.addEventListener('input', () => checkEmbedWarning(urlInput.value));
+    urlInput.addEventListener('blur',  () => checkEmbedWarning(urlInput.value));
+  }
+});
+
+function copyText(txt) {
+  // Try modern Clipboard API first (requires secure context: https or localhost)
+  const flash = (ok) => {
+    // Tiny toast in top-right so the user knows something happened
+    const el = document.createElement('div');
+    el.textContent = ok ? 'Copied!' : 'Copy failed';
+    el.style.cssText = 'position:fixed;top:1rem;right:1rem;z-index:9999;' +
+      'background:' + (ok ? '#198754' : '#dc3545') + ';color:#fff;' +
+      'padding:0.5rem 1rem;border-radius:0.25rem;font:14px sans-serif;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,0.2);transition:opacity 0.3s;';
+    document.body.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; }, 1200);
+    setTimeout(() => { el.remove(); }, 1600);
+  };
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(() => flash(true), () => fallback());
+  } else {
+    fallback();
+  }
+
+  function fallback() {
+    // Legacy fallback for non-HTTPS / non-localhost origins
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = txt;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      flash(ok);
+    } catch (e) {
+      flash(false);
+    }
+  }
+}
+
+function filterTable() {
+  const term = (document.getElementById('filterInput').value || '').toLowerCase();
+  const type = document.getElementById('typeFilterInput')?.value || '';
+  const tag = (document.getElementById('tagFilterInput')?.value || '').trim().toLowerCase();
+  const thumb = document.getElementById('thumbFilterInput')?.value || '';
+  const duration = document.getElementById('durationFilterInput')?.value || '';
+  const rows = document.querySelectorAll('#mediaTable tbody tr');
+  const folderScope = (window.Folders && typeof window.Folders.current === 'function') ? window.Folders.current() : '';
+  let shown = 0;
+  rows.forEach(row => {
+    const kind = row.dataset.rowKind || 'media';
+    const rowFolder = row.dataset.folder || '';
+    if (kind === 'folder') {
+      const hay = [
+        row.innerText.toLowerCase(),
+        row.dataset.name || '',
+        row.dataset.path || '',
+      ].join(' ');
+      let folderOk = false;
+      if (!folderScope) folderOk = (row.dataset.parentPath || '') === '';
+      else if (folderScope === '__root__') folderOk = (row.dataset.parentPath || '') === '';
+      else folderOk = (row.dataset.parentPath || '') === folderScope;
+      const ok = folderOk && (!term || hay.includes(term)) && !type && !tag && !thumb && !duration;
+      row.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+      return;
+    }
+    const dur = parseInt(row.dataset.duration || '0', 10) || 0;
+    const tags = (row.querySelector('.media-tags-cell')?.dataset.tags || '')
+      .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const hay = [
+      row.innerText.toLowerCase(),
+      row.dataset.folder || '',
+      row.dataset.name || '',
+      row.dataset.id || '',
+    ].join(' ');
+    let ok = true;
+    if (!folderScope) {
+      ok = true;
+    } else if (folderScope === '__root__') {
+      ok = rowFolder === '';
+    } else {
+      ok = rowFolder === folderScope;
+    }
+    if (term && !hay.includes(term)) ok = false;
+    if (type && row.dataset.type !== type) ok = false;
+    if (tag && !tags.includes(tag)) ok = false;
+    if (thumb && row.dataset.thumbStatus !== thumb) ok = false;
+    if (duration === 'zero' && dur !== 0) ok = false;
+    if (duration === 'short' && !(dur >= 1 && dur <= 15)) ok = false;
+    if (duration === 'medium' && !(dur >= 16 && dur <= 60)) ok = false;
+    if (duration === 'long' && dur <= 60) ok = false;
+    row.style.display = ok ? '' : 'none';
+    if (ok) shown++;
+  });
+  const count = document.getElementById('mediaFilterCount');
+  if (count) count.textContent = shown;
+}
+
+function triggerReplaceFile(mediaId) {
+  const input = document.getElementById('fileInput-' + mediaId);
+  if (input) input.click();
+}
+
+async function replaceFile(mediaId, file) {
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+
+  const res = await fetch(`/api/media/${mediaId}/replace`, {
+    method: 'POST',
+    body: fd
+  });
+  const data = await res.json();
+  if (data.status === 'success') {
+    alert('File replaced');
+    location.reload();
+  } else {
+    alert('Error: ' + (data.message || 'unknown'));
+  }
+}
+
+async function replaceByUrl(mediaId) {
+  const url = prompt('Enter source URL to replace file:');
+  if (!url) return;
+  const res = await fetch(`/api/media/${mediaId}/replace_by_url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_url: url })
+  });
+  const data = await res.json();
+  if (data.status === 'success') {
+    alert('Replaced successfully');
+    location.reload();
+  } else {
+    alert('Error: ' + (data.message || 'unknown'));
+  }
+}
+
+async function deleteMedia(mediaId) {
+  if (!confirm('Delete this media item?')) return;
+  let res = await fetch(`/api/media/${mediaId}`, { method: 'DELETE' });
+  let data = await res.json().catch(() => ({}));
+  if (res.status === 409 && data.status === 'in_use') {
+    const names = (data.playlists || []).map(p => `• ${p.name} (#${p.id})`).join('\n');
+    if (!confirm(
+        `This media is used by ${data.playlists.length} playlist(s):\n\n${names}\n\n` +
+        `Delete anyway? Playlist items pointing at it will also be removed.`)) {
+      return;
+    }
+    res = await fetch(`/api/media/${mediaId}?force=1`, { method: 'DELETE' });
+    data = await res.json().catch(() => ({}));
+  }
+  if (data.status === 'success') {
+    toast('Deleted', 'success');
+    setTimeout(() => location.reload(), 400);
+  } else {
+    toast('Error: ' + (data.message || 'unknown'), 'error');
+  }
+}
+
+async function regenThumb(mediaId) {
+  toast('Regenerating thumbnail…', 'info');
+  const res = await fetch(`/api/media/${mediaId}/regenerate-thumbnail`, { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (data.status === 'success') {
+    toast('Thumbnail updated', 'success');
+    setTimeout(() => location.reload(), 400);
+  } else {
+    toast('Failed: ' + (data.message || 'unknown'), 'error');
+  }
+}
+
+function toast(msg, kind) {
+  const colors = { success: '#198754', error: '#dc3545', info: '#0d6efd' };
+  const el = document.createElement('div');
+  el.textContent = msg;
+  el.style.cssText = 'position:fixed;top:1rem;right:1rem;z-index:9999;' +
+    'background:' + (colors[kind] || '#333') + ';color:#fff;' +
+    'padding:0.5rem 1rem;border-radius:0.25rem;font:14px sans-serif;' +
+    'box-shadow:0 2px 8px rgba(0,0,0,0.2);transition:opacity 0.3s;';
+  document.body.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; }, 1800);
+  setTimeout(() => { el.remove(); }, 2200);
+}
+
+// Upload handlers — supports drag-and-drop and multiple files. Each file
+// is POSTed individually so the per-file quota / dedupe responses can be
+// surfaced in the progress panel. When a "name prefix" is supplied the
+// uploads are renamed `prefix-0001`, `prefix-0002`, ... preserving each
+// file's original extension so playback still works.
+(function () {
+  const dz       = document.getElementById('uploadDropZone');
+  const fileIn   = document.getElementById('uploadFileInput');
+  const summary  = document.getElementById('uploadFileSummary');
+  if (!dz || !fileIn) return;
+
+  // Stage files in a JS-side list rather than relying on the input's
+  // FileList — drag-and-drop and click-browse can both feed this list,
+  // and we can clear it without touching the input.
+  let staged = [];
+
+  function refreshSummary() {
+    if (!staged.length) {
+      summary.textContent = '';
+      dz.style.borderColor = '';
+      return;
+    }
+    const names = staged.slice(0, 3).map(f => f.name).join(', ');
+    summary.textContent = staged.length === 1
+      ? `Selected: ${names}`
+      : `Selected ${staged.length} files: ${names}${staged.length > 3 ? ', …' : ''}`;
+  }
+
+  function addFiles(list) {
+    for (const f of list) staged.push(f);
+    refreshSummary();
+  }
+
+  dz.addEventListener('click', () => fileIn.click());
+  fileIn.addEventListener('change', () => {
+    addFiles(fileIn.files);
+    fileIn.value = '';  // allow re-selecting same file later
+  });
+
+  ['dragenter', 'dragover'].forEach(ev => {
+    dz.addEventListener(ev, (e) => {
+      e.preventDefault(); e.stopPropagation();
+      dz.style.background = '#e7f1ff';
+      dz.style.borderColor = '#0d6efd';
+    });
+  });
+  ['dragleave', 'drop'].forEach(ev => {
+    dz.addEventListener(ev, (e) => {
+      e.preventDefault(); e.stopPropagation();
+      dz.style.background = '#f8f9fa';
+      dz.style.borderColor = '';
+    });
+  });
+  dz.addEventListener('drop', (e) => {
+    if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
+  });
+
+  // Reset staged list whenever the modal reopens so a previous selection
+  // doesn't accidentally upload again.
+  document.getElementById('uploadModal')?.addEventListener('show.bs.modal', () => {
+    staged = [];
+    refreshSummary();
+    document.getElementById('uploadProgress').style.display = 'none';
+    // Default the upload folder to whichever folder the user is currently
+    // viewing in the sidebar so new files land where they expect.
+    const sel = document.getElementById('uploadFolderSelect');
+    const hidden = document.getElementById('uploadFolder');
+    const cur = (typeof Folders !== 'undefined') ? Folders.current() : '';
+    if (sel) {
+      const has = Array.from(sel.options).some(o => o.value === cur);
+      sel.value = has ? cur : '';
+    }
+    if (hidden) hidden.value = sel ? sel.value : '';
+  });
+
+  // Sync the visible folder dropdown into the hidden form field, and let
+  // the user create a new folder right from the upload modal.
+  document.getElementById('uploadFolderSelect')?.addEventListener('change', (e) => {
+    const hidden = document.getElementById('uploadFolder');
+    if (hidden) hidden.value = e.target.value || '';
+  });
+  document.getElementById('uploadFolderNewBtn')?.addEventListener('click', async () => {
+    const cur = (typeof Folders !== 'undefined') ? Folders.current() : '';
+    const path = prompt('New folder path (use / to nest, e.g. campaigns/winter):',
+                        cur ? cur + '/' : '');
+    if (!path) return;
+    try {
+      const r = await fetch('/api/media/folder-create', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: path })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d.status !== 'success') {
+        toast('Create folder failed: ' + (d.message || 'unknown'), 'error');
+        return;
+      }
+      if (typeof Folders !== 'undefined') await Folders.fetchTree();
+      const sel = document.getElementById('uploadFolderSelect');
+      if (sel) sel.value = d.folder || path;
+      const hidden = document.getElementById('uploadFolder');
+      if (hidden) hidden.value = (d.folder || path);
+      toast('Folder "' + (d.folder || path) + '" created.', 'success');
+    } catch (err) {
+      toast('Create folder failed: ' + err, 'error');
+    }
+  });
+
+  document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form  = e.target;
+    const files = staged.slice();
+    if (!files.length) {
+      toast('Please choose at least one file', 'error');
+      return;
+    }
+
+    const sharedName        = form.name.value || '';
+    const namePrefix        = (form.name_prefix.value || '').trim();
+    const sharedDuration    = form.duration.value;
+    const sharedDescription = form.description.value || '';
+    const sharedFolder      = (form.folder ? form.folder.value : '') || '';
+
+    const progressBox = document.getElementById('uploadProgress');
+    const bar         = document.getElementById('uploadBar');
+    const status      = document.getElementById('uploadStatus');
+    progressBox.style.display = '';
+
+    // Pre-compute padded prefix names so the order stays deterministic
+    // even if a confirm() prompt slows one upload down.
+    const padWidth = Math.max(4, String(files.length).length);
+    function prefixName(idx) {
+      const seq = String(idx + 1).padStart(padWidth, '0');
+      return `${namePrefix}-${seq}`;
+    }
+
+    let ok = 0, dup = 0, fail = 0;
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      status.textContent = `Uploading ${i+1}/${files.length}: ${f.name}`;
+      bar.style.width = `${Math.round((i / files.length) * 100)}%`;
+
+      const fd = new FormData();
+      fd.append('file', f);
+      if (namePrefix) {
+        fd.append('name', prefixName(i));
+      } else if (files.length === 1 && sharedName) {
+        fd.append('name', sharedName);
+      }
+      if (sharedDuration) fd.append('duration', sharedDuration);
+      if (sharedDescription) fd.append('description', sharedDescription);
+      if (sharedFolder) fd.append('folder', sharedFolder);
+
+      let res = await fetch('/api/media', { method: 'POST', body: fd });
+      let data = await res.json().catch(() => ({}));
+
+      if (res.status === 409 && data.status === 'duplicate') {
+        const ex = data.existing || {};
+        const keep = confirm(
+          `${f.name}: identical file already exists as "${ex.name}" (#${ex.id}).\n\n` +
+          `OK = upload as separate copy\nCancel = skip this file`);
+        if (keep) {
+          fd.set('allow_duplicate', '1');
+          res = await fetch('/api/media', { method: 'POST', body: fd });
+          data = await res.json().catch(() => ({}));
+        } else {
+          dup++;
+          continue;
+        }
+      }
+
+      if (data.status === 'success') ok++;
+      else fail++;
+    }
+    bar.style.width = '100%';
+    status.textContent = `Done — ${ok} uploaded, ${dup} skipped duplicate, ${fail} failed.`;
+    toast(`Uploaded ${ok}/${files.length}`, fail ? 'error' : 'success');
+    setTimeout(() => location.reload(), 800);
+  });
+})();
+
+document.getElementById('webpageForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const payload = {
+    name: form.name.value,
+    url: form.url.value,
+    duration: parseInt(form.duration.value || '30', 10),
+    description: form.description.value || '',
+    refresh_interval: parseInt(form.refresh_interval.value || '0', 10),
+    scrolling: form.scrolling.value === 'true'
+  };
+  const res = await fetch('/api/media/webpage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (data.status === 'success') {
+    alert('Webpage added');
+    location.reload();
+  } else {
+    alert('Error: ' + (data.message || 'unknown'));
+  }
+});
+
+document.getElementById('fromUrlForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const payload = {
+    source_url: form.source_url.value,
+    name: form.name.value || undefined,
+    duration: form.duration.value ? parseInt(form.duration.value, 10) : undefined,
+    description: form.description.value || undefined,
+    external_id: form.external_id.value || undefined
+  };
+  const res = await fetch('/api/media/from_url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (data.status === 'success') {
+    alert('Added from URL');
+    location.reload();
+  } else {
+    alert('Error: ' + (data.message || 'unknown'));
+  }
+});
+
+// Edit + Preview + Copy button bindings
+let editModal;
+document.addEventListener('DOMContentLoaded', () => {
+  editModal = new bootstrap.Modal(document.getElementById('editModal'));
+
+  document.querySelectorAll('.btn-edit-media').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ds = btn.dataset;
+
+      // Fill common fields
+      document.getElementById('edit_id').value = ds.id || '';
+      document.getElementById('edit_name').value = ds.name || '';
+      document.getElementById('edit_description').value = ds.description || '';
+      document.getElementById('edit_duration').value = ds.duration || 0;
+
+      // Toggle webpage fields
+      const isWeb = (ds.type || '').toLowerCase() === 'webpage';
+      document.getElementById('edit_webpage_fields').style.display = isWeb ? '' : 'none';
+
+      // Toggle video fields
+      const isVideo = (ds.type || '').toLowerCase() === 'video';
+      document.getElementById('edit_video_fields').style.display = isVideo ? '' : 'none';
+      const resetDurationBtn = document.getElementById('edit_reset_video_duration');
+      const durationHelp = document.getElementById('edit_duration_help');
+      const detectedSeconds = parseFloat(ds.durationSeconds || '0') || 0;
+      document.getElementById('edit_duration').dataset.detectedSeconds = detectedSeconds || '';
+      if (resetDurationBtn) resetDurationBtn.style.display = (isVideo && detectedSeconds > 0) ? '' : 'none';
+      if (durationHelp) {
+        durationHelp.textContent = (isVideo && detectedSeconds > 0)
+          ? `Detected video length: ${Math.ceil(detectedSeconds)}s.`
+          : '';
+      }
+      if (isVideo) {
+        document.getElementById('edit_audio_enabled').checked = (ds.audioEnabled !== 'false');
+      }
+
+      if (isWeb) {
+        document.getElementById('edit_url').value = ds.url || '';
+        document.getElementById('edit_refresh_interval').value = ds.refresh || 0;
+        document.getElementById('edit_scrolling').value = (ds.scrolling === 'true') ? 'true' : 'false';
+      }
+
+      editModal.show();
+    });
+  });
+
+  // Thumbnail click -> Preview
+  document.querySelectorAll('.preview-trigger').forEach(el => {
+    el.addEventListener('click', () => {
+      const type = el.dataset.mediaType;
+      const url = el.dataset.mediaUrl;
+      const container = document.getElementById('preview-container');
+      container.innerHTML = '';
+      if (type === 'image') {
+        container.innerHTML = `<img src="${url}" class="img-fluid" style="max-height: 70vh;" alt="Preview">`;
+      } else if (type === 'video') {
+        container.innerHTML = `<video src="${url}" controls autoplay style="max-height: 70vh; max-width: 100%;" class="img-fluid"></video>`;
+      } else if (type === 'webpage') {
+        container.innerHTML = `<iframe src="${url}" style="width: 100%; height: 70vh; border: none;"></iframe>`;
+      } else {
+        container.innerHTML = `<div class="text-white p-4">Unsupported media type</div>`;
+      }
+      const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+      modal.show();
+    });
+  });
+
+  // Copy URL button: use window.location.origin for relative paths
+  document.querySelectorAll('.copy-url-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const abs = btn.dataset.contentAbsolute; // for webpages
+      const rel = btn.dataset.contentPath;     // for images/videos (Flask path incl. script_root)
+      const toCopy = abs ? abs : new URL(rel, window.location.origin).href;
+      copyText(toCopy);
+    });
+  });
+
+  // Copy API button: always relative path -> absolute against current origin
+  document.querySelectorAll('.copy-api-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const path = btn.dataset.apiPath;
+      copyText(new URL(path, window.location.origin).href);
+    });
+  });
+});
+
+document.getElementById('edit_reset_video_duration')?.addEventListener('click', () => {
+  const input = document.getElementById('edit_duration');
+  const detected = parseFloat(input.dataset.detectedSeconds || '0') || 0;
+  if (detected > 0) input.value = Math.ceil(detected);
+});
+
+document.getElementById('editForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = document.getElementById('edit_id').value;
+  const payload = {
+    name: document.getElementById('edit_name').value || '',
+    description: document.getElementById('edit_description').value || '',
+    duration: parseInt(document.getElementById('edit_duration').value || '0', 10)
+  };
+
+  const webFields = document.getElementById('edit_webpage_fields');
+  if (webFields && webFields.style.display !== 'none') {
+    payload.url = document.getElementById('edit_url').value || '';
+    payload.refresh_interval = parseInt(document.getElementById('edit_refresh_interval').value || '0', 10);
+    payload.scrolling = (document.getElementById('edit_scrolling').value === 'true');
+  }
+
+  const videoFields = document.getElementById('edit_video_fields');
+  if (videoFields && videoFields.style.display !== 'none') {
+    payload.audio_enabled = !!document.getElementById('edit_audio_enabled').checked;
+  }
+
+  const res = await fetch(`/api/media/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json().catch(() => ({ status: 'error', message: 'Invalid server response' }));
+  if (res.ok && data.status === 'success') {
+    bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+    location.reload();
+  } else {
+    alert('Failed to save changes: ' + (data.message || res.statusText));
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Bulk selection + bulk delete
+// ---------------------------------------------------------------------------
+function selectedFolderPaths() {
+  return Array.from(document.querySelectorAll('.folder-select:checked'))
+    .map(cb => cb.dataset.folder || '')
+    .filter(Boolean);
+}
+
+function mediaRowsForSelectedFolders() {
+  const folders = selectedFolderPaths();
+  if (!folders.length) return [];
+  return Array.from(document.querySelectorAll('#mediaTable tbody tr[data-row-kind="media"]'))
+    .filter(row => {
+      const folder = row.dataset.folder || '';
+      return folders.some(path => folder === path || folder.startsWith(path + '/'));
+    });
+}
+
+function selectedMediaIds() {
+  const ids = new Set();
+  Array.from(document.querySelectorAll('.bulk-select:checked'))
+    .forEach(cb => {
+      const id = parseInt(cb.dataset.id, 10);
+      if (!Number.isNaN(id)) ids.add(id);
+    });
+  mediaRowsForSelectedFolders().forEach(row => {
+    const id = parseInt(row.dataset.id, 10);
+    if (!Number.isNaN(id)) ids.add(id);
+  });
+  return Array.from(ids);
+}
+
+function selectedVideoMediaIds() {
+  const ids = new Set();
+  Array.from(document.querySelectorAll('.bulk-select:checked'))
+    .filter(cb => cb.closest('tr')?.dataset.type === 'video')
+    .forEach(cb => {
+      const id = parseInt(cb.dataset.id, 10);
+      if (!Number.isNaN(id)) ids.add(id);
+    });
+  mediaRowsForSelectedFolders()
+    .filter(row => row.dataset.type === 'video')
+    .forEach(row => {
+      const id = parseInt(row.dataset.id, 10);
+      if (!Number.isNaN(id)) ids.add(id);
+    });
+  return Array.from(ids);
+}
+
+function refreshBulkBar() {
+  const ids = selectedMediaIds();
+  const bar = document.getElementById('bulkBar');
+  document.getElementById('bulkCount').textContent = ids.length;
+  bar.classList.toggle('active', ids.length > 0);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.bulk-select').forEach(cb => {
+    cb.addEventListener('change', refreshBulkBar);
+  });
+  const all = document.getElementById('bulkSelectAll');
+  if (all) {
+    all.addEventListener('change', () => {
+      document.querySelectorAll('.bulk-select,.folder-select').forEach(cb => {
+        const row = cb.closest('tr');
+        if (row && row.style.display !== 'none') cb.checked = all.checked;
+      });
+      refreshBulkBar();
+    });
+  }
+  document.getElementById('bulkClearBtn')?.addEventListener('click', () => {
+    document.querySelectorAll('.bulk-select,.folder-select').forEach(cb => cb.checked = false);
+    if (all) all.checked = false;
+    refreshBulkBar();
+  });
+  document.getElementById('bulkSetDurationBtn')?.addEventListener('click', async () => {
+    const ids = selectedMediaIds();
+    if (!ids.length) return;
+    const raw = prompt(`Set duration (seconds) for ${ids.length} item(s):`, '10');
+    if (raw === null) return;
+    const dur = parseInt(raw, 10);
+    if (!Number.isFinite(dur) || dur < 0) { toast('Invalid duration', 'error'); return; }
+    let ok = 0, fail = 0;
+    for (const id of ids) {
+      const res = await fetch(`/api/media/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duration: dur })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.status === 'success') ok++; else fail++;
+    }
+    toast(`Updated ${ok}; errors ${fail}`, fail ? 'error' : 'success');
+    setTimeout(() => location.reload(), 500);
+  });
+  document.getElementById('bulkUseVideoLengthBtn')?.addEventListener('click', async () => {
+    const ids = selectedVideoMediaIds();
+    if (!ids.length) { toast('No selected videos', 'error'); return; }
+    if (!confirm(`Reset ${ids.length} selected video media item(s) to detected video length?`)) return;
+    let ok = 0, fail = 0;
+    for (const id of ids) {
+      const res = await fetch(`/api/media/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duration: 'detected' })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.status === 'success') ok++; else fail++;
+    }
+    toast(`Updated ${ok}; errors ${fail}`, fail ? 'error' : 'success');
+    setTimeout(() => location.reload(), 500);
+  });
+  document.getElementById('bulkDeleteBtn')?.addEventListener('click', async () => {
+    const ids = selectedMediaIds();
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} media item(s)?\n\nItems referenced by playlists will be skipped — re-run with "force" to delete those too.`)) return;
+    let res = await fetch('/api/media/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    let data = await res.json().catch(() => ({}));
+    let inUse = (data.results || []).filter(r => r.status === 'in_use');
+    if (inUse.length) {
+      if (confirm(`${inUse.length} item(s) are still used by playlists. Delete them anyway (force)?`)) {
+        const forceIds = inUse.map(r => r.id);
+        res = await fetch('/api/media/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: forceIds, force: true })
+        });
+        const data2 = await res.json().catch(() => ({}));
+        data.results = (data.results || [])
+          .filter(r => r.status !== 'in_use')
+          .concat(data2.results || []);
+      }
+    }
+    const ok    = (data.results || []).filter(r => r.status === 'deleted').length;
+    const fail  = (data.results || []).filter(r => !['deleted','in_use'].includes(r.status)).length;
+    const skip  = (data.results || []).filter(r => r.status === 'in_use').length;
+    toast(`Deleted ${ok}; skipped ${skip}; errors ${fail}`,
+          fail ? 'error' : (skip ? 'info' : 'success'));
+    setTimeout(() => location.reload(), 600);
+  });
+
+  // -------------------------------------------------------------------------
+  // Tags: per-row chips + edit, bulk tag editor, tag filter + cloud
+  // -------------------------------------------------------------------------
+  function renderTagCell(cell) {
+    const raw = cell.dataset.tags || '';
+    const tags = raw.split(',').map(t => t.trim()).filter(Boolean);
+    const chips = cell.querySelector('.tag-chips');
+    chips.innerHTML = tags.length
+      ? tags.map(t => `<span class="badge bg-info-subtle text-dark border me-1 tag-chip" data-tag="${t}">${t}</span>`).join('')
+      : '<span class="text-muted">—</span>';
+    chips.querySelectorAll('.tag-chip').forEach(el => {
+      el.style.cursor = 'pointer';
+      el.title = `Filter by "${el.dataset.tag}"`;
+      el.addEventListener('click', () => {
+        document.getElementById('tagFilterInput').value = el.dataset.tag;
+        applyTagFilter();
+      });
+    });
+  }
+  document.querySelectorAll('.media-tags-cell').forEach(renderTagCell);
+
+  document.querySelectorAll('.edit-tags-btn').forEach(btn => {
+    btn.addEventListener('click', async (ev) => {
+      const cell = ev.currentTarget.closest('.media-tags-cell');
+      const id = cell.dataset.id;
+      const cur = (cell.dataset.tags || '').split(',').filter(Boolean).join(', ');
+      const ans = prompt('Tags (comma-separated; lowercase, ≤32 chars each):', cur);
+      if (ans === null) return;
+      const r = await fetch(`/api/media/${id}/tags`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags: ans })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (j.status !== 'success') { toast(j.message || 'Save failed', 'error'); return; }
+      cell.dataset.tags = (j.tags || []).join(',');
+      renderTagCell(cell);
+      toast('Tags saved', 'success');
+      loadTagCloud();
+    });
+  });
+
+  document.getElementById('bulkTagBtn')?.addEventListener('click', async () => {
+    const ids = selectedMediaIds();
+    if (!ids.length) return;
+    const mode = prompt(
+      `Bulk tag editor for ${ids.length} item(s).\n\nEnter one of:\n` +
+      `  +tag1,tag2     (add)\n  -tag1,tag2     (remove)\n  =tag1,tag2     (replace all)`,
+      '+');
+    if (mode === null) return;
+    const op = mode.trim().charAt(0);
+    const list = mode.trim().slice(1).split(',').map(t => t.trim()).filter(Boolean);
+    const body = { ids };
+    if (op === '+') body.add = list;
+    else if (op === '-') body.remove = list;
+    else if (op === '=') body.replace_with = list;
+    else { toast('Prefix must be +, - or =', 'error'); return; }
+    const r = await fetch('/api/media/bulk-tag', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const j = await r.json().catch(() => ({}));
+    const ok = (j.results || []).filter(x => x.status === 'ok').length;
+    toast(`Updated ${ok}/${ids.length}`, ok ? 'success' : 'error');
+    setTimeout(() => location.reload(), 500);
+  });
+
+  document.getElementById('bulkRenameBtn')?.addEventListener('click', async () => {
+    const ids = selectedMediaIds();
+    if (!ids.length) return;
+    const find = prompt(`Find (literal substring; blank = no replace) for ${ids.length} item(s):`, '');
+    if (find === null) return;
+    const repl = prompt('Replace with:', '');
+    if (repl === null) return;
+    const prefix = prompt('Prefix to add (blank = none):', '');
+    if (prefix === null) return;
+    const suffix = prompt('Suffix to add (blank = none):', '');
+    if (suffix === null) return;
+    const r = await fetch('/api/media/bulk-rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, find, replace: repl, prefix, suffix })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (j.status !== 'success') { toast(j.message || 'Rename failed', 'error'); return; }
+    const renamed = (j.results || []).filter(x => x.status === 'renamed').length;
+    toast(`Renamed ${renamed}/${ids.length}`, renamed ? 'success' : 'info');
+    setTimeout(() => location.reload(), 500);
+  });
+
+  function applyTagFilter() { filterTable(); }
+  ['typeFilterInput','tagFilterInput','thumbFilterInput','durationFilterInput'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', filterTable);
+  });
+  document.getElementById('mediaFilterReset')?.addEventListener('click', () => {
+    ['filterInput','typeFilterInput','tagFilterInput','thumbFilterInput','durationFilterInput'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    filterTable();
+  });
+
+  async function loadTagCloud() {
+    try {
+      const r = await fetch('/api/media/tags');
+      const j = await r.json();
+      if (j.status !== 'success') return;
+      // Populate the dropdown from the unique tag list so users don't have
+      // to type a tag name to filter — picking from a list is faster and
+      // avoids typos.
+      const sel = document.getElementById('tagFilterInput');
+      if (sel) {
+        const current = sel.value;
+        sel.innerHTML = '<option value="">All tags</option>';
+        j.tags.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.tag;
+          opt.textContent = `${t.tag} (${t.count})`;
+          sel.appendChild(opt);
+        });
+        if (current) sel.value = current;
+      }
+      const cloud = document.getElementById('tagCloud');
+      if (!j.tags.length) { cloud.innerHTML = '<em>No tags yet</em>'; return; }
+      cloud.innerHTML = 'Tags: ' + j.tags.slice(0, 25).map(t =>
+        `<a href="#" class="me-2 tagcloud-link" data-tag="${t.tag}">${t.tag} <span class="text-muted">(${t.count})</span></a>`
+      ).join('');
+      cloud.querySelectorAll('.tagcloud-link').forEach(a => {
+        a.addEventListener('click', (e) => {
+          e.preventDefault();
+          document.getElementById('tagFilterInput').value = a.dataset.tag;
+          applyTagFilter();
+        });
+      });
+    } catch {}
+  }
+  loadTagCloud();
+});
+
+// ---------------------------------------------------------------------------
+// Maintenance: orphan scan + cleanup
+// ---------------------------------------------------------------------------
+function fmtBytes(n) {
+  if (n == null) return '—';
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(0) + ' KB';
+  return (n/1024/1024).toFixed(1) + ' MB';
+}
+
+async function runOrphanScan(cleanup) {
+  const status   = document.getElementById('orphanStatus');
+  const results  = document.getElementById('orphanResults');
+  const cleanBtn = document.getElementById('orphanCleanupBtn');
+  status.textContent = cleanup ? 'Cleaning…' : 'Scanning…';
+  const url = '/api/media/orphans' + (cleanup ? '?cleanup=1' : '');
+  const res = await fetch(url);
+  const data = await res.json().catch(() => ({}));
+  if (data.status !== 'success') {
+    status.textContent = 'Error';
+    results.innerHTML = `<div class="text-danger">${data.message || 'Scan failed.'}</div>`;
+    return;
+  }
+  const missing = data.missing_rows || [];
+  const orphans = data.orphan_files || [];
+  let html = '';
+  html += `<h6 class="mt-2">Missing files (${missing.length})</h6>`;
+  if (missing.length) {
+    html += '<ul class="mb-2">' + missing.map(r =>
+      `<li><code>${r.file_path}</code> — <em>${r.name}</em> (#${r.id})</li>`
+    ).join('') + '</ul>';
+  } else {
+    html += '<div class="text-success small">All media rows have files on disk.</div>';
+  }
+  html += `<h6 class="mt-3">Orphan files on disk (${orphans.length})</h6>`;
+  if (orphans.length) {
+    html += '<ul class="mb-2">' + orphans.slice(0, 200).map(o =>
+      `<li><code>${o.rel_path}</code> — ${fmtBytes(o.size)}</li>`
+    ).join('') + '</ul>';
+    if (orphans.length > 200) {
+      html += `<div class="text-muted small">… and ${orphans.length - 200} more</div>`;
+    }
+  } else {
+    html += '<div class="text-success small">No orphan files found.</div>';
+  }
+  if (cleanup) {
+    html += `<div class="alert alert-success mt-2 mb-0 py-2 px-3">Removed ${data.cleanup_removed} orphan file(s).</div>`;
+  }
+  results.innerHTML = html;
+  cleanBtn.disabled = (orphans.length === 0);
+  status.textContent = cleanup
+    ? `Cleaned ${data.cleanup_removed} file(s)`
+    : `Scan complete: ${missing.length} missing, ${orphans.length} orphans`;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btnMaintenance')?.addEventListener('click', () => {
+    new bootstrap.Modal(document.getElementById('maintenanceModal')).show();
+  });
+  document.getElementById('orphanScanBtn')?.addEventListener('click', () => runOrphanScan(false));
+  document.getElementById('orphanCleanupBtn')?.addEventListener('click', () => {
+    if (confirm('Permanently delete the listed orphan files? Database rows are not affected.')) {
+      runOrphanScan(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Folder sidebar — fully driven by /api/media/library-folders.
+//   - Click a folder to filter the table to that folder (recursive).
+//   - "New" button creates a folder by tagging the next upload at that path
+//     OR moves the currently-selected items into a new path (if any).
+//   - Hovering a folder reveals rename/delete actions.
+// Folder paths are slash-separated, root is the empty string ''.
+// ---------------------------------------------------------------------------
+const Folders = (function () {
+  let current = '';   // currently active folder filter ('' = all)
+  let tree    = [];   // [{path,name,depth,item_count,recursive_count}]
+  let tableFolderRows = [];
+
+  async function fetchTree() {
+    try {
+      const r = await fetch('/api/media/library-folders');
+      const d = await r.json();
+      tree = (d && d.folders) ? d.folders : [];
+    } catch (e) {
+      console.error('folders fetch failed', e);
+      tree = [];
+    }
+    render();
+    renderExplorerRows();
+    refreshDatalist();
+  }
+
+  function parentPath(path) {
+    if (!path || !path.includes('/')) return '';
+    return path.substring(0, path.lastIndexOf('/'));
+  }
+
+  function folderRowHtml(f) {
+    const parent = parentPath(f.path);
+    return '<tr class="folder-row" data-row-kind="folder" data-path="' + escAttr(f.path) + '"' +
+      ' data-parent-path="' + escAttr(parent) + '" data-name="' + escAttr((f.name || '').toLowerCase()) + '">' +
+      '<td><input type="checkbox" class="form-check-input folder-select" data-folder="' + escAttr(f.path) + '"></td>' +
+      '<td><div class="media-folder-icon"><i class="bi bi-folder-fill"></i></div></td>' +
+      '<td><button type="button" class="btn btn-link p-0 fw-semibold folder-open-btn" data-folder-open="' + escAttr(f.path) + '">' +
+      escHtml(f.name || f.path) + '</button><div class="small text-muted">' + escHtml(f.path) + '</div></td>' +
+      '<td><span class="badge bg-warning text-dark">folder</span></td>' +
+      '<td class="small text-muted">' + (parent ? '<i class="bi bi-folder2"></i> ' + escHtml(parent) : '<span class="text-muted">Root</span>') + '</td>' +
+      '<td class="small text-muted">-</td>' +
+      '<td class="text-end small">-</td>' +
+      '<td class="text-end small">' + (f.item_count || 0) + ' item(s)</td>' +
+      '<td class="small text-muted">' + (f.recursive_count || 0) + ' total</td>' +
+      '<td class="text-end"><div class="btn-group btn-group-sm">' +
+      '<button type="button" class="btn btn-outline-primary" data-folder-open="' + escAttr(f.path) + '">Open</button>' +
+      '<button type="button" class="btn btn-outline-secondary" data-folder-rename="' + escAttr(f.path) + '">Rename</button>' +
+      '<button type="button" class="btn btn-outline-danger" data-folder-delete="' + escAttr(f.path) + '">Delete</button>' +
+      '</div></td>' +
+      '</tr>';
+  }
+
+  function renderExplorerRows() {
+    tableFolderRows.forEach(row => row.remove());
+    tableFolderRows = [];
+    const tbody = document.getElementById('mediaTableBody');
+    if (!tbody) return;
+    const html = tree.filter(f => f.path).map(folderRowHtml).join('');
+    if (html) tbody.insertAdjacentHTML('afterbegin', html);
+    tableFolderRows = Array.from(tbody.querySelectorAll('tr.folder-row'));
+    tableFolderRows.forEach(row => {
+      row.querySelectorAll('.folder-select').forEach(cb => {
+        cb.addEventListener('change', refreshBulkBar);
+      });
+      row.querySelectorAll('[data-folder-open]').forEach(btn => {
+        btn.addEventListener('click', () => setCurrent(btn.dataset.folderOpen || ''));
+      });
+      row.querySelectorAll('[data-folder-rename]').forEach(btn => {
+        btn.addEventListener('click', () => renameFolder(btn.dataset.folderRename || ''));
+      });
+      row.querySelectorAll('[data-folder-delete]').forEach(btn => {
+        btn.addEventListener('click', () => deleteFolder(btn.dataset.folderDelete || ''));
+      });
+    });
+    filterTable();
+  }
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function escAttr(s) {
+    return escHtml(s);
+  }
+
+  function render() {
+    const root = document.getElementById('folderTree');
+    if (!root) return;
+    root.innerHTML = '';
+
+    // Always include an "All media" entry on top
+    const all = document.createElement('div');
+    all.className = 'folder-item' + (current === '' ? ' active' : '');
+    all.innerHTML = '<i class="bi bi-collection"></i><span>All media</span>' +
+                    '<span class="fcount">' + totalCount() + '</span>';
+    all.addEventListener('click', () => setCurrent(''));
+    root.appendChild(all);
+
+    // "Root only" — show items that have no folder set (Media.folder == '').
+    // Distinct from "All media" which includes everything regardless of
+    // folder. Uses the synthetic root row from the server when available
+    // for an accurate count.
+    const rootRow = tree.find(f => f.path === '');
+    const rootOnly = document.createElement('div');
+    rootOnly.className = 'folder-item' + (current === '__root__' ? ' active' : '');
+    rootOnly.innerHTML = '<i class="bi bi-house"></i><span>Root only</span>' +
+                         '<span class="fcount">' + (rootRow ? rootRow.item_count : 0) + '</span>';
+    rootOnly.addEventListener('click', () => setCurrent('__root__'));
+    root.appendChild(rootOnly);
+
+    // Skip the synthetic root row from server (path === '')
+    tree.filter(f => f.path !== '').forEach(f => {
+      const el = document.createElement('div');
+      el.className = 'folder-item' + (current === f.path ? ' active' : '');
+      const indent = (f.depth - 1) * 12;
+      el.style.paddingLeft = (4 + indent) + 'px';
+      el.innerHTML =
+        '<i class="bi bi-folder2"></i>' +
+        '<span class="fname"></span>' +
+        '<span class="fcount"></span>' +
+        '<span class="factions">' +
+          '<button title="Rename" data-act="rename"><i class="bi bi-pencil"></i></button>' +
+          '<button title="Delete" data-act="delete"><i class="bi bi-trash"></i></button>' +
+        '</span>';
+      el.querySelector('.fname').textContent = f.name;
+      el.querySelector('.fcount').textContent = f.recursive_count;
+      el.addEventListener('click', (ev) => {
+        if (ev.target.closest('button')) return;
+        setCurrent(f.path);
+      });
+      el.querySelector('[data-act="rename"]').addEventListener('click', () => renameFolder(f.path));
+      el.querySelector('[data-act="delete"]').addEventListener('click', () => deleteFolder(f.path));
+      root.appendChild(el);
+    });
+  }
+
+  function refreshDatalist() {
+    // Populate the upload-modal folder dropdown (and any datalist that may
+    // still exist for backward compatibility) from the current tree.
+    const folders = tree.filter(f => f.path).map(f => f.path);
+    const dl = document.getElementById('uploadFolderList');
+    if (dl) {
+      dl.innerHTML = '';
+      folders.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        dl.appendChild(opt);
+      });
+    }
+    const sel = document.getElementById('uploadFolderSelect');
+    const hidden = document.getElementById('uploadFolder');
+    if (sel) {
+      const prev = hidden ? hidden.value : '';
+      sel.innerHTML = '<option value="">— Root —</option>';
+      folders.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        // Indent nested folders so the hierarchy is obvious.
+        const depth = p.split('/').length - 1;
+        opt.textContent = '\u00a0\u00a0'.repeat(depth) + (depth ? '↳ ' : '') + p;
+        sel.appendChild(opt);
+      });
+      if (prev && folders.includes(prev)) sel.value = prev;
+    }
+  }
+
+  function totalCount() {
+    const r = tree.find(f => f.path === '');
+    return r ? r.recursive_count : 0;
+  }
+
+  function setCurrent(path) {
+    current = path || '';
+    render();
+    const bc = document.getElementById('folderBreadcrumb');
+    if (bc) {
+      bc.innerHTML = breadcrumbHtml();
+    }
+    filterTable();
+  }
+
+  function breadcrumbHtml() {
+    if (!current) return '<span class="text-muted">All media</span>';
+    if (current === '__root__') return '<span class="text-muted">Root</span>';
+    const parts = current.split('/');
+    let acc = '';
+    const links = ['<a href="#" data-folder-bc="">All media</a>'];
+    parts.forEach(part => {
+      acc = acc ? acc + '/' + part : part;
+      links.push('<a href="#" data-folder-bc="' + escAttr(acc) + '">' + escHtml(part) + '</a>');
+    });
+    return links.join(' <span class="text-muted">/</span> ');
+  }
+
+  async function createFolder() {
+    const path = prompt('New folder path (use / to nest, e.g. campaigns/winter):', current ? current + '/' : '');
+    if (!path) return;
+    const ids = (typeof selectedMediaIds === 'function') ? selectedMediaIds() : [];
+    if (ids.length) {
+      // Selection + create -> move them in (also implicitly creates the folder).
+      const ok = await moveItems(ids, path);
+      if (ok) toast('Created and moved ' + ids.length + ' item(s) into "' + path + '"', 'success');
+    } else {
+      // No selection -> ask the server to persist an empty folder so it
+      // shows up in the sidebar and survives reloads.
+      const r = await fetch('/api/media/folder-create', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: path })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d.status !== 'success') {
+        toast('Create folder failed: ' + (d.message || 'unknown'), 'error');
+        return;
+      }
+      const fld = document.getElementById('uploadFolder');
+      if (fld) fld.value = path;
+      toast('Folder "' + path + '" created.', 'success');
+    }
+    await fetchTree();
+    setCurrent(path);
+  }
+
+  async function moveItems(ids, target) {
+    const r = await fetch('/api/media/move', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids, folder: target || '' })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (d.status === 'success') return true;
+    toast('Move failed: ' + (d.message || 'unknown'), 'error');
+    return false;
+  }
+
+  async function renameFolder(src) {
+    const dst = prompt('Rename folder "' + src + '" to:', src);
+    if (!dst || dst === src) return;
+    const r = await fetch('/api/media/folder-rename', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: src, to: dst })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (d.status === 'success') {
+      toast('Renamed (' + d.affected + ' item(s))', 'success');
+      setTimeout(() => location.reload(), 500);
+    } else {
+      toast('Rename failed: ' + (d.message || 'unknown'), 'error');
+    }
+  }
+
+  async function deleteFolder(src) {
+    if (!confirm('Delete folder "' + src + '"?\n\nFiles inside are kept and moved to the parent. Use "Delete selected" to remove files.')) return;
+    const parent = src.includes('/') ? src.substring(0, src.lastIndexOf('/')) : '';
+    const r = await fetch('/api/media/folder-delete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: src, into: parent })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (d.status === 'success') {
+      toast('Folder removed (' + d.reparented + ' item(s) re-parented)', 'success');
+      setTimeout(() => location.reload(), 500);
+    } else {
+      toast('Delete failed: ' + (d.message || 'unknown'), 'error');
+    }
+  }
+
+  return {
+    init: function () {
+      document.getElementById('folderNewBtn')?.addEventListener('click', createFolder);
+      // Re-apply folder filter when name filter changes
+      document.getElementById('filterInput')?.addEventListener('input', filterTable);
+      document.getElementById('folderBreadcrumb')?.addEventListener('click', (ev) => {
+        const link = ev.target.closest('[data-folder-bc]');
+        if (!link) return;
+        ev.preventDefault();
+        setCurrent(link.dataset.folderBc || '');
+      });
+      fetchTree();
+    },
+    moveItems,
+    fetchTree,
+    current: () => current,
+  };
+})();
+window.Folders = Folders;
+document.addEventListener('DOMContentLoaded', () => Folders.init());
+
+// Bulk "Move to folder…" wired through the existing bulk bar
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('bulkMoveBtn')?.addEventListener('click', async () => {
+    const ids = (typeof selectedMediaIds === 'function') ? selectedMediaIds() : [];
+    if (!ids.length) { toast('Select at least one item first', 'error'); return; }
+    const target = prompt('Move ' + ids.length + ' item(s) to folder (blank = root):', Folders.current());
+    if (target === null) return;
+    const ok = await Folders.moveItems(ids, target.trim());
+    if (ok) {
+      toast('Moved ' + ids.length + ' item(s)', 'success');
+      setTimeout(() => location.reload(), 500);
+    }
+  });
+});
+</script>
+{% endblock %}

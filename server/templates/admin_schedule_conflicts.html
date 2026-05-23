@@ -1,0 +1,219 @@
+{% extends 'base.html' %}
+
+{% block title %}Schedule Conflicts - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-calendar2-x"></i> Schedule Conflicts</h1>
+    <div class="d-flex gap-2 align-items-center">
+        <label for="daysSel" class="small text-muted mb-0">Look ahead:</label>
+        <select id="daysSel" class="form-select form-select-sm" style="width:auto;">
+            <option value="1">Today only</option>
+            <option value="3">3 days</option>
+            <option value="7" selected>7 days</option>
+            <option value="14">14 days</option>
+            <option value="30">30 days</option>
+        </select>
+        <button id="reloadBtn" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-clockwise"></i> Reload
+        </button>
+    </div>
+</div>
+
+<div class="alert alert-info py-2 small">
+    <i class="bi bi-info-circle"></i>
+    Schedules are evaluated per display: a schedule attached to a group also
+    covers every display in that group's descendant tree. Two schedules
+    "conflict" when they want to play on the same display at the same time
+    of day on the same day. The schedule with the higher
+    <strong>priority</strong> wins (ties broken by lower id); the other is
+    <strong>shadowed</strong>. Use this page to spot accidental overlaps
+    before they go live.
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-md-3">
+        <div class="card"><div class="card-body py-2">
+            <div class="text-muted small">Displays with schedules</div>
+            <div class="h4 mb-0" id="statDisplays">…</div>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card"><div class="card-body py-2">
+            <div class="text-muted small">Conflicts in window</div>
+            <div class="h4 mb-0" id="statConflicts">…</div>
+        </div></div>
+    </div>
+    <div class="col-md-6">
+        <div class="card"><div class="card-body py-2">
+            <div class="text-muted small">Window</div>
+            <div class="h6 mb-0" id="statWindow">…</div>
+        </div></div>
+    </div>
+</div>
+
+<div id="results">
+    <div class="text-center text-muted py-5">Loading…</div>
+</div>
+
+<style>
+.tl-track { position: relative; height: 28px; background: #f4f6f9;
+            border: 1px solid #dee2e6; border-radius: 4px; overflow: hidden; }
+.tl-block { position: absolute; top: 0; bottom: 0; padding: 2px 6px;
+            font-size: 11px; color: #fff; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis;
+            border-right: 1px solid rgba(255,255,255,0.4); cursor: default; }
+.tl-block.shadowed { opacity: 0.55; background-image: repeating-linear-gradient(
+    45deg, transparent, transparent 4px, rgba(0,0,0,0.18) 4px, rgba(0,0,0,0.18) 8px); }
+.tl-conflict { position: absolute; top: -2px; bottom: -2px;
+               border: 2px solid #dc3545; border-radius: 4px;
+               pointer-events: none; }
+.tl-axis { display: flex; justify-content: space-between;
+           font-size: 10px; color: #6c757d; padding: 2px 0; }
+.tl-day-row { display: grid; grid-template-columns: 100px 1fr;
+              gap: 8px; align-items: center; margin-bottom: 4px; }
+.tl-day-label { font-size: 12px; color: #495057; }
+.sched-swatch { display: inline-block; width: 10px; height: 10px;
+                margin-right: 4px; border-radius: 2px; vertical-align: middle; }
+</style>
+
+<script>
+function esc(s) { return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+
+// Stable per-schedule color (HSL hash → bright distinguishable hue).
+function colorFor(id) {
+    const h = (id * 47) % 360;
+    return `hsl(${h}, 60%, 45%)`;
+}
+
+function tToSec(s) {
+    if (!s) return 0;
+    const [h, m, sec] = s.split(':').map(n => parseInt(n, 10));
+    return (h * 3600) + (m * 60) + (sec || 0);
+}
+
+function pct(sec) { return (sec / 86400) * 100; }
+
+function renderDay(day, schedules, schedConflictsForDay) {
+    // Build blocks: one per (schedule, window) on this day.
+    const blocks = [];
+    const dow = (new Date(day + 'T00:00:00')).getDay() || 7; // 1..7
+    for (const s of schedules) {
+        if (s.start_date && s.start_date > day) continue;
+        if (s.end_date && s.end_date < day) continue;
+        if (s.days_of_week) {
+            const allowed = s.days_of_week.split(',').map(t => parseInt(t.trim(), 10)).filter(Number.isInteger);
+            if (allowed.length && !allowed.includes(dow)) continue;
+        }
+        const ss = s.start_time || '00:00:00';
+        const ee = s.end_time   || '23:59:59';
+        const a = tToSec(ss), b = tToSec(ee);
+        const wins = (a <= b) ? [[a, b]] : [[a, 86399], [0, b]];
+        for (const [w0, w1] of wins) {
+            blocks.push({sched: s, w0, w1});
+        }
+    }
+    if (!blocks.length) return '';
+
+    // Mark which schedule ids are shadowed in any conflict on this day.
+    const shadowed = new Set();
+    for (const c of schedConflictsForDay) shadowed.add(c.shadowed_id);
+
+    const blockHtml = blocks.map(b => {
+        const left = pct(b.w0);
+        const width = Math.max(0.5, pct(b.w1 - b.w0));
+        const color = colorFor(b.sched.id);
+        const cls = shadowed.has(b.sched.id) ? 'tl-block shadowed' : 'tl-block';
+        const title = `${b.sched.name} (priority ${b.sched.priority}) — ` +
+                      `${b.sched.start_time || '00:00'}–${b.sched.end_time || '23:59'}`;
+        return `<div class="${cls}" style="left:${left}%; width:${width}%; background:${color};" title="${esc(title)}">
+            ${esc(b.sched.name)}
+        </div>`;
+    }).join('');
+
+    const conflictHtml = schedConflictsForDay.map(c => {
+        const a = tToSec(c.start), b = tToSec(c.end);
+        const left = pct(a);
+        const width = Math.max(0.5, pct(b - a));
+        return `<div class="tl-conflict" style="left:${left}%; width:${width}%;"
+            title="Conflict ${esc(c.start)}–${esc(c.end)}: winner=#${c.winner_id}, shadowed=#${c.shadowed_id}"></div>`;
+    }).join('');
+
+    return `<div class="tl-day-row">
+        <div class="tl-day-label">${day}</div>
+        <div class="tl-track">${blockHtml}${conflictHtml}</div>
+    </div>`;
+}
+
+function renderDisplay(d) {
+    const conflictsByDay = {};
+    for (const c of d.conflicts) {
+        (conflictsByDay[c.day] = conflictsByDay[c.day] || []).push(c);
+    }
+
+    const days = Object.keys(conflictsByDay).sort();
+    // Always show today + the lookahead window even if no conflicts on a given day.
+    const allDays = [];
+    const fromD = new Date(WINDOW_FROM + 'T00:00:00');
+    for (let i = 0; i < WINDOW_DAYS; i++) {
+        const dt = new Date(fromD); dt.setDate(fromD.getDate() + i);
+        allDays.push(dt.toISOString().slice(0, 10));
+    }
+
+    const legend = d.schedules.map(s =>
+        `<span class="me-3"><span class="sched-swatch" style="background:${colorFor(s.id)}"></span>` +
+        `<code>#${s.id}</code> ${esc(s.name)} ` +
+        `<span class="text-muted">(p=${s.priority}${s.playlist_name ? `, ${esc(s.playlist_name)}` : ''})</span></span>`
+    ).join('');
+
+    const conflictBadge = d.conflicts.length
+        ? `<span class="badge bg-danger ms-2">${d.conflicts.length} conflict${d.conflicts.length === 1 ? '' : 's'}</span>`
+        : '<span class="badge bg-success ms-2">clear</span>';
+
+    const dayHtml = allDays.map(day => renderDay(day, d.schedules, conflictsByDay[day] || [])).join('');
+
+    return `<div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div><strong>${esc(d.name)}</strong> <span class="text-muted small">id=${d.id}</span> ${conflictBadge}</div>
+            <a href="/displays" class="btn btn-link btn-sm p-0">Manage display →</a>
+        </div>
+        <div class="card-body">
+            <div class="small mb-2">${legend}</div>
+            <div class="tl-axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+            ${dayHtml}
+        </div>
+    </div>`;
+}
+
+let WINDOW_FROM = null, WINDOW_DAYS = 7;
+
+async function load() {
+    const days = parseInt(document.getElementById('daysSel').value, 10);
+    document.getElementById('results').innerHTML =
+        '<div class="text-center text-muted py-5">Loading…</div>';
+    const r = await fetch('/api/schedule-conflicts?days=' + days);
+    const j = await r.json();
+    if (j.status !== 'success') {
+        document.getElementById('results').innerHTML =
+            `<div class="alert alert-danger">${esc(j.message || 'Failed to load')}</div>`;
+        return;
+    }
+    WINDOW_FROM = j.from;
+    WINDOW_DAYS = j.days_ahead;
+    document.getElementById('statDisplays').textContent  = j.total_displays;
+    document.getElementById('statConflicts').textContent = j.total_conflicts;
+    document.getElementById('statWindow').textContent    = `${j.from} → ${j.to} (${j.days_ahead} day${j.days_ahead === 1 ? '' : 's'})`;
+
+    if (!j.displays.length) {
+        document.getElementById('results').innerHTML =
+            '<div class="alert alert-info">No active schedules cover any displays in this tenant.</div>';
+        return;
+    }
+    document.getElementById('results').innerHTML = j.displays.map(renderDisplay).join('');
+}
+
+document.getElementById('daysSel').addEventListener('change', load);
+document.getElementById('reloadBtn').addEventListener('click', load);
+load();
+</script>
+{% endblock %}

@@ -1,0 +1,59 @@
+﻿{
+  "key": "weather",
+  "name": "Weather",
+  "version": "1.1.0",
+  "icon": "bi-cloud-sun-fill",
+  "description": "Shows current weather conditions using the free Open-Meteo API. No API key required.",
+  "permissions": ["network.fetch", "storage.local"],
+  "csp_origins": [
+    "https://api.open-meteo.com",
+    "https://geocoding-api.open-meteo.com"
+  ],
+  "schema": [
+    {
+      "name": "location",
+      "type": "string",
+      "label": "Location",
+      "description": "City name, zip/post code, or GPS coordinates (lat,lon).",
+      "placeholder": "e.g. New York  or  40.71,-74.00",
+      "default": "",
+      "group": "Location"
+    },
+    {
+      "name": "units",
+      "type": "select",
+      "label": "Units",
+      "description": "Temperature and wind speed units.",
+      "options": [
+        { "label": "Metric (Celsius, m/s)", "value": "metric" },
+        { "label": "Imperial (Fahrenheit, mph)", "value": "imperial" }
+      ],
+      "default": "imperial",
+      "group": "Location"
+    },
+    {
+      "name": "refresh_seconds",
+      "type": "integer",
+      "label": "Refresh Every (seconds)",
+      "description": "How often to re-fetch weather data. Minimum 60s recommended.",
+      "default": 600,
+      "group": "Location"
+    },
+    {
+      "name": "loop",
+      "type": "boolean",
+      "label": "Loop (stay on screen)",
+      "description": "Keep showing weather indefinitely without advancing.",
+      "default": false,
+      "group": "Playback"
+    },
+    {
+      "name": "duration",
+      "type": "integer",
+      "label": "Duration (seconds)",
+      "description": "How long to show this plugin before advancing. Ignored when Loop is on.",
+      "default": 30,
+      "group": "Playback"
+    }
+  ]
+}

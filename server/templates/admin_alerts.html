@@ -1,0 +1,282 @@
+{% extends 'base.html' %}
+
+{% block title %}System Alerts - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="h3 mb-0"><i class="bi bi-bell"></i> System Alerts</h1>
+        <div class="text-muted small">Security, display health, disk usage, and notification status.</div>
+    </div>
+    <div class="btn-group">
+        <a class="btn btn-sm btn-primary" href="{{ url_for('admin.admin_alert_notifications_page') }}">
+            <i class="bi bi-people"></i> Notification Recipients
+        </a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_alert_settings_page') }}">
+            <i class="bi bi-sliders"></i> Alert Settings
+        </a>
+    </div>
+</div>
+
+<div id="resultBox" class="alert" style="display:none;"></div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card h-100 border-danger-subtle">
+            <div class="card-body">
+                <div class="text-muted small">Active Display Outages</div>
+                <div class="display-6" id="sumActiveOutages">-</div>
+                <a class="small" href="{{ url_for('displays.displays') }}">Open display list</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100 border-warning-subtle">
+            <div class="card-body">
+                <div class="text-muted small">Security Events (24h)</div>
+                <div class="display-6" id="sumSecurity">-</div>
+                <div class="small text-muted" id="sumSecurityDetail"></div>
+                <a class="small" href="{{ url_for('audit.audit_page') }}">Open audit log</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100 border-info-subtle">
+            <div class="card-body">
+                <div class="text-muted small">Duplicate Clients (24h)</div>
+                <div class="display-6" id="sumDuplicateClients">-</div>
+                <a class="small" href="#recentListBox">Recent alert activity</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100" id="sumDiskCard">
+            <div class="card-body">
+                <div class="text-muted small">Disk Usage</div>
+                <div class="display-6" id="sumDisk">-</div>
+                <div class="small text-muted" id="sumDiskDetail"></div>
+                <a class="small" href="{{ url_for('settings_admin.admin_settings_page') }}?q=disk">Disk settings</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-people"></i> Notifications</h5>
+                <p class="text-muted small">Choose which users receive global and tenant-specific alerts.</p>
+                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.admin_alert_notifications_page') }}">Manage recipients</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-sliders"></i> Alert Rules</h5>
+                <p class="text-muted small">Configure offline thresholds, duplicate-client alerts, login blocking alerts, webhooks, digests, and snooze schedules.</p>
+                <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.admin_alert_settings_page') }}">Edit alert settings</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-envelope-gear"></i> SMTP Server</h5>
+                <p class="text-muted small">SMTP sender, host, port, username, password, and STARTTLS live in System Settings.</p>
+                <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('settings_admin.admin_settings_page') }}?q=alerts.smtp">Open SMTP settings</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong><i class="bi bi-bell-slash"></i> Snoozed Displays</strong>
+                <button id="snoozeRefreshBtn" class="btn btn-sm btn-outline-secondary">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div id="snoozeListBox"><div class="text-muted small">Loading...</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong><i class="bi bi-clock-history"></i> Recent Alert Activity</strong>
+                <div class="btn-group btn-group-sm">
+                    <button id="testBtn" class="btn btn-outline-primary">Send test</button>
+                    <button id="sweepBtn" class="btn btn-outline-secondary">Run sweep</button>
+                    <button id="recentRefreshBtn" class="btn btn-outline-secondary">Refresh</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="recentListBox"><div class="text-muted small">Loading...</div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showResult(kind, html) {
+    const box = document.getElementById('resultBox');
+    box.style.display = 'block';
+    box.className = 'alert alert-' + kind;
+    box.innerHTML = html;
+}
+
+async function loadSummary() {
+    try {
+        const r = await fetch('/api/alerts/summary');
+        const j = await r.json();
+        if (j.status !== 'success') return;
+        const s = j.summary || {};
+        document.getElementById('sumActiveOutages').textContent = s.active_outages ?? 0;
+        const securityTotal = (s.login_blocks_24h || 0) + (s.failed_logins_24h || 0);
+        document.getElementById('sumSecurity').textContent = securityTotal;
+        document.getElementById('sumSecurityDetail').textContent =
+            `${s.login_blocks_24h || 0} blocked · ${s.failed_logins_24h || 0} failed`;
+        document.getElementById('sumDuplicateClients').textContent = s.duplicate_clients_24h ?? 0;
+        const disk = s.disk || {};
+        const diskCard = document.getElementById('sumDiskCard');
+        diskCard.classList.remove('border-success', 'border-warning', 'border-danger', 'border-secondary');
+        diskCard.classList.add(disk.state === 'critical' ? 'border-danger'
+            : disk.state === 'warning' ? 'border-warning'
+            : disk.state === 'ok' ? 'border-success' : 'border-secondary');
+        document.getElementById('sumDisk').textContent = disk.used_pct == null ? '-' : `${disk.used_pct}%`;
+        document.getElementById('sumDiskDetail').textContent =
+            disk.state === 'unknown' ? 'No disk probe yet' : `warn ${disk.warn_pct}% · block ${disk.block_pct}%`;
+    } catch {}
+}
+
+async function loadSnoozes() {
+    const box = document.getElementById('snoozeListBox');
+    try {
+        const r = await fetch('/api/alerts/snoozes');
+        const j = await r.json();
+        if (j.status !== 'success') {
+            box.innerHTML = '<div class="text-danger small">Error: ' + (j.message || '') + '</div>';
+            return;
+        }
+        const rows = j.snoozes || [];
+        if (!rows.length) {
+            box.innerHTML = '<div class="text-muted small">No active snoozes.</div>';
+            return;
+        }
+        box.innerHTML = '<div class="list-group list-group-flush">' + rows.map(s => {
+            const until = s.snoozed_until ? new Date(s.snoozed_until * 1000).toLocaleString() : '';
+            return `<div class="list-group-item px-0">
+                <div class="d-flex justify-content-between gap-2">
+                    <div>
+                        <a href="/display/${s.id}">${s.name || ('#' + s.id)}</a>
+                        <div class="small text-muted">${s.location || ''}</div>
+                        <div class="small text-muted">${s.reason || ''}</div>
+                    </div>
+                    <div class="text-end">
+                        <div class="small text-muted">${until}</div>
+                        <button class="btn btn-sm btn-outline-danger mt-1" data-clear="${s.id}">Clear</button>
+                    </div>
+                </div>
+            </div>`;
+        }).join('') + '</div>';
+        box.querySelectorAll('button[data-clear]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (!confirm('Clear alert snooze for this display?')) return;
+                const rr = await fetch('/api/alerts/snoozes/' + btn.dataset.clear, {method: 'DELETE'});
+                const jj = await rr.json();
+                if (jj.status !== 'success') alert('Failed: ' + (jj.message || rr.statusText));
+                loadSnoozes();
+            });
+        });
+    } catch (e) {
+        box.innerHTML = '<div class="text-danger small">Failed to load snoozes: ' + e + '</div>';
+    }
+}
+
+const ACTION_BADGE = {
+    'alerts.display_offline': ['danger', 'Offline'],
+    'alerts.display_recovered': ['success', 'Recovered'],
+    'alerts.snoozed': ['info', 'Snoozed'],
+    'alerts.snooze_cleared': ['secondary', 'Snooze cleared'],
+    'alerts.config_changed': ['warning', 'Config changed'],
+    'alerts.test_sent': ['primary', 'Test sent'],
+    'alerts.delivery_failed': ['dark', 'Delivery failed'],
+    'alerts.duplicate_client_blocked': ['danger', 'Duplicate client'],
+    'alerts.login_rate_limited': ['danger', 'Login blocked'],
+    'alerts.disk_block_threshold_crossed': ['danger', 'Disk critical'],
+    'alerts.disk_warn_threshold_crossed': ['warning', 'Disk warning'],
+    'alerts.disk_block_threshold_recovered': ['success', 'Disk recovered'],
+    'alerts.disk_warn_threshold_recovered': ['success', 'Disk recovered'],
+};
+
+async function loadRecent() {
+    const box = document.getElementById('recentListBox');
+    try {
+        const r = await fetch('/api/alerts/recent?limit=50');
+        const j = await r.json();
+        if (j.status !== 'success') {
+            box.innerHTML = '<div class="text-danger small">Error: ' + (j.message || '') + '</div>';
+            return;
+        }
+        const rows = j.events || [];
+        if (!rows.length) {
+            box.innerHTML = '<div class="text-muted small">No alert activity yet.</div>';
+            return;
+        }
+        box.innerHTML = '<div class="table-responsive"><table class="table table-sm align-middle mb-0">' +
+            '<thead><tr><th>When</th><th>Action</th><th>Display</th><th>Details</th></tr></thead><tbody>' +
+            rows.map(ev => {
+                const [cls, label] = ACTION_BADGE[ev.action] || ['secondary', ev.action];
+                const when = ev.timestamp ? new Date(ev.timestamp + 'Z').toLocaleString() : '';
+                const disp = ev.display_id ? `<a href="/display/${ev.display_id}">${ev.display_name || ('#' + ev.display_id)}</a>` : '<span class="text-muted">-</span>';
+                const p = ev.payload || {};
+                const detailParts = [];
+                if (p.minutes_offline != null) detailParts.push(p.minutes_offline + ' min offline');
+                if (p.ip_address) detailParts.push('ip: ' + p.ip_address);
+                if (p.username) detailParts.push('user: ' + p.username);
+                if (p.existing_ip) detailParts.push('existing ip: ' + p.existing_ip);
+                if (p.new_ip) detailParts.push('new ip: ' + p.new_ip);
+                if (p.error) detailParts.push('error: ' + p.error);
+                return `<tr>
+                    <td class="small text-nowrap">${when}</td>
+                    <td><span class="badge bg-${cls}">${label}</span></td>
+                    <td>${disp}</td>
+                    <td class="small text-muted">${detailParts.join(' · ')}</td>
+                </tr>`;
+            }).join('') + '</tbody></table></div>';
+    } catch (e) {
+        box.innerHTML = '<div class="text-danger small">Failed to load recent activity: ' + e + '</div>';
+    }
+}
+
+document.getElementById('testBtn').addEventListener('click', async () => {
+    showResult('secondary', 'Sending test alert...');
+    const r = await fetch('/api/alerts/test', {method: 'POST'});
+    const j = await r.json();
+    if (j.status !== 'success') return showResult('danger', 'Error: ' + (j.message || ''));
+    showResult((j.email.ok || j.webhook.ok) ? 'info' : 'warning',
+        `Email: ${j.email.ok ? 'delivered' : (j.email.error || 'failed')}<br>Webhook: ${j.webhook.ok ? 'delivered' : (j.webhook.error || 'failed')}`);
+    loadRecent();
+});
+document.getElementById('sweepBtn').addEventListener('click', async () => {
+    showResult('secondary', 'Running sweep...');
+    const r = await fetch('/api/alerts/sweep', {method: 'POST'});
+    const j = await r.json();
+    if (j.status !== 'success') return showResult('danger', 'Error: ' + (j.message || ''));
+    showResult('info', 'Sweep completed.');
+    loadSummary(); loadRecent(); loadSnoozes();
+});
+document.getElementById('recentRefreshBtn').addEventListener('click', loadRecent);
+document.getElementById('snoozeRefreshBtn').addEventListener('click', loadSnoozes);
+
+loadSummary();
+loadRecent();
+loadSnoozes();
+setInterval(loadSummary, 60000);
+setInterval(loadRecent, 60000);
+setInterval(loadSnoozes, 30000);
+</script>
+{% endblock %}

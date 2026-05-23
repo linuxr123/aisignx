@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="48dp"
+    android:background="#0f172a">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="📺 Signage Player"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:textColor="#38bdf8"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="First-time setup"
+        android:textSize="14sp"
+        android:textColor="#94a3b8"
+        android:layout_marginBottom="40dp" />
+
+    <!-- Step 1: Server URL -->
+    <LinearLayout
+        android:id="@+id/step1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:maxWidth="480dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SERVER URL"
+            android:textSize="11sp"
+            android:textColor="#94a3b8"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="8dp" />
+
+        <EditText
+            android:id="@+id/etServerUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://signage.example.com"
+            android:inputType="textUri"
+            android:textColor="#f1f5f9"
+            android:textColorHint="#475569"
+            android:background="@drawable/input_bg"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnImportConfig"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Import setup file (JSON from USB / Files)"
+            android:textColor="#e2e8f0"
+            android:backgroundTint="#334155"
+            android:padding="12dp"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btnConnect"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Connect to Server"
+            android:textColor="#0f172a"
+            android:backgroundTint="#38bdf8"
+            android:padding="14dp" />
+    </LinearLayout>
+
+    <!-- Step 2: Friendly name -->
+    <LinearLayout
+        android:id="@+id/step2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:maxWidth="480dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ENROLLMENT CODE"
+            android:textSize="11sp"
+            android:textColor="#94a3b8"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="8dp" />
+
+        <EditText
+            android:id="@+id/etEnrollmentCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="A1B2C3D4E5F6G7H8"
+            android:inputType="textCapCharacters|textNoSuggestions"
+            android:textAllCaps="true"
+            android:textColor="#f1f5f9"
+            android:textColorHint="#475569"
+            android:fontFamily="monospace"
+            android:background="@drawable/input_bg"
+            android:padding="14dp"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="DISPLAY NAME"
+            android:textSize="11sp"
+            android:textColor="#94a3b8"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="8dp" />
+
+        <EditText
+            android:id="@+id/etFriendlyName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Lobby Screen"
+            android:inputType="text"
+            android:textColor="#f1f5f9"
+            android:textColorHint="#475569"
+            android:background="@drawable/input_bg"
+            android:padding="14dp"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CLIENT UPDATES"
+            android:textSize="11sp"
+            android:textColor="#94a3b8"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="8dp" />
+
+        <Spinner
+            android:id="@+id/spinnerUpdateMode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:background="@drawable/input_bg"
+            android:padding="8dp" />
+
+        <Button
+            android:id="@+id/btnRegister"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Request Registration"
+            android:textColor="#0f172a"
+            android:backgroundTint="#38bdf8"
+            android:padding="14dp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#94a3b8"
+        android:textSize="13sp"
+        android:layout_marginTop="16dp"
+        android:visibility="gone" />
+
+</LinearLayout>

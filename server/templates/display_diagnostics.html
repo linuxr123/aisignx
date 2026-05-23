@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Display Diagnostics - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-bug"></i> Display Diagnostics</h1>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshBtn">Refresh</button>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1" for="diagSearch">Search</label>
+                <input type="search" id="diagSearch" class="form-control form-control-sm" placeholder="Display, source, message...">
+            </div>
+            {% if is_superadmin %}
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1" for="diagTenant">Tenant</label>
+                <select id="diagTenant" class="form-select form-select-sm">
+                    <option value="">All tenants</option>
+                    {% for domain in domains %}
+                    <option value="{{ domain.id }}">{{ domain.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1" for="diagGroup">Group</label>
+                <select id="diagGroup" class="form-select form-select-sm">
+                    <option value="">All groups</option>
+                    <option value="__none__">No group</option>
+                    {% for group in groups %}
+                    <option value="{{ group.id }}" data-domain-id="{{ group.domain_id or '' }}">{{ group.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1" for="diagDisplay">Display</label>
+                <select id="diagDisplay" class="form-select form-select-sm">
+                    <option value="">All displays</option>
+                    {% for display in displays %}
+                    <option value="{{ display.id }}" data-domain-id="{{ display.domain_id or '' }}" data-group-id="{{ display.group_id or '' }}">{{ display.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1" for="diagLevel">Level</label>
+                <select id="diagLevel" class="form-select form-select-sm">
+                    <option value="">Any</option>
+                    <option value="error">Error</option>
+                    <option value="warn">Warn</option>
+                    <option value="sync">Sync</option>
+                    <option value="net">Network</option>
+                    <option value="play">Playback</option>
+                    <option value="debug">Debug</option>
+                    <option value="info">Info</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1" for="diagLimit">Limit</label>
+                <select id="diagLimit" class="form-select form-select-sm">
+                    <option value="100">100</option>
+                    <option value="300" selected>300</option>
+                    <option value="1000">1000</option>
+                    <option value="2000">2000</option>
+                </select>
+            </div>
+        </div>
+        <div class="small text-muted mt-2">
+            Showing <span id="diagCount">0</span> entries. Diagnostics must be enabled on each display to collect logs.
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:170px;">Received</th>
+                        {% if is_superadmin %}<th>Tenant</th>{% endif %}
+                        <th>Display</th>
+                        <th>Level</th>
+                        <th>Source</th>
+                        <th>Message</th>
+                        <th>Meta</th>
+                    </tr>
+                </thead>
+                <tbody id="diagRows">
+                    <tr><td colspan="{{ 7 if is_superadmin else 6 }}" class="text-center text-muted py-4">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const isSuper = {{ 'true' if is_superadmin else 'false' }};
+    const rowsEl = document.getElementById('diagRows');
+
+    function esc(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function filterScopedOptions() {
+        const domainId = isSuper ? document.getElementById('diagTenant').value : '';
+        const groupId = document.getElementById('diagGroup').value;
+        const groupSel = document.getElementById('diagGroup');
+        const displaySel = document.getElementById('diagDisplay');
+        if (isSuper) {
+            Array.from(groupSel.options).forEach(opt => {
+                if (!opt.value || opt.value === '__none__') return;
+                opt.hidden = !!domainId && opt.dataset.domainId !== domainId;
+            });
+            if (groupSel.selectedOptions[0]?.hidden) groupSel.value = '';
+        }
+        Array.from(displaySel.options).forEach(opt => {
+            if (!opt.value) return;
+            const wrongTenant = !!domainId && opt.dataset.domainId !== domainId;
+            const wrongGroup = groupId === '__none__'
+                ? !!opt.dataset.groupId
+                : (!!groupId && opt.dataset.groupId !== groupId);
+            opt.hidden = wrongTenant || wrongGroup;
+        });
+        if (displaySel.selectedOptions[0]?.hidden) displaySel.value = '';
+    }
+
+    function qs() {
+        const p = new URLSearchParams();
+        const q = document.getElementById('diagSearch').value.trim();
+        const displayId = document.getElementById('diagDisplay').value;
+        const groupId = document.getElementById('diagGroup').value;
+        const level = document.getElementById('diagLevel').value;
+        const limit = document.getElementById('diagLimit').value;
+        if (q) p.set('q', q);
+        if (displayId) p.set('display_id', displayId);
+        if (groupId && groupId !== '__none__') p.set('group_id', groupId);
+        if (groupId === '__none__') p.set('group_id', 'none');
+        if (level) p.set('level', level);
+        if (limit) p.set('limit', limit);
+        if (isSuper) {
+            const domainId = document.getElementById('diagTenant').value;
+            if (domainId) p.set('domain_id', domainId);
+        }
+        return p.toString();
+    }
+
+    async function load() {
+        filterScopedOptions();
+        const r = await fetch('/api/displays/diagnostics?' + qs());
+        const j = await r.json();
+        if (j.status !== 'success') {
+            rowsEl.innerHTML = `<tr><td colspan="${isSuper ? 7 : 6}" class="text-danger text-center py-4">${esc(j.message || 'Load failed')}</td></tr>`;
+            return;
+        }
+        document.getElementById('diagCount').textContent = (j.entries || []).length;
+        if (!j.entries || !j.entries.length) {
+            rowsEl.innerHTML = `<tr><td colspan="${isSuper ? 7 : 6}" class="text-muted text-center py-4">No diagnostics match these filters.</td></tr>`;
+            return;
+        }
+        rowsEl.innerHTML = j.entries.map(e => {
+            const ts = e.received_at ? e.received_at.replace('T', ' ').slice(0, 19) : '';
+            const meta = e.meta ? `<pre class="small mb-0">${esc(JSON.stringify(e.meta, null, 2))}</pre>` : '<span class="text-muted">-</span>';
+            return `<tr>
+                <td class="small text-nowrap">${esc(ts)}</td>
+                ${isSuper ? `<td class="small">${esc(e.domain_name || e.domain_id || '')}</td>` : ''}
+                <td class="small">${esc(e.display_name || e.display_id)}</td>
+                <td><span class="badge bg-secondary">${esc(e.level)}</span></td>
+                <td class="small text-muted">${esc(e.source || '')}</td>
+                <td class="small">${esc(e.message)}</td>
+                <td>${meta}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    ['diagSearch', 'diagTenant', 'diagGroup', 'diagDisplay', 'diagLevel', 'diagLimit'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', load);
+    });
+    document.getElementById('refreshBtn').addEventListener('click', load);
+    load();
+})();
+</script>
+{% endblock %}

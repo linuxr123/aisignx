@@ -1,0 +1,77 @@
+{
+  "key": "clock",
+  "name": "Clock",
+  "version": "1.1.0",
+  "icon": "bi-clock-fill",
+  "description": "Displays the current time and date in a large, clean format.",
+  "permissions": [],
+  "schema": [
+    {
+      "name": "format",
+      "type": "select",
+      "label": "Time Format",
+      "description": "Choose how the time is displayed.",
+      "options": [
+        {
+          "label": "24-hour (14:30:05)",
+          "value": "HH:MM:SS"
+        },
+        {
+          "label": "24-hour no seconds (14:30)",
+          "value": "HH:MM"
+        },
+        {
+          "label": "12-hour (02:30:05 PM)",
+          "value": "hh:MM:SS"
+        },
+        {
+          "label": "12-hour no seconds (02:30 PM)",
+          "value": "hh:MM"
+        }
+      ],
+      "default": "HH:MM:SS",
+      "group": "Display"
+    },
+    {
+      "name": "date",
+      "type": "boolean",
+      "label": "Show Date",
+      "description": "Show the current date below the time.",
+      "default": true,
+      "group": "Display"
+    },
+    {
+      "name": "theme",
+      "type": "select",
+      "label": "Theme",
+      "description": "Visual style. Drop your own theme folders into plugins/clock/themes/ and they will appear here automatically.",
+      "options_from": "themes",
+      "options": [
+        {
+          "label": "Minimal Dark",
+          "value": "minimal-dark"
+        }
+      ],
+      "default": "minimal-dark",
+      "group": "Display"
+    },
+    {
+      "name": "loop",
+      "type": "boolean",
+      "label": "Loop (stay on screen)",
+      "description": "When enabled the clock never advances to the next playlist item.",
+      "default": false,
+      "group": "Playback"
+    },
+    {
+      "name": "duration",
+      "type": "integer",
+      "label": "Duration (seconds)",
+      "description": "How long to show this plugin before advancing. Ignored when Loop is on.",
+      "default": 30,
+      "group": "Playback"
+    }
+  ],
+  "signed_files_hash": "c3485555954ab9847d64020a9f58dd14d14bd07b6bf0ddf6f2f112c14871fcbb",
+  "signature": "adb46fa9620f20710f9ba4b5804415a48d3c89391d2589c9fb639c307eb607a8"
+}

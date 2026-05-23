@@ -1,0 +1,62 @@
+﻿{
+  "key": "rss",
+  "name": "RSS News",
+  "version": "1.1.0",
+  "icon": "bi-rss-fill",
+  "description": "Displays live headlines from any RSS or Atom news feed.",
+  "schema": [
+    {
+      "name": "rss_url",
+      "type": "string",
+      "label": "RSS / Atom Feed URL",
+      "description": "Full URL to the RSS or Atom feed you want to display.",
+      "placeholder": "https://feeds.bbci.co.uk/news/rss.xml",
+      "default": "",
+      "group": "Feed"
+    },
+    {
+      "name": "max_items",
+      "type": "integer",
+      "label": "Maximum Headlines",
+      "description": "Number of headlines to show at once (1-20).",
+      "default": 8,
+      "group": "Feed"
+    },
+    {
+      "name": "refresh_seconds",
+      "type": "integer",
+      "label": "Refresh Every (seconds)",
+      "description": "How often to re-fetch the feed in the background.",
+      "default": 300,
+      "group": "Feed"
+    },
+    {
+      "name": "theme",
+      "type": "select",
+      "label": "Theme",
+      "description": "Visual colour scheme.",
+      "options": [
+        { "label": "Dark", "value": "dark" },
+        { "label": "Light", "value": "light" }
+      ],
+      "default": "dark",
+      "group": "Display"
+    },
+    {
+      "name": "loop",
+      "type": "boolean",
+      "label": "Loop (stay on screen)",
+      "description": "Keep showing the RSS feed indefinitely without advancing.",
+      "default": false,
+      "group": "Playback"
+    },
+    {
+      "name": "duration",
+      "type": "integer",
+      "label": "Duration (seconds)",
+      "description": "How long to show this plugin before advancing. Ignored when Loop is on.",
+      "default": 30,
+      "group": "Playback"
+    }
+  ]
+}

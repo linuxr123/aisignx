@@ -1,0 +1,825 @@
+{% extends 'base.html' %}
+
+{% block title %}Tenant Management - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-building"></i> Tenant Management</h1>
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newDomainModal">
+        <i class="bi bi-plus-lg"></i> New Tenant
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="card mb-2">
+            <div class="card-body py-2">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted mb-1" for="tenantFilterSearch">Search</label>
+                        <input type="search" id="tenantFilterSearch" class="form-control form-control-sm" placeholder="Name, slug, description...">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted mb-1" for="tenantFilterStatus">Status</label>
+                        <select id="tenantFilterStatus" class="form-select form-select-sm">
+                            <option value="">Any</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted mb-1" for="tenantFilterUsage">Usage</label>
+                        <select id="tenantFilterUsage" class="form-select form-select-sm">
+                            <option value="">Any</option>
+                            <option value="has-data">Has data</option>
+                            <option value="empty">Empty</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1" for="tenantFilterTimezone">Timezone</label>
+                        <select id="tenantFilterTimezone" class="form-select form-select-sm">
+                            <option value="">Any timezone</option>
+                        </select>
+                    </div>
+                    <div class="col-md-1 d-grid">
+                        <button type="button" id="tenantFilterReset" class="btn btn-sm btn-outline-secondary">Reset</button>
+                    </div>
+                </div>
+                <div class="small text-muted mt-2">
+                    Showing <span id="tenantFilterCount">0</span> tenant(s)
+                </div>
+            </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-2 px-1" id="tenantBulkBar" style="display:none !important;">
+            <span class="small text-muted"><span id="tenantBulkCount">0</span> selected</span>
+            <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-outline-primary" id="tenantBulkEditBtn" data-bs-toggle="modal" data-bs-target="#bulkEditTenantModal">Edit&hellip;</button>
+                <button type="button" class="btn btn-outline-danger" id="tenantBulkDelete">Delete</button>
+                <button type="button" class="btn btn-outline-secondary" id="tenantBulkClear">Clear</button>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:32px;"><input type="checkbox" id="selectAllTenants" class="form-check-input"></th>
+                        <th>Name</th>
+                        <th><code class="small">slug</code></th>
+                        <th class="text-end">Storage</th>
+                        <th class="text-end">Members</th>
+                        <th class="text-end">Displays</th>
+                        <th class="text-end">Media</th>
+                        <th class="text-center">Active</th>
+                        <th style="width:140px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="domainRows">
+                    <tr><td colspan="9" class="text-center text-muted py-4">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Edit Tenants modal -->
+<div class="modal fade" id="bulkEditTenantModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title">Bulk edit tenants</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <p class="text-muted small">Apply to <strong><span id="tenantBulkEditCount">0</span></strong> selected tenant(s). Only checked fields are changed.</p>
+      <div class="mb-3">
+        <div class="form-check form-switch">
+          <input class="form-check-input tenant-bulk-field" type="checkbox" id="bulkChkTenantActive">
+          <label class="form-check-label small text-muted" for="bulkChkTenantActive">Set active status</label>
+        </div>
+        <select class="form-select form-select-sm mt-1" id="bulkValTenantActive" disabled>
+          <option value="1">Active</option>
+          <option value="0">Inactive</option>
+        </select>
+      </div>
+      <div class="mb-3">
+        <div class="form-check form-switch">
+          <input class="form-check-input tenant-bulk-field" type="checkbox" id="bulkChkTenantTimezone">
+          <label class="form-check-label small text-muted" for="bulkChkTenantTimezone">Set default timezone</label>
+        </div>
+        <select class="form-select form-select-sm mt-1 tz-select" id="bulkValTenantTimezone" data-tz-include-blank="1" disabled></select>
+      </div>
+      <div class="mb-3">
+        <div class="form-check form-switch">
+          <input class="form-check-input tenant-bulk-field" type="checkbox" id="bulkChkTenantQuota">
+          <label class="form-check-label small text-muted" for="bulkChkTenantQuota">Set storage quota (MB, blank = unlimited)</label>
+        </div>
+        <input type="number" class="form-control form-control-sm mt-1" id="bulkValTenantQuota" min="0" step="1" disabled>
+      </div>
+      <div class="mb-3">
+        <div class="form-check form-switch">
+          <input class="form-check-input tenant-bulk-field" type="checkbox" id="bulkChkTenantColor">
+          <label class="form-check-label small text-muted" for="bulkChkTenantColor">Set brand color</label>
+        </div>
+        <input type="color" class="form-control form-control-color mt-1" id="bulkValTenantColor" value="#0d6efd" disabled>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button type="button" class="btn btn-primary" id="tenantBulkApply">Apply changes</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- New Tenant modal -->
+<div class="modal fade" id="newDomainModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="newDomainForm">
+        <div class="modal-header">
+          <h5 class="modal-title">Create Tenant</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+            <div class="mb-3">
+                <label class="form-label">Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" name="name" required maxlength="120" autofocus>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Slug</label>
+                <input type="text" class="form-control" name="slug"
+                       pattern="[a-z0-9][a-z0-9-]{1,62}[a-z0-9]"
+                       placeholder="auto-derived from name if blank">
+                <div class="form-text">Organization code users enter at sign-in. Lowercase letters, digits, hyphens. Also used in storage paths.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Description</label>
+                <textarea class="form-control" name="description" rows="2"></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Storage quota (MB, blank = unlimited)</label>
+                <input type="number" class="form-control" name="quota_mb" min="0" step="1">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Default timezone</label>
+                <select class="form-select tz-select" name="default_timezone" data-tz-include-blank="1"></select>
+                <div class="form-text">Used as the fallback when a display has no timezone set.</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Tenant modal -->
+<div class="modal fade" id="editDomainModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="editDomainForm">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Tenant</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" name="id">
+            <div class="mb-3">
+                <label class="form-label">Name</label>
+                <input type="text" class="form-control" name="name" required maxlength="120">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Slug</label>
+                <input type="text" class="form-control" name="slug"
+                       pattern="[a-z0-9][a-z0-9-]{1,62}[a-z0-9]">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Description</label>
+                <textarea class="form-control" name="description" rows="2"></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Storage quota (MB, blank = unlimited)</label>
+                <input type="number" class="form-control" name="quota_mb" min="0" step="1">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Default timezone</label>
+                <select class="form-select tz-select" name="default_timezone" data-tz-include-blank="1"></select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Brand color</label>
+                <div class="input-group">
+                    <input type="color" class="form-control form-control-color" name="branding_primary_color_picker"
+                           style="max-width:60px;">
+                    <input type="text" class="form-control" name="branding_primary_color"
+                           placeholder="#0d6efd" pattern="#[0-9a-fA-F]{6}">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Brand logo</label>
+                <div class="d-flex align-items-center gap-3">
+                    <img id="editLogoPreview" src="" alt="" style="max-height:48px; max-width:160px; display:none; background:#eee; padding:4px; border-radius:4px;">
+                    <span id="editLogoNone" class="text-muted small">No custom logo (using default)</span>
+                </div>
+                <div class="d-flex align-items-center gap-2 mt-2">
+                    <input type="file" id="editLogoFile" class="form-control form-control-sm" accept=".png,.jpg,.jpeg,.gif,.webp,.svg">
+                    <button type="button" id="editLogoUploadBtn" class="btn btn-sm btn-outline-primary">Upload</button>
+                    <button type="button" id="editLogoClearBtn" class="btn btn-sm btn-outline-danger">Clear</button>
+                </div>
+                <div class="form-text small">PNG, JPG, GIF, WebP, or SVG. Max 2MB.</div>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="is_active" id="editActive">
+                <label class="form-check-label" for="editActive">Active</label>
+            </div>
+
+            <hr>
+            <h6 class="mb-2"><i class="bi bi-key"></i> Device Enrollment Code</h6>
+            <p class="text-muted small mb-2">
+                Devices must present this code to join this domain. Hand it to the
+                installer out-of-band (email, chat, paper). Rotate it any time;
+                pending devices that already used the previous code keep their
+                request, but no new device can register with the old code.
+            </p>
+            <div class="input-group input-group-sm mb-2">
+                <span class="input-group-text">Code</span>
+                <input type="text" id="enrollCodeDisplay" class="form-control font-monospace"
+                       readonly placeholder="(none — click Generate)">
+                <button type="button" id="enrollCopyBtn" class="btn btn-outline-secondary"
+                        title="Copy"><i class="bi bi-clipboard"></i></button>
+                <button type="button" id="enrollRotateBtn" class="btn btn-outline-primary">Generate / Rotate</button>
+                <button type="button" id="enrollRevokeBtn" class="btn btn-outline-danger">Revoke</button>
+            </div>
+            <div class="row g-2 align-items-center mb-1">
+                <div class="col-auto">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="enrollEnabled">
+                        <label class="form-check-label small" for="enrollEnabled">Enrollment enabled</label>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text">Expires</span>
+                        <input type="datetime-local" id="enrollExpires" class="form-control">
+                        <button type="button" id="enrollExpiresClearBtn" class="btn btn-outline-secondary">Clear</button>
+                    </div>
+                </div>
+            </div>
+            <div id="enrollStatus" class="small text-muted"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+    const MB = 1024 * 1024;
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // ── Timezone dropdown population ────────────────────────────────────
+    // Modern browsers expose the full IANA list via Intl.supportedValuesOf;
+    // fall back to a curated set when running on older WebViews so the
+    // admin UI still works (e.g., embedded signage devices managing the
+    // server remotely).
+    const TZ_FALLBACK = [
+        'UTC',
+        'America/New_York', 'America/Chicago', 'America/Denver',
+        'America/Phoenix', 'America/Los_Angeles', 'America/Anchorage',
+        'America/Honolulu', 'America/Toronto', 'America/Vancouver',
+        'America/Mexico_City', 'America/Sao_Paulo', 'America/Argentina/Buenos_Aires',
+        'Europe/London', 'Europe/Dublin', 'Europe/Lisbon', 'Europe/Madrid',
+        'Europe/Paris', 'Europe/Berlin', 'Europe/Amsterdam', 'Europe/Rome',
+        'Europe/Stockholm', 'Europe/Athens', 'Europe/Helsinki', 'Europe/Warsaw',
+        'Europe/Moscow', 'Europe/Istanbul',
+        'Africa/Cairo', 'Africa/Johannesburg', 'Africa/Lagos', 'Africa/Nairobi',
+        'Asia/Dubai', 'Asia/Karachi', 'Asia/Kolkata', 'Asia/Dhaka',
+        'Asia/Bangkok', 'Asia/Singapore', 'Asia/Hong_Kong', 'Asia/Shanghai',
+        'Asia/Tokyo', 'Asia/Seoul', 'Asia/Taipei', 'Asia/Manila',
+        'Australia/Perth', 'Australia/Adelaide', 'Australia/Sydney',
+        'Australia/Brisbane', 'Pacific/Auckland', 'Pacific/Fiji',
+    ];
+    function _tzList() {
+        try {
+            if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
+                const all = Intl.supportedValuesOf('timeZone');
+                if (Array.isArray(all) && all.length) return all;
+            }
+        } catch (_) { /* fall through */ }
+        return TZ_FALLBACK.slice();
+    }
+    function populateTzSelect(sel) {
+        if (!sel || sel.dataset.tzPopulated === '1') return;
+        const list = _tzList();
+        const browserGuess = (() => {
+            try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; }
+            catch (_) { return ''; }
+        })();
+        let opts = '';
+        if (sel.dataset.tzIncludeBlank === '1') {
+            opts += `<option value="">(use system default${browserGuess ? ' — ' + escapeHtml(browserGuess) : ''})</option>`;
+        }
+        for (const tz of list) {
+            opts += `<option value="${escapeHtml(tz)}">${escapeHtml(tz)}</option>`;
+        }
+        sel.innerHTML = opts;
+        sel.dataset.tzPopulated = '1';
+    }
+    // Populate every .tz-select up-front so the dropdowns are ready before
+    // any modal is opened.
+    document.querySelectorAll('.tz-select').forEach(populateTzSelect);
+    // For unknown values coming from the server (e.g., a tz that's not in
+    // Intl's list), inject a one-off option so the form doesn't silently
+    // drop the existing setting.
+    function setTzValue(sel, value) {
+        if (!sel) return;
+        populateTzSelect(sel);
+        const v = value || '';
+        if (v && !Array.from(sel.options).some(o => o.value === v)) {
+            const o = document.createElement('option');
+            o.value = v;
+            o.textContent = v + ' (custom)';
+            sel.appendChild(o);
+        }
+        sel.value = v;
+    }
+    // Expose for the edit-modal loader below.
+    window._setTzValue = setTzValue;
+    function fmtBytes(n) {
+        if (!n) return '0';
+        const units = ['B','KB','MB','GB','TB'];
+        let i = 0, v = n;
+        while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+        return (i === 0 ? v : v.toFixed(1)) + ' ' + units[i];
+    }
+    function fmtUsage(used, quota) {
+        if (!quota) return fmtBytes(used) + ' / &infin;';
+        const pct = Math.min(100, Math.round(used * 100 / quota));
+        const cls = pct >= 90 ? 'bg-danger' : (pct >= 75 ? 'bg-warning' : 'bg-info');
+        return `<div class="small">${fmtBytes(used)} / ${fmtBytes(quota)}</div>
+            <div class="progress" style="height:4px;width:120px;">
+                <div class="progress-bar ${cls}" style="width:${pct}%"></div>
+            </div>`;
+    }
+
+    let allDomains = [];
+
+    async function load() {
+        const r = await fetch('/api/domains');
+        const j = await r.json();
+        allDomains = j.domains || [];
+        populateTenantFilterOptions();
+        renderTenantRows();
+    }
+
+    function tenantRowSearchText(d) {
+        return [d.name, d.slug, d.description, d.default_timezone]
+            .filter(Boolean).join(' ').toLowerCase();
+    }
+
+    function populateTenantFilterOptions() {
+        const sel = document.getElementById('tenantFilterTimezone');
+        const current = sel.value;
+        const zones = Array.from(new Set(allDomains.map(d => d.default_timezone).filter(Boolean))).sort();
+        sel.innerHTML = '<option value="">Any timezone</option>'
+            + zones.map(z => `<option value="${escapeHtml(z)}">${escapeHtml(z)}</option>`).join('');
+        sel.value = zones.includes(current) ? current : '';
+    }
+
+    function filteredDomains() {
+        const q = (document.getElementById('tenantFilterSearch').value || '').trim().toLowerCase();
+        const status = document.getElementById('tenantFilterStatus').value;
+        const usage = document.getElementById('tenantFilterUsage').value;
+        const tz = document.getElementById('tenantFilterTimezone').value;
+        return allDomains.filter(d => {
+            const c = d.counts || {};
+            const total = (c.members || 0) + (c.displays || 0) + (c.media || 0)
+                + (c.playlists || 0) + (c.schedules || 0) + (c.groups || 0);
+            if (q && !tenantRowSearchText(d).includes(q)) return false;
+            if (status === 'active' && !d.is_active) return false;
+            if (status === 'inactive' && d.is_active) return false;
+            if (usage === 'has-data' && total <= 0) return false;
+            if (usage === 'empty' && total > 0) return false;
+            if (tz && d.default_timezone !== tz) return false;
+            return true;
+        });
+    }
+
+    function renderTenantRows() {
+        const tb = document.getElementById('domainRows');
+        const rows = filteredDomains();
+        document.getElementById('tenantFilterCount').textContent = rows.length;
+        if (!rows.length) {
+            tb.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No tenants match these filters.</td></tr>';
+            refreshTenantBulkBar();
+            return;
+        }
+        tb.innerHTML = rows.map(d => {
+            const c = d.counts || {};
+            const activeBadge = d.is_active
+                ? '<span class="badge bg-success">Yes</span>'
+                : '<span class="badge bg-secondary">No</span>';
+            return `<tr>
+                <td><input type="checkbox" class="form-check-input tenant-row-check" value="${d.id}"></td>
+                <td>
+                    <div class="fw-semibold">${escapeHtml(d.name)}</div>
+                    <div class="small text-muted">${escapeHtml(d.description || '')}</div>
+                </td>
+                <td><code class="small">${escapeHtml(d.slug)}</code></td>
+                <td class="text-end small">${fmtUsage(d.storage_used_bytes, d.storage_quota_bytes)}</td>
+                <td class="text-end">${c.members || 0}</td>
+                <td class="text-end">${c.displays || 0}</td>
+                <td class="text-end">${c.media || 0}</td>
+                <td class="text-center">${activeBadge}</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-outline-primary" data-edit="${d.id}">Edit</button>
+                    <button class="btn btn-sm btn-outline-danger" data-del="${d.id}" data-name="${escapeHtml(d.name)}">Delete</button>
+                </td>
+            </tr>`;
+        }).join('');
+        tb.querySelectorAll('button[data-edit]').forEach(b => {
+            b.addEventListener('click', () => openEdit(parseInt(b.dataset.edit, 10)));
+        });
+        tb.querySelectorAll('button[data-del]').forEach(b => {
+            b.addEventListener('click', () => deleteDomain(parseInt(b.dataset.del, 10), b.dataset.name));
+        });
+        tb.querySelectorAll('.tenant-row-check').forEach(c => c.addEventListener('change', refreshTenantBulkBar));
+        refreshTenantBulkBar();
+    }
+
+    function selectedTenantIds() {
+        return Array.from(document.querySelectorAll('.tenant-row-check:checked'))
+            .map(c => parseInt(c.value, 10));
+    }
+
+    function refreshTenantBulkBar() {
+        const count = selectedTenantIds().length;
+        const bar = document.getElementById('tenantBulkBar');
+        document.getElementById('tenantBulkCount').textContent = count;
+        document.getElementById('tenantBulkEditCount').textContent = count;
+        bar.style.setProperty('display', count ? 'flex' : 'none', 'important');
+        const selectAll = document.getElementById('selectAllTenants');
+        const boxes = Array.from(document.querySelectorAll('.tenant-row-check'));
+        selectAll.checked = boxes.length > 0 && boxes.every(c => c.checked);
+        selectAll.indeterminate = boxes.some(c => c.checked) && !selectAll.checked;
+    }
+
+    async function openEdit(id) {
+        const r = await fetch('/api/domains/' + id);
+        const j = await r.json();
+        if (j.status !== 'success') { alert(j.message || 'Failed to load'); return; }
+        const d = j.domain;
+        const form = document.getElementById('editDomainForm');
+        form.id.value = d.id;
+        form.name.value = d.name;
+        form.slug.value = d.slug;
+        form.description.value = d.description || '';
+        form.quota_mb.value = d.storage_quota_bytes ? Math.round(d.storage_quota_bytes / MB) : '';
+        window._setTzValue(form.default_timezone, d.default_timezone || '');
+        form.branding_primary_color.value = d.branding_primary_color || '';
+        // Sync the color picker; default to brand blue when nothing set.
+        form.branding_primary_color_picker.value = d.branding_primary_color || '#0d6efd';
+        form.is_active.checked = !!d.is_active;
+        // Logo preview
+        renderLogoPreview(d);
+        // Track which domain we're editing so the logo upload buttons know.
+        document.getElementById('editLogoUploadBtn').dataset.domainId = d.id;
+        document.getElementById('editLogoClearBtn').dataset.domainId = d.id;
+        document.getElementById('editLogoFile').value = '';
+        loadEnrollment(d.id);
+        new bootstrap.Modal(document.getElementById('editDomainModal')).show();
+    }
+
+    function renderLogoPreview(domain) {
+        const img = document.getElementById('editLogoPreview');
+        const none = document.getElementById('editLogoNone');
+        // Domain payload doesn't include logo_url -- build via signed URL on
+        // the client. Easiest is a dedicated GET, but we already have the
+        // path in the row. Just keep this lightweight: hit /uploads with the
+        // session-based access path (admins always pass the cookie check).
+        const p = domain.branding_logo_path;
+        if (p) {
+            img.src = '/uploads/' + p + '?t=' + Date.now();
+            img.style.display = '';
+            none.style.display = 'none';
+        } else {
+            img.style.display = 'none';
+            none.style.display = '';
+        }
+    }
+
+    async function deleteDomain(id, name) {
+        if (!confirm(`Delete domain "${name}"?\n\nThis fails if the domain still contains data.`)) return;
+        let r = await fetch('/api/domains/' + id, {method: 'DELETE'});
+        let j = await r.json();
+        if (r.status === 409 && j.counts) {
+            const c = j.counts;
+            const summary = Object.entries(c).filter(([_,v]) => v > 0)
+                .map(([k,v]) => `  ${v} ${k}`).join('\n');
+            if (!confirm(`Domain "${name}" still contains:\n${summary}\n\nForce delete? This will cascade-delete ALL its data.`)) return;
+            r = await fetch('/api/domains/' + id + '?force=1', {method: 'DELETE'});
+            j = await r.json();
+        }
+        if (j.status === 'success') {
+            load();
+        } else {
+            alert(j.message || 'Delete failed');
+        }
+    }
+
+    document.getElementById('newDomainForm').addEventListener('submit', async e => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const quota_mb = fd.get('quota_mb');
+        const body = {
+            name:             fd.get('name'),
+            slug:             fd.get('slug') || undefined,
+            description:      fd.get('description') || undefined,
+            default_timezone: fd.get('default_timezone') || undefined,
+            storage_quota_bytes: quota_mb ? parseInt(quota_mb, 10) * MB : null,
+        };
+        const r = await fetch('/api/domains', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+        });
+        const j = await r.json();
+        if (j.status === 'success') {
+            bootstrap.Modal.getInstance(document.getElementById('newDomainModal')).hide();
+            e.target.reset();
+            load();
+        } else {
+            alert(j.message || 'Create failed');
+        }
+    });
+
+    document.getElementById('editDomainForm').addEventListener('submit', async e => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const id = fd.get('id');
+        const quota_mb = fd.get('quota_mb');
+        const body = {
+            name:                   fd.get('name'),
+            slug:                   fd.get('slug'),
+            description:            fd.get('description'),
+            default_timezone:       fd.get('default_timezone'),
+            branding_primary_color: fd.get('branding_primary_color') || null,
+            storage_quota_bytes:    quota_mb ? parseInt(quota_mb, 10) * MB : null,
+            is_active:              fd.get('is_active') === 'on',
+        };
+        const r = await fetch('/api/domains/' + id, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+        });
+        const j = await r.json();
+        if (j.status === 'success') {
+            bootstrap.Modal.getInstance(document.getElementById('editDomainModal')).hide();
+            load();
+        } else {
+            alert(j.message || 'Save failed');
+        }
+    });
+
+    // Color picker <-> hex text input sync.
+    document.querySelector('input[name="branding_primary_color_picker"]')
+        ?.addEventListener('input', e => {
+            document.querySelector('input[name="branding_primary_color"]').value = e.target.value;
+        });
+    document.querySelector('input[name="branding_primary_color"]')
+        ?.addEventListener('input', e => {
+            const v = e.target.value;
+            if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+                document.querySelector('input[name="branding_primary_color_picker"]').value = v;
+            }
+        });
+
+    ['tenantFilterSearch', 'tenantFilterStatus', 'tenantFilterUsage', 'tenantFilterTimezone']
+        .forEach(id => document.getElementById(id)?.addEventListener('input', renderTenantRows));
+    document.getElementById('tenantFilterReset').addEventListener('click', () => {
+        document.getElementById('tenantFilterSearch').value = '';
+        document.getElementById('tenantFilterStatus').value = '';
+        document.getElementById('tenantFilterUsage').value = '';
+        document.getElementById('tenantFilterTimezone').value = '';
+        renderTenantRows();
+    });
+    document.getElementById('selectAllTenants').addEventListener('change', e => {
+        document.querySelectorAll('.tenant-row-check').forEach(c => { c.checked = e.target.checked; });
+        refreshTenantBulkBar();
+    });
+    document.getElementById('tenantBulkClear').addEventListener('click', () => {
+        document.querySelectorAll('.tenant-row-check').forEach(c => { c.checked = false; });
+        refreshTenantBulkBar();
+    });
+    document.getElementById('tenantBulkDelete').addEventListener('click', async () => {
+        const ids = selectedTenantIds();
+        if (!ids.length) return;
+        if (!confirm(`Delete ${ids.length} selected tenant(s)? Empty tenants delete immediately; tenants with data will ask for force confirmation.`)) return;
+        async function postDelete(force) {
+            const r = await fetch('/api/domains/bulk-delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ids, force: !!force}),
+            });
+            return r.json();
+        }
+        let j = await postDelete(false);
+        const blocked = (j.results || []).filter(r => !r.ok && r.counts);
+        if (blocked.length) {
+            const summary = blocked.map(r => {
+                const details = Object.entries(r.counts || {}).filter(([_, v]) => v > 0)
+                    .map(([k, v]) => `${v} ${k}`).join(', ') || 'no data';
+                return `Tenant #${r.id}: ${details}`;
+            }).join('\n');
+            if (confirm(`Some tenants contain data:\n${summary}\n\nForce delete them and all tenant data?`)) {
+                j = await postDelete(true);
+            }
+        }
+        if (j.status === 'success') {
+            alert(`Deleted ${j.deleted || 0}/${j.requested || ids.length} tenant(s).`);
+            load();
+        } else {
+            alert(j.message || 'Bulk delete failed');
+        }
+    });
+    [
+        ['bulkChkTenantActive', 'bulkValTenantActive'],
+        ['bulkChkTenantTimezone', 'bulkValTenantTimezone'],
+        ['bulkChkTenantQuota', 'bulkValTenantQuota'],
+        ['bulkChkTenantColor', 'bulkValTenantColor'],
+    ].forEach(([chk, val]) => {
+        document.getElementById(chk).addEventListener('change', e => {
+            document.getElementById(val).disabled = !e.target.checked;
+        });
+    });
+    document.getElementById('tenantBulkApply').addEventListener('click', async () => {
+        const ids = selectedTenantIds();
+        if (!ids.length) return;
+        const changes = {};
+        if (document.getElementById('bulkChkTenantActive').checked) {
+            changes.is_active = document.getElementById('bulkValTenantActive').value === '1';
+        }
+        if (document.getElementById('bulkChkTenantTimezone').checked) {
+            changes.default_timezone = document.getElementById('bulkValTenantTimezone').value || null;
+        }
+        if (document.getElementById('bulkChkTenantQuota').checked) {
+            const raw = document.getElementById('bulkValTenantQuota').value;
+            changes.storage_quota_bytes = raw ? parseInt(raw, 10) * MB : null;
+        }
+        if (document.getElementById('bulkChkTenantColor').checked) {
+            changes.branding_primary_color = document.getElementById('bulkValTenantColor').value || null;
+        }
+        if (!Object.keys(changes).length) {
+            alert('Choose at least one field to update.');
+            return;
+        }
+        const r = await fetch('/api/domains/bulk-update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ids, changes}),
+        });
+        const j = await r.json();
+        if (j.status === 'success') {
+            bootstrap.Modal.getInstance(document.getElementById('bulkEditTenantModal')).hide();
+            load();
+        } else {
+            alert(j.message || 'Bulk update failed');
+        }
+    });
+
+    // Logo upload / clear.
+    document.getElementById('editLogoUploadBtn').addEventListener('click', async ev => {
+        const id = ev.currentTarget.dataset.domainId;
+        const file = document.getElementById('editLogoFile').files[0];
+        if (!file) { alert('Pick a file first.'); return; }
+        if (file.size > 2 * 1024 * 1024) { alert('Logo must be 2MB or smaller.'); return; }
+        const fd = new FormData();
+        fd.append('file', file);
+        const r = await fetch(`/api/domains/${id}/branding/logo`, {method: 'POST', body: fd});
+        const j = await r.json();
+        if (j.status === 'success') {
+            // Refresh preview from the new path.
+            renderLogoPreview({branding_logo_path: j.logo_path});
+            document.getElementById('editLogoFile').value = '';
+            // Reload the table behind the modal so counts/etc refresh too.
+            load();
+        } else {
+            alert(j.message || 'Upload failed');
+        }
+    });
+
+    document.getElementById('editLogoClearBtn').addEventListener('click', async ev => {
+        const id = ev.currentTarget.dataset.domainId;
+        if (!confirm('Remove the custom logo?')) return;
+        const r = await fetch(`/api/domains/${id}/branding/logo`, {method: 'DELETE'});
+        const j = await r.json();
+        if (j.status === 'success') {
+            renderLogoPreview({branding_logo_path: null});
+            load();
+        } else {
+            alert(j.message || 'Clear failed');
+        }
+    });
+
+    // ── Enrollment-code panel ──────────────────────────────────────────
+    let _enrollDomainId = null;
+
+    function _toLocalInput(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` +
+               `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function _renderEnroll(j) {
+        document.getElementById('enrollCodeDisplay').value = j.code || '';
+        document.getElementById('enrollEnabled').checked = !!j.enabled;
+        document.getElementById('enrollExpires').value = _toLocalInput(j.expires_at);
+        const status = document.getElementById('enrollStatus');
+        if (!j.code) {
+            status.textContent = 'No code set — devices cannot enroll.';
+        } else if (!j.is_open) {
+            status.textContent = 'Code exists but enrollment is currently closed (disabled or expired).';
+        } else {
+            status.textContent = 'Enrollment is OPEN. Hand out the code above to install new devices.';
+        }
+    }
+
+    async function loadEnrollment(id) {
+        _enrollDomainId = id;
+        document.getElementById('enrollCodeDisplay').value = '';
+        document.getElementById('enrollStatus').textContent = 'Loading…';
+        try {
+            const r = await fetch(`/api/domains/${id}/enrollment`);
+            const j = await r.json();
+            if (j.status !== 'success') throw new Error(j.message || 'load failed');
+            _renderEnroll(j);
+        } catch (e) {
+            document.getElementById('enrollStatus').textContent =
+                'Failed to load enrollment state: ' + e.message;
+        }
+    }
+
+    async function _postEnroll(body) {
+        if (!_enrollDomainId) return;
+        const r = await fetch(`/api/domains/${_enrollDomainId}/enrollment`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body || {}),
+        });
+        const j = await r.json();
+        if (j.status !== 'success') {
+            alert(j.message || 'Update failed');
+            return;
+        }
+        _renderEnroll(j);
+    }
+
+    document.getElementById('enrollRotateBtn').addEventListener('click', () => {
+        if (!confirm('Generate a new enrollment code? Any devices that have not yet ' +
+                     'used the old code will need the new one.')) return;
+        _postEnroll({action: 'rotate'});
+    });
+    document.getElementById('enrollRevokeBtn').addEventListener('click', () => {
+        if (!confirm('Revoke the current enrollment code? No new devices will be able ' +
+                     'to register until you generate a new one.')) return;
+        _postEnroll({action: 'revoke'});
+    });
+    document.getElementById('enrollEnabled').addEventListener('change', e => {
+        _postEnroll({action: e.target.checked ? 'enable' : 'disable'});
+    });
+    document.getElementById('enrollExpires').addEventListener('change', e => {
+        const v = e.target.value;
+        const iso = v ? new Date(v).toISOString() : null;
+        _postEnroll({expires_at_iso: iso});
+    });
+    document.getElementById('enrollExpiresClearBtn').addEventListener('click', () => {
+        document.getElementById('enrollExpires').value = '';
+        _postEnroll({expires_at_iso: null});
+    });
+    document.getElementById('enrollCopyBtn').addEventListener('click', async () => {
+        const code = document.getElementById('enrollCodeDisplay').value;
+        if (!code) return;
+        try {
+            await navigator.clipboard.writeText(code);
+            const s = document.getElementById('enrollStatus');
+            const prev = s.textContent;
+            s.textContent = 'Copied to clipboard.';
+            setTimeout(() => { s.textContent = prev; }, 1500);
+        } catch (_) { /* ignore */ }
+    });
+
+    load();
+})();
+</script>
+{% endblock %}

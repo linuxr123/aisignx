@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="48dp"
+    android:background="#0f172a">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="⏳"
+        android:textSize="48sp"
+        android:layout_marginBottom="20dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Awaiting Approval"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="#f1f5f9"
+        android:layout_marginBottom="12dp" />
+
+    <TextView
+        android:id="@+id/tvHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="An administrator needs to approve this display in the server's Displays section. This screen will advance automatically."
+        android:textColor="#94a3b8"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:layout_marginBottom="24dp" />
+
+    <TextView
+        android:id="@+id/tvDeviceId"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#475569"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:layout_marginBottom="32dp" />
+
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#f87171"
+        android:textSize="14sp"
+        android:visibility="gone"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btnImportConfig"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Import setup file"
+        android:textColor="#e2e8f0"
+        android:backgroundTint="#1e3a4a"
+        android:padding="12dp"
+        android:layout_marginBottom="12dp" />
+
+    <Button
+        android:id="@+id/btnReset"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Reset Setup"
+        android:textColor="#94a3b8"
+        android:backgroundTint="#334155"
+        android:padding="12dp" />
+
+</LinearLayout>

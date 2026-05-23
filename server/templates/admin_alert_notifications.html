@@ -1,0 +1,280 @@
+{% extends 'base.html' %}
+
+{% block title %}Alert Notifications - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="h3 mb-0"><i class="bi bi-people"></i> Alert Notification Recipients</h1>
+        <div class="text-muted small">Only users currently assigned to alerts are shown here.</div>
+    </div>
+    <div class="btn-group">
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_alerts_page') }}">Back to dashboard</a>
+        <button class="btn btn-sm btn-primary" id="addRecipientBtn" data-bs-toggle="modal" data-bs-target="#recipientModal">
+            <i class="bi bi-plus-circle"></i> Add recipient
+        </button>
+    </div>
+</div>
+
+<div id="resultBox" class="alert" style="display:none;"></div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Configured Recipients</strong>
+        <button id="saveRecipientsBtn" class="btn btn-primary btn-sm">Save changes</button>
+    </div>
+    <div class="card-body">
+        <div id="recipientList"><div class="text-muted small">Loading recipients...</div></div>
+    </div>
+</div>
+
+<div class="modal fade" id="recipientModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="recipientModalTitle">Add Alert Recipient</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editRecipientKey">
+                <div class="mb-3">
+                    <label class="form-label">Alert scope</label>
+                    <select class="form-select" id="recipientScope">
+                        <option value="global">Global system alerts</option>
+                        <option value="tenant">Tenant-specific alerts</option>
+                    </select>
+                    <div class="form-text">Global recipients must be superusers. Tenant recipients receive alerts only for that tenant.</div>
+                </div>
+                <div class="mb-3" id="recipientTenantWrap" style="display:none;">
+                    <label class="form-label">Tenant</label>
+                    <select class="form-select" id="recipientTenant"></select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">User</label>
+                    <select class="form-select" id="recipientUser"></select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Alert types</label>
+                    <div id="recipientAlertTypes" class="border rounded p-2"></div>
+                    <div class="form-text">Choose exactly what this user should receive.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary" id="applyRecipientBtn">Add recipient</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let recipientOptions = { domains: [], global_users: [], tenant_users: {}, alert_types: [] };
+let recipientAssignments = { global_user_ids: [], tenant_user_ids: {}, alert_types: {} };
+const DEFAULT_TYPES = ['display', 'security', 'disk', 'digest'];
+
+function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function showResult(kind, html) {
+    const box = document.getElementById('resultBox');
+    box.style.display = 'block';
+    box.className = 'alert alert-' + kind;
+    box.innerHTML = html;
+}
+function alertTypes() {
+    return recipientOptions.alert_types && recipientOptions.alert_types.length
+        ? recipientOptions.alert_types
+        : DEFAULT_TYPES.map(id => ({id, label: id}));
+}
+function typeLabels(types) {
+    const labels = {};
+    alertTypes().forEach(t => labels[t.id] = t.label);
+    return (types || DEFAULT_TYPES).map(t => labels[t] || t);
+}
+function recipientTypeKey(scope, domainId, userId) {
+    return scope === 'global' ? `global:${userId}` : `tenant:${domainId}:${userId}`;
+}
+function assignedTypes(key) {
+    return (recipientAssignments.alert_types || {})[key] || DEFAULT_TYPES;
+}
+function findUser(scope, domainId, userId) {
+    const users = scope === 'global'
+        ? recipientOptions.global_users || []
+        : (recipientOptions.tenant_users || {})[String(domainId)] || [];
+    return users.find(u => parseInt(u.id, 10) === parseInt(userId, 10));
+}
+function configuredRows() {
+    const rows = [];
+    (recipientAssignments.global_user_ids || []).forEach(uid => {
+        const user = findUser('global', null, uid);
+        if (!user) return;
+        const key = recipientTypeKey('global', null, uid);
+        rows.push({key, scope: 'global', domainId: null, tenant: 'Global', user, types: assignedTypes(key)});
+    });
+    const tenantMap = recipientAssignments.tenant_user_ids || {};
+    (recipientOptions.domains || []).forEach(domain => {
+        (tenantMap[String(domain.id)] || []).forEach(uid => {
+            const user = findUser('tenant', domain.id, uid);
+            if (!user) return;
+            const key = recipientTypeKey('tenant', domain.id, uid);
+            rows.push({key, scope: 'tenant', domainId: domain.id, tenant: domain.name, user, types: assignedTypes(key)});
+        });
+    });
+    return rows;
+}
+function renderRecipientList() {
+    const rows = configuredRows();
+    const box = document.getElementById('recipientList');
+    if (!rows.length) {
+        box.innerHTML = '<div class="text-muted small">No alert recipients are configured. Use Add recipient to assign users.</div>';
+        return;
+    }
+    box.innerHTML = '<div class="table-responsive"><table class="table table-sm align-middle mb-0">' +
+        '<thead><tr><th>User</th><th>Scope</th><th>Alert types</th><th class="text-end">Actions</th></tr></thead><tbody>' +
+        rows.map(row => `<tr>
+            <td>
+                <div class="fw-semibold">${esc(row.user.username)}</div>
+                <div class="small text-muted">${esc(row.user.email || 'no email')}</div>
+            </td>
+            <td>${row.scope === 'global'
+                ? '<span class="badge bg-dark">Global</span>'
+                : `<span class="badge bg-light text-dark">${esc(row.tenant)}</span>`}</td>
+            <td>${typeLabels(row.types).map(t => `<span class="badge bg-secondary me-1">${esc(t)}</span>`).join('')}</td>
+            <td class="text-end">
+                <button class="btn btn-sm btn-outline-primary me-1" data-edit="${esc(row.key)}">Edit</button>
+                <button class="btn btn-sm btn-outline-danger" data-remove="${esc(row.key)}">Remove</button>
+            </td>
+        </tr>`).join('') + '</tbody></table></div>';
+    box.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => openRecipientModal(btn.dataset.edit)));
+    box.querySelectorAll('[data-remove]').forEach(btn => btn.addEventListener('click', () => removeRecipient(btn.dataset.remove)));
+}
+function renderTypeChecks(selected) {
+    const selectedSet = new Set(selected || DEFAULT_TYPES);
+    document.getElementById('recipientAlertTypes').innerHTML = alertTypes().map(t => `
+        <div class="form-check">
+            <input class="form-check-input recipient-type-check" type="checkbox" value="${esc(t.id)}" id="recipientType_${esc(t.id)}" ${selectedSet.has(t.id) ? 'checked' : ''}>
+            <label class="form-check-label" for="recipientType_${esc(t.id)}">${esc(t.label)}</label>
+        </div>`).join('');
+}
+function usersForCurrentScope() {
+    const scope = document.getElementById('recipientScope').value;
+    if (scope === 'global') return recipientOptions.global_users || [];
+    const domainId = document.getElementById('recipientTenant').value;
+    return (recipientOptions.tenant_users || {})[String(domainId)] || [];
+}
+function refreshUserSelect(selectedUserId) {
+    const users = usersForCurrentScope();
+    const sel = document.getElementById('recipientUser');
+    sel.innerHTML = users.length
+        ? users.map(u => `<option value="${u.id}">${esc(u.username)} &lt;${esc(u.email || 'no email')}&gt;</option>`).join('')
+        : '<option value="">No eligible users</option>';
+    if (selectedUserId) sel.value = String(selectedUserId);
+}
+function refreshTenantSelect(selectedDomainId) {
+    const sel = document.getElementById('recipientTenant');
+    sel.innerHTML = (recipientOptions.domains || []).map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
+    if (selectedDomainId) sel.value = String(selectedDomainId);
+}
+function openRecipientModal(key) {
+    const modalEl = document.getElementById('recipientModal');
+    const editing = !!key;
+    document.getElementById('recipientModalTitle').textContent = editing ? 'Edit Alert Recipient' : 'Add Alert Recipient';
+    document.getElementById('applyRecipientBtn').textContent = editing ? 'Update recipient' : 'Add recipient';
+    document.getElementById('editRecipientKey').value = key || '';
+    let scope = 'global', domainId = null, userId = null;
+    if (editing) {
+        const parts = key.split(':');
+        scope = parts[0];
+        if (scope === 'tenant') {
+            domainId = parts[1];
+            userId = parts[2];
+        } else {
+            userId = parts[1];
+        }
+    }
+    document.getElementById('recipientScope').value = scope;
+    document.getElementById('recipientScope').disabled = editing;
+    document.getElementById('recipientTenantWrap').style.display = scope === 'tenant' ? '' : 'none';
+    refreshTenantSelect(domainId);
+    document.getElementById('recipientTenant').disabled = editing;
+    refreshUserSelect(userId);
+    document.getElementById('recipientUser').disabled = editing;
+    renderTypeChecks(editing ? assignedTypes(key) : DEFAULT_TYPES);
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+}
+function currentModalTypes() {
+    return Array.from(document.querySelectorAll('.recipient-type-check:checked')).map(cb => cb.value);
+}
+function applyRecipientFromModal() {
+    const editKey = document.getElementById('editRecipientKey').value;
+    const scope = document.getElementById('recipientScope').value;
+    const domainId = document.getElementById('recipientTenant').value;
+    const userId = document.getElementById('recipientUser').value;
+    const types = currentModalTypes();
+    if (!userId) return alert('Select a user.');
+    if (!types.length) return alert('Select at least one alert type.');
+    const key = editKey || recipientTypeKey(scope, domainId, userId);
+    recipientAssignments.alert_types = recipientAssignments.alert_types || {};
+    if (!editKey) {
+        if (scope === 'global') {
+            recipientAssignments.global_user_ids = Array.from(new Set([...(recipientAssignments.global_user_ids || []), parseInt(userId, 10)]));
+        } else {
+            recipientAssignments.tenant_user_ids = recipientAssignments.tenant_user_ids || {};
+            recipientAssignments.tenant_user_ids[String(domainId)] = Array.from(new Set([...(recipientAssignments.tenant_user_ids[String(domainId)] || []), parseInt(userId, 10)]));
+        }
+    }
+    recipientAssignments.alert_types[key] = types;
+    bootstrap.Modal.getInstance(document.getElementById('recipientModal')).hide();
+    renderRecipientList();
+}
+function removeRecipient(key) {
+    if (!confirm('Remove this alert recipient?')) return;
+    const parts = key.split(':');
+    if (parts[0] === 'global') {
+        const uid = parseInt(parts[1], 10);
+        recipientAssignments.global_user_ids = (recipientAssignments.global_user_ids || []).filter(id => parseInt(id, 10) !== uid);
+    } else {
+        const did = parts[1];
+        const uid = parseInt(parts[2], 10);
+        recipientAssignments.tenant_user_ids[did] = (recipientAssignments.tenant_user_ids[did] || []).filter(id => parseInt(id, 10) !== uid);
+        if (!recipientAssignments.tenant_user_ids[did].length) delete recipientAssignments.tenant_user_ids[did];
+    }
+    if (recipientAssignments.alert_types) delete recipientAssignments.alert_types[key];
+    renderRecipientList();
+}
+async function loadConfig() {
+    const r = await fetch('/api/alerts/config');
+    const j = await r.json();
+    if (j.status !== 'success') return showResult('danger', 'Failed to load recipients: ' + (j.message || ''));
+    recipientOptions = j.config.recipient_options || recipientOptions;
+    recipientAssignments = j.config['alerts.user_recipients'] || recipientAssignments;
+    recipientAssignments.alert_types = recipientAssignments.alert_types || {};
+    renderRecipientList();
+}
+document.getElementById('addRecipientBtn').addEventListener('click', () => openRecipientModal(null));
+document.getElementById('recipientScope').addEventListener('change', () => {
+    const scope = document.getElementById('recipientScope').value;
+    document.getElementById('recipientTenantWrap').style.display = scope === 'tenant' ? '' : 'none';
+    refreshUserSelect();
+});
+document.getElementById('recipientTenant').addEventListener('change', () => refreshUserSelect());
+document.getElementById('applyRecipientBtn').addEventListener('click', applyRecipientFromModal);
+document.getElementById('saveRecipientsBtn').addEventListener('click', async () => {
+    const r = await fetch('/api/alerts/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({'alerts.user_recipients': recipientAssignments}),
+    });
+    const j = await r.json();
+    if (j.status === 'success') {
+        showResult('success', 'Saved notification recipients.');
+        loadConfig();
+    } else {
+        showResult('danger', 'Save failed: ' + (j.message || ''));
+    }
+});
+loadConfig();
+</script>
+{% endblock %}

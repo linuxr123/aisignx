@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - AISignX{% endblock %}
+
+{% block content %}
+<h1>Dashboard</h1>
+<div class="row mt-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Total Displays</h5>
+                <p class="card-text display-4">{{ display_count }}</p>
+                <p class="card-text text-success">{{ online_count }} Online</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Media Files</h5>
+                <p class="card-text display-4">{{ media_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Playlists</h5>
+                <p class="card-text display-4">{{ playlist_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Schedules</h5>
+                <p class="card-text display-4">{{ schedule_count }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if pop_enabled %}
+<div class="row mt-3">
+    <div class="col-md-3">
+        <a href="{{ url_for('admin.admin_proof_of_play_page') }}" class="text-decoration-none text-reset">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-clipboard-check"></i> Plays (24h)</h5>
+                    <p class="card-text display-4">{{ pop_24h }}</p>
+                    <p class="card-text small text-muted mb-0">Proof-of-Play events recorded in the last 24 hours.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+{% endif %}
+
+<h2 class="mt-5">Recent Display Activity</h2>
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th>Last Ping</th>
+				<th>IP Address</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for display in recent_displays %}
+            <tr>
+                <td>{{ display.name }}</td>
+                <td>{{ display.location or 'N/A' }}</td>
+				<td>
+					{% if display.is_online %}
+					<span class="badge bg-success">Online</span>
+					{% else %}
+					<span class="badge bg-danger">Offline</span>
+					{% endif %}
+				</td>
+                <td>{{ display.last_ping|format_datetime if display.last_ping else 'Never' }}</td>
+				<td>{{ display.ip_address or 'N/A' }}</td>
+                <td>
+                    <a href="{{ url_for('displays.display_detail', display_id=display.id) }}" class="btn btn-sm btn-primary">View Details</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

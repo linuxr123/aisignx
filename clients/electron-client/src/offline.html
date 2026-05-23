@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AISignX Player — Waiting for server</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0f172a; color: #e2e8f0;
+    font: 16px/1.4 system-ui, sans-serif;
+    overflow: hidden;
+  }
+  .wrap {
+    height: 100%; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1rem;
+    text-align: center; padding: 2rem;
+  }
+  h1   { font-size: 2.2rem; margin: 0; color: #38bdf8; font-weight: 600; }
+  p    { margin: 0; opacity: 0.7; max-width: 40rem; }
+  .url { font-family: monospace; opacity: 0.55; font-size: 0.9rem; }
+  .spin {
+    width: 56px; height: 56px; border-radius: 50%;
+    border: 4px solid #1e293b; border-top-color: #38bdf8;
+    animation: rot 1s linear infinite;
+    margin-bottom: 1rem;
+  }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  .countdown { opacity: 0.55; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="spin"></div>
+  <h1>Waiting for server&hellip;</h1>
+  <p>The signage server is unreachable. The player will retry automatically every 10&nbsp;seconds.</p>
+  <p class="url" id="url"></p>
+  <p class="countdown" id="cd">Retrying in 10&hellip;</p>
+</div>
+<script>
+  // Re-load attempt is driven by the main process via webContents.send('retry-now').
+  // We just show a visible countdown so the user knows we're alive.
+  let n = 10;
+  const cd = document.getElementById('cd');
+  setInterval(() => {
+    n = (n <= 1) ? 10 : (n - 1);
+    cd.textContent = 'Retrying in ' + n + '\u2026';
+  }, 1000);
+  // Main process can pass the URL via the URL hash (#http://...)
+  if (location.hash.length > 1) {
+    document.getElementById('url').textContent = decodeURIComponent(location.hash.slice(1));
+  }
+</script>
+</body>
+</html>

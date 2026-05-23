@@ -1,0 +1,392 @@
+{% extends 'base.html' %}
+
+{% block title %}Audit Retention - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-archive"></i> Audit Log Retention</h1>
+    <div class="d-flex gap-2 align-items-center">
+        <label for="scopeSelect" class="small text-muted mb-0">Scope:</label>
+        <select id="scopeSelect" class="form-select form-select-sm" style="width:auto;">
+            <option value="">Global (all tenants)</option>
+        </select>
+        <button id="purgeBtn" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-trash"></i> Run sweep now
+        </button>
+    </div>
+</div>
+
+<div class="alert alert-info py-2 small">
+    <i class="bi bi-info-circle"></i>
+    Edit retention below, or jump to
+    <a href="{{ url_for('settings_admin.admin_settings_page') }}">System Settings</a>
+    for the raw <code>audit.retention.*</code> keys. Per-action overrides
+    accept exact action names (<code>plugin_policy.update</code>) and
+    dotted prefixes (<code>backup.</code>). Setting an action's days
+    to <code>0</code> means keep forever. Sweep changes take effect on
+    the next interval (default 24h); use <em>Run sweep now</em> to apply
+    immediately. Pick a tenant in the <strong>Scope</strong> dropdown to
+    set retention just for that tenant; tenant overrides take precedence
+    over the global value when its rows are pruned.
+</div>
+
+<div id="scopeBanner" class="alert alert-warning py-2 small d-none">
+    <i class="bi bi-funnel"></i>
+    Editing the <strong id="scopeBannerName"></strong> tenant scope.
+    Values shown are the <em>effective</em> retention for that tenant
+    (override → global → builtin). Saving here writes a tenant-specific
+    override; click <strong>Clear tenant overrides</strong> to fall back
+    to global.
+    <button id="clearScopeBtn" class="btn btn-sm btn-outline-warning ms-2">
+        <i class="bi bi-x-circle"></i> Clear tenant overrides
+    </button>
+</div>
+
+<div class="row">
+    <div class="col-md-5">
+        <div class="card mb-3">
+            <div class="card-header"><strong>Current configuration</strong></div>
+            <ul class="list-group list-group-flush small">
+                <li class="list-group-item d-flex justify-content-between">
+                    <span>Sweeper enabled</span><span id="cfgEnabled" class="text-muted">…</span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span>Default days</span><span id="cfgDefault" class="text-muted">…</span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span>Sweep interval (h)</span><span id="cfgInterval" class="text-muted">…</span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span>Batch size per action</span><span id="cfgBatch" class="text-muted">…</span>
+                </li>
+                <li class="list-group-item">
+                    <div class="mb-1">Per-action overrides (days)</div>
+                    <pre id="cfgOverrides" class="mb-0 small bg-light p-2 rounded">…</pre>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header"><strong>Edit retention policy</strong></div>
+            <div class="card-body">
+                <form id="cfgForm" class="small">
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="fEnabled">
+                        <label class="form-check-label" for="fEnabled">Sweeper enabled</label>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label mb-1" for="fDefault">Default days <span class="text-muted">(0 = keep forever)</span></label>
+                        <input class="form-control form-control-sm" type="number" min="0" id="fDefault">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label mb-1" for="fInterval">Sweep interval (hours, min 1)</label>
+                        <input class="form-control form-control-sm" type="number" min="1" id="fInterval">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label mb-1" for="fBatch">Batch size per action per pass</label>
+                        <input class="form-control form-control-sm" type="number" min="1" id="fBatch">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label mb-1" for="fOverrides">
+                            Per-action overrides (JSON object)
+                        </label>
+                        <textarea class="form-control form-control-sm font-monospace" id="fOverrides" rows="6" spellcheck="false"
+                            placeholder='{"login.success": 30, "display.heartbeat": 7, "domain.": 1825}'></textarea>
+                        <div class="form-text">
+                            Trailing dot = prefix match. Value <code>0</code> = keep forever for that action.
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 align-items-center">
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="bi bi-save"></i> Save
+                        </button>
+                        <button type="button" id="resetBtn" class="btn btn-outline-secondary btn-sm">Reset</button>
+                        <span id="cfgMsg" class="small ms-auto"></span>
+                    </div>
+                    <div class="form-text mt-2">
+                        Interval changes apply on the next app restart; everything
+                        else takes effect on the next sweep (or click <em>Run sweep now</em>).
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-7">
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>Top actions by volume</strong>
+                <span class="text-muted small">total: <span id="totalRows">…</span></span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height:480px;">
+                    <table class="table table-sm table-hover mb-0 align-middle small">
+                        <thead class="table-light"><tr>
+                            <th>Action</th>
+                            <th class="text-end">Rows</th>
+                            <th class="text-end">Override</th>
+                        </tr></thead>
+                        <tbody id="actionRows">
+                            <tr><td colspan="3" class="text-center text-muted py-4">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function esc(s) { return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+
+let LAST_CFG = {enabled: false, default_days: 0, purge_interval_hours: 24, batch_size: 5000, overrides: {}};
+let SCOPE = null;            // null = global, otherwise integer domain_id
+let OVERRIDDEN_KEYS = [];    // list of audit.retention.* keys explicitly set at SCOPE
+let DOMAINS = [];
+
+function scopeQS() { return SCOPE == null ? '' : `?domain_id=${SCOPE}`; }
+function scopeBody() { return {domain_id: SCOPE}; }
+
+function matchOverride(action, overrides) {
+    if (overrides[action] != null) return overrides[action];
+    let best = null, bestLen = -1;
+    for (const k of Object.keys(overrides)) {
+        if (k.endsWith('.') && action.startsWith(k) && k.length > bestLen) {
+            best = overrides[k]; bestLen = k.length;
+        }
+    }
+    return best;
+}
+
+function inheritedBadge(key) {
+    if (SCOPE == null) return '';
+    return OVERRIDDEN_KEYS.includes(key)
+        ? '<span class="badge bg-warning text-dark ms-1" title="Override set for this tenant">override</span>'
+        : '<span class="badge bg-light text-muted ms-1" title="Inherited from global scope">inherited</span>';
+}
+
+async function load() {
+    const r = await fetch('/api/audit/retention' + scopeQS());
+    const j = await r.json();
+    if (j.status !== 'success') {
+        document.getElementById('actionRows').innerHTML =
+            `<tr><td colspan="3" class="text-danger small">${esc(j.message || 'Failed to load')}</td></tr>`;
+        return;
+    }
+    const c = j.config;
+    LAST_CFG = c;
+    OVERRIDDEN_KEYS = (j.scope && j.scope.overridden_keys) || [];
+    DOMAINS = j.domains || [];
+
+    // Populate scope picker (idempotent: only rebuild if option set differs).
+    const sel = document.getElementById('scopeSelect');
+    const wantOpts = ['', ...DOMAINS.map(d => String(d.id))];
+    const haveOpts = Array.from(sel.options).map(o => o.value);
+    if (wantOpts.join(',') !== haveOpts.join(',')) {
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">Global (all tenants)</option>' +
+            DOMAINS.map(d => {
+                const flag = d.has_override ? ' ●' : '';
+                return `<option value="${d.id}">${esc(d.name)} (${d.rows.toLocaleString()} rows${flag})</option>`;
+            }).join('');
+        sel.value = cur;
+    }
+
+    // Scope banner.
+    const banner = document.getElementById('scopeBanner');
+    if (SCOPE == null) {
+        banner.classList.add('d-none');
+    } else {
+        banner.classList.remove('d-none');
+        const dom = DOMAINS.find(d => d.id === SCOPE);
+        document.getElementById('scopeBannerName').textContent =
+            dom ? `${dom.name} (id=${SCOPE})` : `domain ${SCOPE}`;
+        document.getElementById('clearScopeBtn').disabled =
+            OVERRIDDEN_KEYS.length === 0;
+    }
+
+    // Per-key inheritance markers shown next to each row label.
+    document.getElementById('cfgEnabled').innerHTML  =
+        (c.enabled ? 'Yes' : 'No') + inheritedBadge('audit.retention.enabled');
+    document.getElementById('cfgDefault').innerHTML  =
+        (c.default_days || '∞') + inheritedBadge('audit.retention.default_days');
+    document.getElementById('cfgInterval').innerHTML =
+        c.purge_interval_hours + inheritedBadge('audit.retention.purge_interval_hours');
+    document.getElementById('cfgBatch').innerHTML    =
+        c.batch_size + inheritedBadge('audit.retention.batch_size');
+    document.getElementById('cfgOverrides').textContent =
+        Object.keys(c.overrides).length ? JSON.stringify(c.overrides, null, 2) : '(none)';
+    document.getElementById('totalRows').textContent =
+        j.total.toLocaleString() + (SCOPE == null ? '' : ` (this tenant only)`);
+
+    if (!document.getElementById('cfgForm').dataset.dirty) {
+        document.getElementById('fEnabled').checked = !!c.enabled;
+        document.getElementById('fDefault').value   = c.default_days;
+        document.getElementById('fInterval').value  = c.purge_interval_hours;
+        document.getElementById('fBatch').value     = c.batch_size;
+        document.getElementById('fOverrides').value =
+            Object.keys(c.overrides).length ? JSON.stringify(c.overrides, null, 2) : '{}';
+    }
+
+    const $rows = document.getElementById('actionRows');
+    if (!j.by_action.length) {
+        $rows.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4">No audit rows.</td></tr>';
+        return;
+    }
+    $rows.innerHTML = j.by_action.map(r => {
+        const ov = matchOverride(r.action, c.overrides);
+        const ovTxt = ov == null
+            ? `<span class="text-muted">${c.default_days || '∞'} (default)</span>`
+            : (ov === 0 ? '∞' : `${ov} d`);
+        return `<tr>
+            <td><code>${esc(r.action)}</code></td>
+            <td class="text-end">${r.count.toLocaleString()}</td>
+            <td class="text-end">
+                ${ovTxt}
+                <button class="btn btn-link btn-sm p-0 ms-2 set-override" data-action="${esc(r.action)}" title="Set per-action override (this scope)">
+                    <i class="bi bi-pencil"></i>
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    document.querySelectorAll('.set-override').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const action = btn.dataset.action;
+            const cur = matchOverride(action, LAST_CFG.overrides);
+            const ans = prompt(
+                `Retention for "${action}" in days at ${SCOPE == null ? 'global' : 'this tenant'} scope ` +
+                `(0 = keep forever, blank = remove override):`,
+                cur == null ? '' : String(cur));
+            if (ans === null) return;
+            const next = {...LAST_CFG.overrides};
+            if (ans.trim() === '') {
+                delete next[action];
+            } else {
+                const n = parseInt(ans, 10);
+                if (isNaN(n) || n < 0) { alert('Enter a non-negative integer or blank.'); return; }
+                next[action] = n;
+            }
+            saveOne('audit.retention.overrides', next).then(load).catch(err => alert(err.message));
+        });
+    });
+}
+
+async function saveOne(key, value) {
+    const r = await fetch('/api/settings/' + encodeURIComponent(key), {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({value: value, ...scopeBody()}),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.status !== 'success') {
+        throw new Error((j && j.message) || `HTTP ${r.status}`);
+    }
+    return j;
+}
+
+async function deleteOne(key) {
+    const r = await fetch('/api/settings/' + encodeURIComponent(key) + scopeQS(), {method: 'DELETE'});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.status !== 'success') {
+        throw new Error((j && j.message) || `HTTP ${r.status}`);
+    }
+    return j;
+}
+
+function flash(msg, kind) {
+    const el = document.getElementById('cfgMsg');
+    el.textContent = msg;
+    el.className = 'small ms-auto text-' + (kind || 'muted');
+    if (kind === 'success') setTimeout(() => { el.textContent = ''; }, 3000);
+}
+
+['fEnabled','fDefault','fInterval','fBatch','fOverrides'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+        document.getElementById('cfgForm').dataset.dirty = '1';
+    });
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+    delete document.getElementById('cfgForm').dataset.dirty;
+    load();
+});
+
+document.getElementById('scopeSelect').addEventListener('change', (e) => {
+    const v = e.target.value;
+    SCOPE = v === '' ? null : parseInt(v, 10);
+    delete document.getElementById('cfgForm').dataset.dirty;
+    load();
+});
+
+document.getElementById('clearScopeBtn').addEventListener('click', async () => {
+    if (SCOPE == null) return;
+    if (!confirm('Remove all audit.retention.* overrides for this tenant? It will revert to global values.')) return;
+    try {
+        for (const k of OVERRIDDEN_KEYS) {
+            await deleteOne(k);
+        }
+        delete document.getElementById('cfgForm').dataset.dirty;
+        load();
+    } catch (err) {
+        alert('Clear failed: ' + err.message);
+    }
+});
+
+document.getElementById('cfgForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    flash('Saving…');
+    let overrides;
+    try {
+        const raw = document.getElementById('fOverrides').value.trim() || '{}';
+        overrides = JSON.parse(raw);
+        if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) {
+            throw new Error('Overrides must be a JSON object.');
+        }
+        for (const [k, v] of Object.entries(overrides)) {
+            const n = Number(v);
+            if (!Number.isInteger(n) || n < 0) {
+                throw new Error(`Override "${k}" must be a non-negative integer.`);
+            }
+            overrides[k] = n;
+        }
+    } catch (err) {
+        flash('Overrides JSON: ' + err.message, 'danger');
+        return;
+    }
+    const enabled  = document.getElementById('fEnabled').checked;
+    const defDays  = parseInt(document.getElementById('fDefault').value, 10);
+    const interval = parseInt(document.getElementById('fInterval').value, 10);
+    const batch    = parseInt(document.getElementById('fBatch').value, 10);
+    if (!Number.isInteger(defDays)  || defDays  < 0) { flash('Default days: non-negative integer.', 'danger'); return; }
+    if (!Number.isInteger(interval) || interval < 1) { flash('Interval: integer ≥ 1.', 'danger'); return; }
+    if (!Number.isInteger(batch)    || batch    < 1) { flash('Batch size: integer ≥ 1.', 'danger'); return; }
+
+    try {
+        await saveOne('audit.retention.enabled', enabled);
+        await saveOne('audit.retention.default_days', defDays);
+        await saveOne('audit.retention.purge_interval_hours', interval);
+        await saveOne('audit.retention.batch_size', batch);
+        await saveOne('audit.retention.overrides', overrides);
+        delete document.getElementById('cfgForm').dataset.dirty;
+        flash(SCOPE == null ? 'Saved (global).' : 'Saved (tenant override).', 'success');
+        load();
+    } catch (err) {
+        flash('Save failed: ' + err.message, 'danger');
+    }
+});
+
+document.getElementById('purgeBtn').addEventListener('click', async () => {
+    if (!confirm('Run the retention sweep now? Rows past their retention will be deleted.')) return;
+    const r = await fetch('/api/audit/retention/purge', {method: 'POST'});
+    const j = await r.json();
+    if (j.status === 'success') {
+        alert(`Deleted ${j.total} rows across ${Object.keys(j.deleted_by_action).length} actions.`);
+        load();
+    } else {
+        alert(j.message || 'Sweep failed.');
+    }
+});
+
+load();
+</script>
+{% endblock %}

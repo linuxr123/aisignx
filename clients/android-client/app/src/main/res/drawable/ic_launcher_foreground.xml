@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive icon foreground.
+  Total viewport: 108x108dp. Safe zone (always visible after masking): inner 72x72dp,
+  i.e. coordinates 18..90. We center artwork around (54,54) and keep within that box.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Monitor body -->
+    <path android:fillColor="#38bdf8"
+        android:pathData="M28,34 Q28,30 32,30 L76,30 Q80,30 80,34 L80,66 Q80,70 76,70 L32,70 Q28,70 28,66 Z" />
+
+    <!-- Screen inset -->
+    <path android:fillColor="#0f172a"
+        android:pathData="M34,38 L74,38 L74,62 L34,62 Z" />
+
+    <!-- Play triangle -->
+    <path android:fillColor="#38bdf8"
+        android:pathData="M46,44 L46,56 L60,50 Z" />
+
+    <!-- Stand base -->
+    <path android:fillColor="#38bdf8"
+        android:pathData="M44,72 L64,72 L67,80 L41,80 Z" />
+</vector>

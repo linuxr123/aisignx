@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+
+{% block title %}System Health - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-activity"></i> System Health</h1>
+    <div>
+        <span class="text-muted small me-2">refreshes every 15s</span>
+        <button id="refreshBtn" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-clockwise"></i> Refresh now
+        </button>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header"><strong><i class="bi bi-hdd"></i> Disk</strong></div>
+            <div class="card-body" id="diskCard">Loading…</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header"><strong><i class="bi bi-display"></i> Displays</strong></div>
+            <div class="card-body" id="displaysCard">Loading…</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header"><strong><i class="bi bi-cpu"></i> Host</strong></div>
+            <div class="card-body" id="hostCard">Loading…</div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><strong><i class="bi bi-list-task"></i> Background jobs</strong></div>
+            <div class="card-body" id="jobsCard">Loading…</div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><strong><i class="bi bi-archive"></i> Append-only logs</strong></div>
+            <div class="card-body" id="logsCard">Loading…</div>
+        </div>
+    </div>
+</div>
+
+<script>
+function fmtBytes(n) {
+    if (n == null) return '—';
+    const u = ['B','KB','MB','GB','TB'];
+    let i = 0; while (n >= 1024 && i < u.length-1) { n /= 1024; i++; }
+    return n.toFixed(i === 0 ? 0 : 1) + ' ' + u[i];
+}
+function esc(s) { return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+
+function renderDisk(d) {
+    if (!d || d.error) return `<div class="text-danger small">${esc(d?.error || 'unavailable')}</div>`;
+    const s = d.snapshot || {};
+    const used = s.used_pct ?? 0;
+    const klass = used >= d.block_pct ? 'bg-danger'
+                : used >= d.warn_pct  ? 'bg-warning'
+                : 'bg-success';
+    return `
+        <div class="d-flex justify-content-between small mb-1">
+            <span>${esc(s.path || '?')}</span>
+            <span>${used}% used</span>
+        </div>
+        <div class="progress mb-2" style="height: 12px;">
+            <div class="progress-bar ${klass}" style="width:${used}%"></div>
+        </div>
+        <div class="small text-muted">
+            Free: ${fmtBytes(s.free_bytes)} of ${fmtBytes(s.total_bytes)}<br>
+            Warn: ${d.warn_pct}% &middot; Block uploads: ${d.block_pct}%
+            ${d.blocking ? '<br><span class="text-danger fw-bold">Uploads currently blocked.</span>' : ''}
+        </div>`;
+}
+
+function renderDisplays(d) {
+    if (!d || d.error) return `<div class="text-danger small">${esc(d?.error || 'unavailable')}</div>`;
+    const total = d.total || 0, online = d.online || 0;
+    const offline = total - online;
+    const pct = total ? Math.round(100 * online / total) : 0;
+    return `
+        <div class="display-3 fw-bold">${online}<span class="fs-6 text-muted">/${total}</span></div>
+        <div class="small text-muted mb-2">online (${pct}%)</div>
+        <div class="progress" style="height: 8px;">
+            <div class="progress-bar bg-success" style="width:${pct}%"></div>
+        </div>
+        <div class="small text-muted mt-2">
+            <i class="bi bi-circle-fill text-success"></i> Online: ${online}
+            &nbsp;<i class="bi bi-circle-fill text-secondary"></i> Offline: ${offline}
+        </div>`;
+}
+
+function renderHost(s) {
+    if (!s) return '—';
+    return `
+        <div class="small">
+            <div><strong>Python:</strong> ${esc(s.python)}</div>
+            <div><strong>Platform:</strong> ${esc(s.platform)}</div>
+        </div>`;
+}
+
+function renderJobs(j) {
+    if (!j || j.error) return `<div class="text-danger small">${esc(j?.error || 'unavailable')}</div>`;
+    const queue = j.queue_size ?? 0;
+    const queueClass = queue > 25 ? 'text-warning' : 'text-muted';
+    let rows = (j.periodic || []).map(p =>
+        `<tr><td><code>${esc(p.name)}</code></td>
+             <td class="text-end">${p.every_s.toFixed(0)}s</td>
+             <td class="text-end">${Math.round(p.next_run_in_s)}s</td></tr>`).join('');
+    if (!rows) rows = '<tr><td colspan="3" class="text-muted small">no periodic jobs registered</td></tr>';
+    return `
+        <div class="mb-2 small">Pending one-shot queue: <span class="${queueClass} fw-bold">${queue}</span></div>
+        <div class="table-responsive">
+        <table class="table table-sm small mb-0">
+            <thead><tr><th>Periodic job</th><th class="text-end">Interval</th><th class="text-end">Next in</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table></div>`;
+}
+
+function renderLogs(d) {
+    const a = d.audit_log || {}; const p = d.proof_of_play || {};
+    const aTxt = a.error ? `<span class="text-danger">${esc(a.error)}</span>` : (a.total || 0).toLocaleString();
+    const pTxt = p.error ? `<span class="text-danger">${esc(p.error)}</span>` : (p.total || 0).toLocaleString();
+    const popState = p.enabled === undefined ? '' :
+        `<span class="badge ${p.enabled ? 'bg-success' : 'bg-secondary'} ms-1">${p.enabled ? 'on' : 'off'}</span>`;
+    return `
+        <ul class="list-group list-group-flush small">
+            <li class="list-group-item d-flex justify-content-between">
+                <span><a href="/admin/audit-retention">Audit log rows</a></span>
+                <span>${aTxt}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between">
+                <span><a href="/admin/proof-of-play">Proof of Play rows</a> ${popState}</span>
+                <span>${pTxt}</span>
+            </li>
+        </ul>`;
+}
+
+async function load() {
+    try {
+        const r = await fetch('/api/system/health');
+        const j = await r.json();
+        if (j.status !== 'success') throw new Error(j.message || 'failed');
+        document.getElementById('diskCard').innerHTML     = renderDisk(j.disk);
+        document.getElementById('displaysCard').innerHTML = renderDisplays(j.displays);
+        document.getElementById('hostCard').innerHTML     = renderHost(j.system);
+        document.getElementById('jobsCard').innerHTML     = renderJobs(j.jobs);
+        document.getElementById('logsCard').innerHTML     = renderLogs(j);
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+document.getElementById('refreshBtn').addEventListener('click', load);
+load();
+setInterval(load, 15000);
+</script>
+{% endblock %}

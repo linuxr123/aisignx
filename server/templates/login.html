@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+
+{% block title %}Login - AISignX{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6 col-lg-5">
+        <div class="text-center mb-4">
+            <img src="{{ url_for('static', filename='img/AISignX.png') }}" alt="AISignX" style="max-width:280px; width:100%;">
+        </div>
+        <div class="card">
+            <div class="card-header text-center">
+                <h5 class="mb-0">Sign in</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('auth.login') }}">
+                    <div class="mb-3">
+                        <label for="tenant_slug" class="form-label">Organization code</label>
+                        <input type="text" class="form-control" id="tenant_slug" name="tenant_slug"
+                               autocomplete="organization" placeholder="e.g. acme-corp"
+                               autocapitalize="none" spellcheck="false">
+                        <div class="form-text">
+                            The code for your tenant (from your administrator).
+                            System administrators: leave this blank.
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="username" name="username"
+                               required autocomplete="username">
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="password" name="password"
+                               required autocomplete="current-password">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="remember" name="remember">
+                        <label class="form-check-label" for="remember">Remember me</label>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">Sign in</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,519 @@
+{% extends 'base.html' %}
+
+{% block title %}Roles &amp; Permissions - AISignX{% endblock %}
+
+{% block content %}
+<style>
+  /* Scrollable role editor: body scrolls; header/footer stay fixed */
+  #roleEditorModal .modal-dialog {
+    max-height: calc(100vh - 2rem);
+  }
+  #roleEditorModal .modal-content {
+    max-height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+  }
+  #roleEditorModal .modal-body {
+    overflow-y: auto;
+    max-height: calc(100vh - 11rem);
+    -webkit-overflow-scrolling: touch;
+  }
+  #roleEditorModal .modal-footer {
+    flex-shrink: 0;
+  }
+</style>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-shield-lock-fill"></i> Roles &amp; Permissions</h1>
+    <button class="btn btn-primary" id="newRoleBtn" type="button">
+        <i class="bi bi-plus-lg"></i> New custom role
+    </button>
+</div>
+
+<div class="alert alert-info py-2 small mb-3">
+    <i class="bi bi-info-circle"></i>
+    <strong>System roles</strong> are built-in templates (viewer, content editor, etc.). You can
+    <strong>view</strong> them and copy their permissions into a new custom role.
+    <strong>Custom roles</strong> belong to one tenant and can be edited freely.
+    {% if not roles_scope.is_superadmin %}
+    <span class="d-block mt-1">You are managing roles for <strong>your tenant(s) only</strong>.</span>
+    {% endif %}
+</div>
+
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1" for="domainFilter">Tenant</label>
+                <select id="domainFilter" class="form-select form-select-sm">
+                    <option value="">All tenants</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1" for="roleFilterSearch">Search</label>
+                <input type="search" class="form-control form-control-sm" id="roleFilterSearch"
+                       placeholder="Role name or description…">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1" for="roleFilterType">Type</label>
+                <select class="form-select form-select-sm" id="roleFilterType">
+                    <option value="">Any</option>
+                    <option value="system">System</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="roleFilterReset">Reset</button>
+            </div>
+        </div>
+        <div class="small text-muted mt-2">
+            Showing <span id="roleFilterCount">0</span> role(s)
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Role</th>
+                        <th>Tenant</th>
+                        <th>Type</th>
+                        <th>Capabilities</th>
+                        <th>Description</th>
+                        <th class="text-end" style="width:180px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="rolesRows">
+                    <tr><td colspan="6" class="text-center text-muted py-4">Loading roles…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Role editor modal -->
+<div class="modal fade" id="roleEditorModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="roleEditorTitle">Role</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="roleEditorForm">
+          <div id="roleEditorError" class="alert alert-danger d-none"></div>
+          <div id="roleReadOnlyBanner" class="alert alert-secondary d-none small">
+            This is a <strong>system role</strong> — permissions are read-only. Use
+            <strong>Duplicate as custom role</strong> to create an editable copy for your tenant.
+          </div>
+          <div class="row mb-3">
+            <div class="col-md-5">
+                <label class="form-label">Role name <span class="text-danger">*</span></label>
+                <input name="name" type="text" class="form-control" maxlength="80" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Tenant <span class="text-danger">*</span></label>
+                <select name="domain_id" class="form-select" required></select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="roleFullAdmin">
+                    <label class="form-check-label" for="roleFullAdmin">Tenant admin (all access)</label>
+                </div>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <input name="description" type="text" class="form-control" maxlength="255"
+                   placeholder="What is this role for?">
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="text-muted small mb-0">PERMISSIONS BY AREA</h6>
+            <div class="btn-group btn-group-sm" id="permToolbar">
+              <button type="button" class="btn btn-outline-secondary" id="permsAllBtn">Select all</button>
+              <button type="button" class="btn btn-outline-secondary" id="permsNoneBtn">Clear all</button>
+            </div>
+          </div>
+          <div id="permsContainer"></div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary d-none" id="duplicateRoleBtn">Duplicate as custom role</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="submit" class="btn btn-primary" id="roleSaveBtn" form="roleEditorForm">Save role</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const rowsEl = document.getElementById('rolesRows');
+    const filterDomain = document.getElementById('domainFilter');
+    const filterSearch = document.getElementById('roleFilterSearch');
+    const filterType = document.getElementById('roleFilterType');
+    const filterCount = document.getElementById('roleFilterCount');
+    const modalEl = document.getElementById('roleEditorModal');
+    const errEl = document.getElementById('roleEditorError');
+    const permsContainer = document.getElementById('permsContainer');
+    const form = document.getElementById('roleEditorForm');
+    const titleEl = document.getElementById('roleEditorTitle');
+    const readOnlyBanner = document.getElementById('roleReadOnlyBanner');
+    const duplicateBtn = document.getElementById('duplicateRoleBtn');
+    const saveBtn = document.getElementById('roleSaveBtn');
+    const fullAdminChk = document.getElementById('roleFullAdmin');
+
+    let modal = null;
+    let editingRoleId = null;
+    let editingIsSystem = false;
+    let allRoles = [];
+    let allDomains = [];
+    let pageScope = {{ roles_scope | tojson }};
+    let permissionGroups = {{ permission_groups | tojson }};
+    let selectedPermissionKeys = new Set();
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function showError(m) { errEl.textContent = m; errEl.classList.remove('d-none'); }
+    function clearError()  { errEl.classList.add('d-none'); }
+
+    function setReadOnlyMode(on) {
+        readOnlyBanner.classList.toggle('d-none', !on);
+        duplicateBtn.classList.toggle('d-none', !on);
+        saveBtn.classList.toggle('d-none', on);
+        form.name.disabled = on;
+        form.description.disabled = on;
+        form.domain_id.disabled = on || editingRoleId != null;
+        fullAdminChk.disabled = on;
+        document.getElementById('permToolbar').style.display = on ? 'none' : '';
+        permsContainer.querySelectorAll('input[type=checkbox]').forEach(c => { c.disabled = on; });
+    }
+
+    function renderPermissionMatrix(selectedKeys) {
+        if (selectedKeys) selectedPermissionKeys = new Set(selectedKeys || []);
+        if (!permissionGroups.length) {
+            permsContainer.innerHTML = '<div class="text-danger small">Permission catalog failed to load.</div>';
+            return;
+        }
+        permsContainer.innerHTML = permissionGroups.map(group => {
+            const cells = group.permissions.map(p => `
+                <div class="col-md-3 col-sm-4 col-6">
+                    <div class="form-check">
+                        <input class="form-check-input perm-check" type="checkbox"
+                               id="perm_${escapeHtml(p.key).replace(/\./g,'_')}"
+                               value="${escapeHtml(p.key)}"
+                               data-group="${escapeHtml(group.id)}"
+                               ${selectedPermissionKeys.has(p.key) ? 'checked' : ''}>
+                        <label class="form-check-label" for="perm_${escapeHtml(p.key).replace(/\./g,'_')}">
+                            ${escapeHtml(p.label)}
+                        </label>
+                    </div>
+                </div>`).join('');
+            return `<div class="card mb-2 perm-group-card" data-group="${escapeHtml(group.id)}">
+                <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${escapeHtml(group.label)}</strong>
+                        <div class="small text-muted">${escapeHtml(group.description || '')}</div>
+                    </div>
+                    <div class="btn-group btn-group-sm perm-group-actions">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" data-group-all="${escapeHtml(group.id)}">All</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" data-group-none="${escapeHtml(group.id)}">None</button>
+                    </div>
+                </div>
+                <div class="card-body py-2">
+                    <div class="row g-2">${cells}</div>
+                </div>
+            </div>`;
+        }).join('');
+
+        permsContainer.querySelectorAll('.perm-check').forEach(c => {
+            c.addEventListener('change', () => {
+                if (c.checked) selectedPermissionKeys.add(c.value);
+                else selectedPermissionKeys.delete(c.value);
+                syncFullAdminCheckbox();
+            });
+        });
+        permsContainer.querySelectorAll('[data-group-all]').forEach(b => {
+            b.addEventListener('click', () => {
+                const gid = b.dataset.groupAll;
+                permissionGroups.find(g => g.id === gid)?.permissions.forEach(p => {
+                    selectedPermissionKeys.add(p.key);
+                });
+                renderPermissionMatrix();
+            });
+        });
+        permsContainer.querySelectorAll('[data-group-none]').forEach(b => {
+            b.addEventListener('click', () => {
+                const gid = b.dataset.groupNone;
+                permissionGroups.find(g => g.id === gid)?.permissions.forEach(p => {
+                    selectedPermissionKeys.delete(p.key);
+                });
+                renderPermissionMatrix();
+            });
+        });
+        syncFullAdminCheckbox();
+    }
+
+    function syncFullAdminCheckbox() {
+        const hasAdmin = selectedPermissionKeys.has('domain.admin');
+        fullAdminChk.checked = hasAdmin;
+    }
+
+    fullAdminChk.addEventListener('change', () => {
+        if (fullAdminChk.checked) {
+            selectedPermissionKeys.add('domain.admin');
+        } else {
+            selectedPermissionKeys.delete('domain.admin');
+        }
+        renderPermissionMatrix();
+    });
+
+    function selectedPermKeys() {
+        return Array.from(selectedPermissionKeys);
+    }
+
+    function applyScopeFromCatalog(j) {
+        if (j.scope) {
+            pageScope = Object.assign({}, pageScope, j.scope);
+        }
+        allDomains = j.domains || pageScope.domains || [];
+    }
+
+    function populateDomainDropdowns(selectedFilterId) {
+        const isSuper = !!pageScope.is_superadmin;
+        const filterOpts = (isSuper ? '<option value="">All tenants</option>' : '')
+            + allDomains.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+        filterDomain.innerHTML = filterOpts;
+        form.domain_id.innerHTML = '<option value="">Select tenant…</option>'
+            + allDomains.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+
+        const defaultId = pageScope.default_domain_id;
+        if (!isSuper) {
+            const pick = selectedFilterId || defaultId || (allDomains[0] && allDomains[0].id) || '';
+            filterDomain.value = String(pick);
+            if (allDomains.length === 1) {
+                filterDomain.disabled = true;
+            }
+        } else if (selectedFilterId != null && selectedFilterId !== '') {
+            filterDomain.value = String(selectedFilterId);
+        }
+    }
+
+    async function loadDomains() {
+        const r = await fetch('/api/roles/catalog');
+        const j = await r.json();
+        if (j.status !== 'success') throw new Error(j.message || 'Failed to load tenants');
+        applyScopeFromCatalog(j);
+        populateDomainDropdowns();
+    }
+
+    async function loadRoles() {
+        rowsEl.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Loading roles…</td></tr>';
+        const did = filterDomain.value;
+        const url = did ? `/api/roles/catalog?domain_id=${encodeURIComponent(did)}` : '/api/roles/catalog';
+        const r = await fetch(url);
+        const j = await r.json();
+        if (j.status !== 'success') {
+            rowsEl.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-4">${escapeHtml(j.message || 'Failed to load roles')}</td></tr>`;
+            return;
+        }
+        allRoles = j.roles || [];
+        applyScopeFromCatalog(j);
+        populateDomainDropdowns(did || undefined);
+        applyRoleFilters();
+    }
+
+    function applyRoleFilters() {
+        const q = (filterSearch.value || '').trim().toLowerCase();
+        const typ = filterType.value;
+        const rows = allRoles.filter(r => {
+            if (typ === 'system' && !r.is_system) return false;
+            if (typ === 'custom' && r.is_system) return false;
+            if (q) {
+                const hay = `${r.name} ${r.description || ''} ${r.domain_name || ''}`.toLowerCase();
+                if (!hay.includes(q)) return false;
+            }
+            return true;
+        });
+        filterCount.textContent = rows.length;
+        if (!rows.length) {
+            rowsEl.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No roles match your filters.</td></tr>';
+            return;
+        }
+        rowsEl.innerHTML = rows.map(r => {
+            const tag = r.is_system
+                ? '<span class="badge bg-info text-dark">System</span>'
+                : '<span class="badge bg-secondary">Custom</span>';
+            const tenant = r.domain_name
+                ? escapeHtml(r.domain_name)
+                : '<span class="text-muted">All tenants</span>';
+            const actions = r.is_system
+                ? `<button type="button" class="btn btn-sm btn-outline-primary" data-view="${r.id}">View</button>
+                   <button type="button" class="btn btn-sm btn-outline-secondary" data-copy="${r.id}">Duplicate</button>`
+                : `<button type="button" class="btn btn-sm btn-outline-primary" data-edit="${r.id}">Edit</button>
+                   <button type="button" class="btn btn-sm btn-outline-danger" data-del="${r.id}">Delete</button>`;
+            return `<tr>
+                <td><span class="fw-semibold">${escapeHtml(r.name)}</span></td>
+                <td>${tenant}</td>
+                <td>${tag}</td>
+                <td><span class="badge bg-light text-dark border">${r.permission_count} permissions</span></td>
+                <td class="small text-muted">${escapeHtml(r.description || '')}</td>
+                <td class="text-end">${actions}</td>
+            </tr>`;
+        }).join('');
+
+        rowsEl.querySelectorAll('[data-view],[data-edit]').forEach(b =>
+            b.addEventListener('click', () => openEditor(parseInt(b.dataset.view || b.dataset.edit, 10), false)));
+        rowsEl.querySelectorAll('[data-copy]').forEach(b =>
+            b.addEventListener('click', () => openEditor(parseInt(b.dataset.copy, 10), true)));
+        rowsEl.querySelectorAll('[data-del]').forEach(b =>
+            b.addEventListener('click', () => deleteRole(parseInt(b.dataset.del, 10))));
+    }
+
+    async function openEditor(roleId, duplicateFromSystem) {
+        clearError();
+        if (roleId == null) {
+            editingRoleId = null;
+            editingIsSystem = false;
+            titleEl.textContent = 'New custom role';
+            form.name.value = '';
+            form.description.value = '';
+            const defDom = filterDomain.value || pageScope.default_domain_id || (allDomains[0] && allDomains[0].id) || '';
+            form.domain_id.value = defDom;
+            form.domain_id.disabled = allDomains.length <= 1;
+            setReadOnlyMode(false);
+            renderPermissionMatrix([]);
+            modal.show();
+            return;
+        }
+
+        const r = await fetch('/api/roles/' + roleId);
+        const j = await r.json();
+        if (j.status !== 'success') { alert(j.message || 'Could not load role'); return; }
+        const role = j.role;
+
+        if (duplicateFromSystem || !role.is_system) {
+            editingRoleId = duplicateFromSystem ? null : roleId;
+            editingIsSystem = false;
+            titleEl.textContent = duplicateFromSystem
+                ? 'New role (from ' + role.name + ')'
+                : 'Edit role: ' + role.name;
+            form.name.value = duplicateFromSystem ? (role.name + ' (custom)') : role.name;
+            form.description.value = role.description || '';
+            const allowed = new Set(allDomains.map(d => d.id));
+            let domId = filterDomain.value || role.domain_id || pageScope.default_domain_id || '';
+            if (domId && !allowed.has(parseInt(domId, 10)) && allDomains.length) {
+                domId = allDomains[0].id;
+            }
+            form.domain_id.value = domId;
+            form.domain_id.disabled = editingRoleId != null || allDomains.length <= 1;
+            setReadOnlyMode(false);
+            renderPermissionMatrix(role.permissions || []);
+            modal.show();
+            return;
+        }
+
+        editingRoleId = roleId;
+        editingIsSystem = true;
+        titleEl.textContent = 'View system role: ' + role.name;
+        form.name.value = role.name;
+        form.description.value = role.description || '';
+        form.domain_id.value = '';
+        setReadOnlyMode(true);
+        renderPermissionMatrix(role.permissions || []);
+        duplicateBtn.onclick = () => {
+            modal.hide();
+            setTimeout(() => openEditor(roleId, true), 300);
+        };
+        modal.show();
+    }
+
+    async function deleteRole(roleId) {
+        if (!confirm('Delete this custom role? Users must be unassigned first.')) return;
+        const r = await fetch('/api/roles/' + roleId, { method: 'DELETE' });
+        const j = await r.json();
+        if (j.status === 'success') loadRoles();
+        else alert(j.message || 'Delete failed');
+    }
+
+    form.addEventListener('submit', async ev => {
+        ev.preventDefault();
+        if (editingIsSystem) return;
+        clearError();
+        const fd = new FormData(form);
+        const body = {
+            name: fd.get('name'),
+            description: fd.get('description') || null,
+            permissions: selectedPermKeys(),
+        };
+        let r;
+        if (editingRoleId == null) {
+            body.domain_id = parseInt(fd.get('domain_id'), 10);
+            if (!body.domain_id) { showError('Select a tenant for this role.'); return; }
+            r = await fetch('/api/roles', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+        } else {
+            r = await fetch('/api/roles/' + editingRoleId, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+        }
+        const j = await r.json();
+        if (j.status === 'success') {
+            modal.hide();
+            loadRoles();
+        } else {
+            showError(j.message || 'Save failed');
+        }
+    });
+
+    document.getElementById('newRoleBtn').addEventListener('click', () => openEditor(null, false));
+    filterDomain.addEventListener('change', loadRoles);
+    filterSearch.addEventListener('input', applyRoleFilters);
+    filterType.addEventListener('change', applyRoleFilters);
+    document.getElementById('roleFilterReset').addEventListener('click', () => {
+        filterSearch.value = '';
+        filterType.value = '';
+        if (pageScope.is_superadmin) {
+            filterDomain.value = '';
+            filterDomain.disabled = false;
+        } else {
+            filterDomain.value = String(pageScope.default_domain_id || (allDomains[0] && allDomains[0].id) || '');
+        }
+        loadRoles();
+    });
+    document.getElementById('permsAllBtn').addEventListener('click', () => {
+        permissionGroups.forEach(g => g.permissions.forEach(p => selectedPermissionKeys.add(p.key)));
+        renderPermissionMatrix();
+    });
+    document.getElementById('permsNoneBtn').addEventListener('click', () => {
+        selectedPermissionKeys.clear();
+        renderPermissionMatrix();
+    });
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        modal = new bootstrap.Modal(modalEl);
+        renderPermissionMatrix([]);
+        try {
+            await loadDomains();
+            await loadRoles();
+        } catch (e) {
+            console.error(e);
+            rowsEl.innerHTML = `<tr><td colspan="6" class="text-danger text-center py-4">${escapeHtml(e.message || 'Failed to initialize roles page')}</td></tr>`;
+        }
+    });
+})();
+</script>
+{% endblock %}

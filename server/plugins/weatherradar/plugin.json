@@ -1,0 +1,100 @@
+﻿{
+  "key": "weatherradar",
+  "name": "Weather Radar",
+  "version": "2.2.0",
+  "icon": "bi-radar",
+  "description": "Animated NOAA NEXRAD weather radar map zoomed to your location.",
+  "csp_origins": [
+    "https://unpkg.com",
+    "https://api.rainviewer.com",
+    "https://tilecache.rainviewer.com",
+    "https://api.zippopotam.us",
+    "https://nominatim.openstreetmap.org",
+    "https://geocoding-api.open-meteo.com",
+    "https://opengeo.ncep.noaa.gov",
+    "https://tile.openstreetmap.org",
+    "https://*.tile.openstreetmap.org"
+  ],
+  "schema": [
+    {
+      "name": "location",
+      "type": "string",
+      "label": "Location",
+      "description": "City name, zip/post code, or GPS coordinates (lat,lon).",
+      "placeholder": "e.g. 22601  or  New York  or  40.71,-74.00",
+      "default": "",
+      "group": "Location"
+    },
+    {
+      "name": "zoom",
+      "type": "select",
+      "label": "Zoom Level",
+      "description": "Map zoom — lower values show a wider area.",
+      "options": [
+        { "label": "6 — Regional", "value": "6" },
+        { "label": "7 — State", "value": "7" },
+        { "label": "8 — Metro (default)", "value": "8" },
+        { "label": "9 — City", "value": "9" },
+        { "label": "10 — Neighbourhood", "value": "10" }
+      ],
+      "default": "8",
+      "group": "Location"
+    },
+    {
+      "name": "frames",
+      "type": "integer",
+      "label": "Animation Frames",
+      "description": "Number of radar scans to loop. RainViewer's free API provides about 13 past scans (~2 hours, every 10 min). Enable 'Include Forecast Frames' below to add up to 3 more (+10/+20/+30 min). Higher values are silently capped to what's available.",
+      "default": 10,
+      "group": "Radar"
+    },
+    {
+      "name": "frame_ms",
+      "type": "integer",
+      "label": "Milliseconds Per Frame",
+      "description": "Speed of the radar animation. Lower = faster.",
+      "default": 600,
+      "group": "Radar"
+    },
+    {
+      "name": "nowcast",
+      "type": "boolean",
+      "label": "Include Forecast Frames",
+      "description": "Append RainViewer's short-range nowcast frames (+10/+20/+30 min predicted radar) after the historical loop.",
+      "default": false,
+      "group": "Radar"
+    },
+    {
+      "name": "alerts",
+      "type": "boolean",
+      "label": "Show Storm Alerts",
+      "description": "Overlay NWS active storm alert polygons on the map.",
+      "default": true,
+      "group": "Radar"
+    },
+    {
+      "name": "refresh_minutes",
+      "type": "integer",
+      "label": "Reload Radar Every (minutes)",
+      "description": "How often to fetch fresh radar frames. Set to 0 to disable auto-refresh.",
+      "default": 5,
+      "group": "Radar"
+    },
+    {
+      "name": "loop",
+      "type": "boolean",
+      "label": "Loop (stay on screen)",
+      "description": "Keep showing the radar indefinitely without advancing.",
+      "default": false,
+      "group": "Playback"
+    },
+    {
+      "name": "duration",
+      "type": "integer",
+      "label": "Duration (seconds)",
+      "description": "How long to show this plugin before advancing. Ignored when Loop is on.",
+      "default": 30,
+      "group": "Playback"
+    }
+  ]
+}

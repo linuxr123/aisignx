@@ -1,0 +1,307 @@
+{% extends 'base.html' %}
+
+{% block title %}Audit Log - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-shield-check"></i> Audit Log</h1>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form id="auditFilters" class="row g-3">
+            {% if show_tenant_filter %}
+            <div class="col-md-2">
+                <label class="form-label">Tenant</label>
+                <select id="fTenant" class="form-select form-select-sm">
+                    {% if is_superadmin %}
+                    <option value="">All tenants</option>
+                    {% endif %}
+                    {% for domain in domains %}
+                    <option value="{{ domain.id }}">{{ domain.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-3">
+                <label class="form-label">Action</label>
+                <select id="fAction" class="form-select form-select-sm">
+                    <option value="">— any —</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Target type</label>
+                <select id="fTargetType" class="form-select form-select-sm">
+                    <option value="">— any —</option>
+                    <option value="__display__">All display activity</option>
+                    <option value="display">Display</option>
+                    <option value="displays">Displays</option>
+                    <option value="display_group">Display group</option>
+                    <option value="media">Media</option>
+                    <option value="playlist">Playlist</option>
+                    <option value="schedule">Schedule</option>
+                    <option value="user">User</option>
+                    <option value="domain">Tenant</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Actor user id</label>
+                <input id="fActor" type="number" min="1" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Since</label>
+                <input id="fSince" type="datetime-local" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Until</label>
+                <input id="fUntil" type="datetime-local" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-1 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary btn-sm w-100">Apply</button>
+            </div>
+        </form>
+        <div class="mt-2 d-flex gap-2 align-items-center small">
+            <button type="button" class="btn btn-sm btn-outline-primary" id="displayAuditBtn">
+                <i class="bi bi-display"></i> Display audit
+            </button>
+            <span class="text-muted">Download current filter:</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="exportCsvBtn">
+                <i class="bi bi-filetype-csv"></i> CSV
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="exportJsonBtn">
+                <i class="bi bi-filetype-json"></i> JSON
+            </button>
+            <span class="text-muted ms-2">(max 50,000 rows)</span>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:160px;">When</th>
+                        <th>Action</th>
+                        <th>Target</th>
+                        <th>Actor</th>
+                        <th>IP</th>
+                        {% if is_superadmin %}<th class="scope-only">Tenant</th>{% endif %}
+                        <th style="width:80px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="auditRows">
+                    <tr><td colspan="7" class="text-muted text-center py-4">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center p-3 border-top">
+            <span id="auditSummary" class="text-muted small"></span>
+            <nav>
+                <ul class="pagination pagination-sm mb-0" id="auditPager"></ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<!-- Detail modal -->
+<div class="modal fade" id="auditDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Audit Entry</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="row small mb-3" id="auditDetailMeta"></dl>
+                <h6 class="text-muted">Payload</h6>
+                <pre id="auditDetailPayload"
+                     class="bg-light p-3 rounded small"
+                     style="max-height:400px; overflow:auto;"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const isSuper = {{ 'true' if is_superadmin else 'false' }};
+    const showTenantFilter = {{ 'true' if show_tenant_filter else 'false' }};
+    let currentPage = 1;
+    const pageSize = 50;
+
+    function scopeParam() {
+        return isSuper ? '&scope=all' : '';
+    }
+
+    function readFilters() {
+        const filters = {
+            action:       document.getElementById('fAction').value,
+            target_type:  document.getElementById('fTargetType').value,
+            actor_user_id:document.getElementById('fActor').value,
+            since:        document.getElementById('fSince').value,
+            until:        document.getElementById('fUntil').value,
+        };
+        const tenantEl = document.getElementById('fTenant');
+        if (tenantEl && (isSuper || showTenantFilter)) {
+            const v = tenantEl.value;
+            if (v) filters.domain_id = v;
+        }
+        return filters;
+    }
+
+    function buildQS(extra) {
+        const f = readFilters();
+        const p = new URLSearchParams();
+        for (const [k,v] of Object.entries(f)) if (v) p.set(k, v);
+        for (const [k,v] of Object.entries(extra || {})) p.set(k, v);
+        const s = scopeParam();
+        return p.toString() + (s ? (p.toString() ? '&' : '') + s.replace(/^&/, '') : '');
+    }
+
+    async function loadActions() {
+        const r = await fetch('/api/audit/actions?' + buildQS({}));
+        const j = await r.json();
+        const sel = document.getElementById('fAction');
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">— any —</option>';
+        for (const a of (j.actions || [])) {
+            const o = document.createElement('option');
+            o.value = a; o.textContent = a;
+            sel.appendChild(o);
+        }
+        sel.value = cur;
+    }
+
+    async function loadPage(page) {
+        currentPage = page || 1;
+        const r = await fetch('/api/audit?' + buildQS({page: currentPage, page_size: pageSize}));
+        const j = await r.json();
+        renderRows(j);
+        renderPager(j);
+        document.getElementById('auditSummary').textContent =
+            `${j.total} entries · page ${j.page} of ${j.pages || 1} · scope: ${j.scope}`;
+    }
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function renderRows(j) {
+        const tb = document.getElementById('auditRows');
+        if (!j.entries || !j.entries.length) {
+            tb.innerHTML = '<tr><td colspan="7" class="text-muted text-center py-4">No entries.</td></tr>';
+            return;
+        }
+        tb.innerHTML = j.entries.map(e => {
+            const target = e.target_type
+                ? `<code class="small">${escapeHtml(e.target_type)}/${escapeHtml(e.target_id || '')}</code>`
+                : '<span class="text-muted">—</span>';
+            const tenantCol = isSuper
+                ? `<td class="small text-muted">${escapeHtml(e.domain || e.domain_id || '')}</td>`
+                : '';
+            const actor = e.actor
+                ? escapeHtml(e.actor)
+                : (e.token_id ? `<em class="text-muted">token #${e.token_id}</em>` : '<em class="text-muted">system</em>');
+            const ts = e.timestamp ? e.timestamp.replace('T', ' ').slice(0, 19) : '';
+            return `<tr>
+                <td class="small text-nowrap">${escapeHtml(ts)}</td>
+                <td><code>${escapeHtml(e.action)}</code></td>
+                <td>${target}</td>
+                <td class="small">${actor}</td>
+                <td class="small text-muted">${escapeHtml(e.ip || '')}</td>
+                ${tenantCol}
+                <td class="text-end">
+                    ${e.has_payload
+                        ? `<button class="btn btn-sm btn-outline-secondary" data-detail="${e.id}">View</button>`
+                        : ''}
+                </td>
+            </tr>`;
+        }).join('');
+        tb.querySelectorAll('button[data-detail]').forEach(b => {
+            b.addEventListener('click', () => showDetail(b.dataset.detail));
+        });
+    }
+
+    function renderPager(j) {
+        const p = document.getElementById('auditPager');
+        if (!j.pages || j.pages <= 1) { p.innerHTML = ''; return; }
+        const cur = j.page;
+        const max = j.pages;
+        const items = [];
+        function pageItem(n, label, disabled) {
+            return `<li class="page-item ${n === cur ? 'active' : ''} ${disabled ? 'disabled' : ''}">
+                <a class="page-link" href="#" data-page="${n}">${label || n}</a></li>`;
+        }
+        items.push(pageItem(Math.max(1, cur - 1), '«', cur === 1));
+        const start = Math.max(1, cur - 3);
+        const end   = Math.min(max, cur + 3);
+        if (start > 1) items.push(pageItem(1));
+        if (start > 2) items.push('<li class="page-item disabled"><span class="page-link">…</span></li>');
+        for (let n = start; n <= end; n++) items.push(pageItem(n));
+        if (end < max - 1) items.push('<li class="page-item disabled"><span class="page-link">…</span></li>');
+        if (end < max) items.push(pageItem(max));
+        items.push(pageItem(Math.min(max, cur + 1), '»', cur === max));
+        p.innerHTML = items.join('');
+        p.querySelectorAll('a.page-link').forEach(a => {
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                loadPage(parseInt(a.dataset.page, 10));
+            });
+        });
+    }
+
+    async function showDetail(id) {
+        const r = await fetch('/api/audit/' + id);
+        const j = await r.json();
+        if (j.status !== 'success') return;
+        const e = j.entry;
+        const meta = [
+            ['Time',       (e.timestamp || '').replace('T',' ')],
+            ['Action',     e.action],
+            ['Target',     e.target_type ? `${e.target_type}/${e.target_id || ''}` : '—'],
+            ['Actor',      e.actor || (e.token_id ? `token #${e.token_id}` : 'system')],
+            ['IP',         e.ip || '—'],
+            ['User-Agent', e.user_agent || '—'],
+            ['Tenant',     e.domain_id || '—'],
+        ];
+        document.getElementById('auditDetailMeta').innerHTML = meta.map(
+            ([k,v]) => `<dt class="col-sm-3">${escapeHtml(k)}</dt><dd class="col-sm-9">${escapeHtml(v)}</dd>`
+        ).join('');
+        document.getElementById('auditDetailPayload').textContent =
+            e.payload ? JSON.stringify(e.payload, null, 2) : '(empty)';
+        new bootstrap.Modal(document.getElementById('auditDetailModal')).show();
+    }
+
+    document.getElementById('auditFilters').addEventListener('submit', e => {
+        e.preventDefault();
+        loadPage(1);
+    });
+    document.getElementById('displayAuditBtn')?.addEventListener('click', () => {
+        document.getElementById('fTargetType').value = '__display__';
+        document.getElementById('fAction').value = '';
+        loadActions().then(() => loadPage(1));
+    });
+    const fTenant = document.getElementById('fTenant');
+    if (fTenant) {
+        fTenant.addEventListener('change', () => {
+            loadActions(); loadPage(1);
+        });
+    }
+
+    function downloadExport(fmt) {
+        const qs = buildQS({ format: fmt });
+        // Open in a new tab so the browser handles the download dialog and the
+        // current view (and its scroll/filter state) stays put.
+        window.open('/api/audit/export?' + qs, '_blank');
+    }
+    document.getElementById('exportCsvBtn')?.addEventListener('click',  () => downloadExport('csv'));
+    document.getElementById('exportJsonBtn')?.addEventListener('click', () => downloadExport('json'));
+
+    loadActions().then(() => loadPage(1));
+})();
+</script>
+{% endblock %}

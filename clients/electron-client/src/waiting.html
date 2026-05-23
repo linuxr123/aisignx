@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';">
+  <title>Signage Player — Waiting for Approval</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .icon { font-size: 4rem; animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+    h1 { font-size: 1.5rem; font-weight: 700; }
+    p { color: #94a3b8; font-size: .95rem; text-align: center; max-width: 360px; }
+    .device-id { font-family: monospace; font-size: .8rem; color: #475569; margin-top: 8px; }
+    button {
+      margin-top: 24px; padding: 12px 28px; border: none; border-radius: 10px;
+      background: #334155; color: #94a3b8; font-size: .9rem; cursor: pointer;
+    }
+    button:hover { background: #475569; color: #f1f5f9; }
+  </style>
+</head>
+<body>
+  <div class="icon">⏳</div>
+  <h1>Awaiting Approval</h1>
+  <p>An administrator needs to approve this display on the server. This screen will advance automatically.</p>
+  <div class="device-id" id="deviceIdEl"></div>
+  <div class="device-id" id="versionEl" style="margin-top:4px;"></div>
+  <div style="display:flex; gap:10px; margin-top:24px;">
+    <button id="btnUpdate" style="padding:10px 20px; border:none; border-radius:8px; background:#1e3a4a; color:#38bdf8; font-size:.85rem; cursor:pointer;">Check for Update</button>
+    <button id="btnImport">Browse Setup File</button>
+    <button id="btnReset">Reset Setup</button>
+  </div>
+
+  <script>
+    window.signage.getDeviceId().then(id => {
+      document.getElementById('deviceIdEl').textContent = 'Device ID: ' + id;
+    });
+    window.signage.getAppVersion().then(v => {
+      document.getElementById('versionEl').textContent = 'v' + v;
+    });
+    document.getElementById('btnReset').addEventListener('click', () => window.signage.clearConfig());
+    document.getElementById('btnUpdate').addEventListener('click', () => window.signage.checkForUpdate());
+    document.getElementById('btnImport').addEventListener('click', async () => {
+      const r = await window.signage.browseClientConfig();
+      if (!r || r.canceled) return;
+      if (!r.ok) {
+        alert(r.error || 'Import failed');
+        return;
+      }
+      if (r.mode === 'enrollment') {
+        alert('Setup file loaded. Registration details were updated.');
+      }
+    });
+    window.signage.onApproved(() => {
+      document.querySelector('.icon').textContent = '✅';
+      document.querySelector('h1').textContent = 'Approved — Launching…';
+    });
+    window.signage.onDeclined(() => {
+      document.querySelector('.icon').textContent = '❌';
+      document.querySelector('h1').textContent = 'Registration Declined';
+      document.querySelector('p').textContent = 'Contact your administrator, then reset setup to try again.';
+    });
+  </script>
+</body>
+</html>

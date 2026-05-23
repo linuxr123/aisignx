@@ -1,0 +1,374 @@
+{% extends 'base.html' %}
+
+{% block title %}Proof of Play - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-clipboard-check"></i> Proof of Play</h1>
+    <div class="d-flex gap-2 align-items-center">
+        {% if is_superadmin %}
+        <div class="form-check form-switch me-2">
+            <input class="form-check-input" type="checkbox" role="switch" id="enableSwitch">
+            <label class="form-check-label small" for="enableSwitch">Recording enabled</label>
+        </div>
+        {% endif %}
+        <a id="csvBtn" class="btn btn-outline-secondary btn-sm" href="#">
+            <i class="bi bi-download"></i> Export CSV
+        </a>
+        {% if is_superadmin %}
+        <button id="purgeBtn" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-trash"></i> Purge expired
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<div id="statusBanner" class="alert alert-info py-2 small d-none"></div>
+
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form id="filterForm" class="row g-2 align-items-end small">
+            {% if is_superadmin or administrable_domains|length > 1 %}
+            <div class="col-md-2">
+                <label class="form-label mb-0">Tenant</label>
+                <select id="tenantFilter" class="form-select form-select-sm">
+                    {% if is_superadmin %}
+                    <option value="">Current tenant</option>
+                    <option value="all">All tenants</option>
+                    {% else %}
+                    <option value="">All my tenants</option>
+                    {% endif %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-2">
+                <label class="form-label mb-0">Since</label>
+                <input type="datetime-local" name="since" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-0">Until</label>
+                <input type="datetime-local" name="until" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-0">Displays</label>
+                <div class="dropdown w-100">
+                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start" type="button"
+                            id="displayPickerBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                        All displays
+                    </button>
+                    <div class="dropdown-menu p-2 w-100" id="displayPickerMenu" style="max-height: 240px; overflow-y: auto;">
+                        <div class="text-muted small px-1">Loading displays…</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-0">Media type</label>
+                <select name="item_type" id="itemTypeFilter" class="form-select form-select-sm">
+                    <option value="">All media types</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-0">Plugin</label>
+                <select name="plugin_key" id="pluginFilter" class="form-select form-select-sm">
+                    <option value="">All plugins</option>
+                </select>
+            </div>
+            <div class="col-md-1 d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm flex-grow-1">Apply</button>
+                <button type="button" id="resetBtn" class="btn btn-outline-secondary btn-sm">Reset</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Started</th>
+                        {% if is_superadmin or administrable_domains|length > 1 %}<th class="scope-only">Tenant</th>{% endif %}
+                        <th>Display</th>
+                        <th>Item</th>
+                        <th>Media type</th>
+                        <th>Plugin</th>
+                        <th class="text-end">Duration</th>
+                        <th>Done</th>
+                    </tr>
+                </thead>
+                <tbody id="rows">
+                    <tr><td colspan="{% if is_superadmin or administrable_domains|length > 1 %}8{% else %}7{% endif %}" class="text-center text-muted py-4">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer small text-muted">
+        <span id="count">0</span> events shown.
+    </div>
+</div>
+
+<script>
+const isSuper = {{ 'true' if is_superadmin else 'false' }};
+const administrableDomains = {{ administrable_domains|tojson }};
+const $rows   = document.getElementById('rows');
+const $count  = document.getElementById('count');
+const $form   = document.getElementById('filterForm');
+const $banner = document.getElementById('statusBanner');
+const $csv    = document.getElementById('csvBtn');
+const $tenantFilter = document.getElementById('tenantFilter');
+const $pickerBtn = document.getElementById('displayPickerBtn');
+const $pickerMenu = document.getElementById('displayPickerMenu');
+const $itemTypeFilter = document.getElementById('itemTypeFilter');
+const $pluginFilter = document.getElementById('pluginFilter');
+const selectedDisplays = new Set();
+
+function esc(s) {
+    return String(s ?? '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+}
+
+function updateDisplayPickerLabel() {
+    if (!selectedDisplays.size) {
+        $pickerBtn.textContent = 'All displays';
+        return;
+    }
+    const labels = [];
+    $pickerMenu.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        if (cb.checked) labels.push(cb.dataset.label || cb.value);
+    });
+    $pickerBtn.textContent = labels.length ? labels.join(', ') : 'All displays';
+}
+
+function tenantParams() {
+    const p = new URLSearchParams();
+    if (!$tenantFilter) return p;
+    const tv = $tenantFilter.value;
+    if (isSuper) {
+        if (tv === 'all') p.set('scope', 'all');
+        else if (tv) p.set('domain_id', tv);
+    } else if (tv) {
+        p.set('domain_id', tv);
+    }
+    return p;
+}
+
+function qs() {
+    const fd = new FormData($form);
+    const p = new URLSearchParams();
+    for (const [k, v] of fd.entries()) {
+        if (v !== '' && v != null) p.append(k, v);
+    }
+    selectedDisplays.forEach(id => p.append('display_id', id));
+    for (const [k, v] of tenantParams().entries()) p.set(k, v);
+    return p;
+}
+
+function fmtTs(s) {
+    if (!s) return '';
+    try { return new Date(s).toLocaleString(); } catch (e) { return s; }
+}
+
+async function loadFilterOptions() {
+    const p = tenantParams();
+    try {
+        const r = await fetch('/api/proof-of-play/filters?' + p.toString());
+        const j = await r.json();
+        if (!r.ok || j.status !== 'success') throw new Error(j.message || 'Failed to load filters');
+        const curType = $itemTypeFilter.value;
+        const curPlugin = $pluginFilter.value;
+        $itemTypeFilter.innerHTML = '<option value="">All media types</option>';
+        (j.item_types || []).forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t;
+            $itemTypeFilter.appendChild(opt);
+        });
+        $pluginFilter.innerHTML = '<option value="">All plugins</option>';
+        (j.plugins || []).forEach(k => {
+            const opt = document.createElement('option');
+            opt.value = k;
+            opt.textContent = k;
+            $pluginFilter.appendChild(opt);
+        });
+        const qsPre = new URLSearchParams(window.location.search);
+        const preType = qsPre.get('item_type');
+        const prePlugin = qsPre.get('plugin_key');
+        if (preType && $itemTypeFilter.querySelector(`option[value="${CSS.escape(preType)}"]`)) {
+            $itemTypeFilter.value = preType;
+        } else if (curType && $itemTypeFilter.querySelector(`option[value="${CSS.escape(curType)}"]`)) {
+            $itemTypeFilter.value = curType;
+        }
+        if (prePlugin && $pluginFilter.querySelector(`option[value="${CSS.escape(prePlugin)}"]`)) {
+            $pluginFilter.value = prePlugin;
+        } else if (curPlugin && $pluginFilter.querySelector(`option[value="${CSS.escape(curPlugin)}"]`)) {
+            $pluginFilter.value = curPlugin;
+        }
+    } catch (e) {
+        $itemTypeFilter.innerHTML = '<option value="">All media types</option>';
+        $pluginFilter.innerHTML = '<option value="">All plugins</option>';
+        console.warn('PoP filter options:', e);
+    }
+}
+
+async function loadDisplays() {
+    try {
+        const r = await fetch('/api/displays');
+        const j = await r.json();
+        if (!r.ok || j.status !== 'success') throw new Error(j.message || 'Failed to load displays');
+        if (!j.displays.length) {
+            $pickerMenu.innerHTML = '<div class="text-muted small px-1">No displays in this tenant.</div>';
+            return;
+        }
+        $pickerMenu.innerHTML = j.displays.map(d => `
+            <label class="dropdown-item small py-1">
+                <input type="checkbox" class="form-check-input me-2 display-pick"
+                       value="${d.id}" data-label="${esc(d.name)}">
+                ${esc(d.name)} <span class="text-muted">#${d.id}</span>
+            </label>`).join('');
+        $pickerMenu.querySelectorAll('.display-pick').forEach(cb => {
+            cb.addEventListener('change', () => {
+                if (cb.checked) selectedDisplays.add(cb.value);
+                else selectedDisplays.delete(cb.value);
+                updateDisplayPickerLabel();
+            });
+        });
+        const pre = new URLSearchParams(window.location.search).get('display_id');
+        if (pre) {
+            const cb = $pickerMenu.querySelector(`input[value="${pre}"]`);
+            if (cb) {
+                cb.checked = true;
+                selectedDisplays.add(pre);
+                updateDisplayPickerLabel();
+            }
+        }
+    } catch (e) {
+        $pickerMenu.innerHTML = `<div class="text-danger small px-1">${esc(e.message)}</div>`;
+    }
+}
+
+function showTenantCol() {
+    return isSuper || administrableDomains.length > 1;
+}
+
+async function load() {
+    const colSpan = showTenantCol() ? 8 : 7;
+    $rows.innerHTML = `<tr><td colspan="${colSpan}" class="text-center text-muted py-4">Loading…</td></tr>`;
+    const r = await fetch('/api/proof-of-play?' + qs().toString());
+    const j = await r.json();
+    if (!r.ok || j.status !== 'success') {
+        $rows.innerHTML = `<tr><td colspan="${colSpan}" class="text-danger small">${esc(j.message || 'Failed to load')}</td></tr>`;
+        return;
+    }
+    const enableSw = document.getElementById('enableSwitch');
+    if (enableSw) enableSw.checked = !!j.enabled;
+    if (!j.enabled) {
+        $banner.classList.remove('d-none');
+        $banner.classList.replace('alert-info','alert-warning');
+        $banner.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Proof of Play recording is currently <strong>disabled</strong>. Enable it in Settings to start collecting events.';
+    } else {
+        $banner.classList.add('d-none');
+    }
+    $count.textContent = j.count;
+    if (!j.events.length) {
+        $rows.innerHTML = `<tr><td colspan="${colSpan}" class="text-center text-muted py-4">No events match these filters.</td></tr>`;
+        $csv.href = '/api/proof-of-play.csv?' + qs().toString();
+        return;
+    }
+    $rows.innerHTML = j.events.map(e => `
+        <tr>
+            <td class="text-nowrap">${fmtTs(e.started_at)}</td>
+            ${(j.show_domain || showTenantCol()) ? `<td class="scope-only">${esc(e.domain || (e.domain_id ? ('#' + e.domain_id) : ''))}</td>` : ''}
+            <td>${e.display_name ? esc(e.display_name) : ''}${e.display_id ? ` <span class="text-muted">#${e.display_id}</span>` : ''}</td>
+            <td>${esc(e.item_name || '')}</td>
+            <td><span class="badge bg-secondary">${esc(e.item_type || '')}</span></td>
+            <td>${e.plugin_key ? `<code>${esc(e.plugin_key)}</code>` : ''}</td>
+            <td class="text-end">${e.duration_ms != null ? (e.duration_ms/1000).toFixed(1)+'s' : ''}</td>
+            <td>${e.completed ? '<i class="bi bi-check-circle text-success"></i>' : '<i class="bi bi-x-circle text-warning"></i>'}</td>
+        </tr>`).join('');
+    $csv.href = '/api/proof-of-play.csv?' + qs().toString();
+}
+
+$form.addEventListener('submit', e => { e.preventDefault(); load(); });
+document.getElementById('resetBtn').addEventListener('click', () => {
+    $form.reset();
+    if ($tenantFilter) $tenantFilter.value = '';
+    selectedDisplays.clear();
+    $pickerMenu.querySelectorAll('.display-pick').forEach(cb => { cb.checked = false; });
+    updateDisplayPickerLabel();
+    loadFilterOptions().then(() => loadDisplays()).then(load);
+});
+if ($tenantFilter) {
+    $tenantFilter.addEventListener('change', () => {
+        selectedDisplays.clear();
+        $pickerMenu.querySelectorAll('.display-pick').forEach(cb => { cb.checked = false; });
+        updateDisplayPickerLabel();
+        loadFilterOptions().then(() => loadDisplays()).then(load);
+    });
+}
+document.getElementById('enableSwitch')?.addEventListener('change', async (e) => {
+    const want = e.target.checked;
+    const r = await fetch('/api/proof-of-play/enable',
+        {method: 'POST', headers: {'Content-Type': 'application/json'},
+         body: JSON.stringify({enabled: want})});
+    const j = await r.json();
+    if (j.status !== 'success') {
+        alert(j.message || 'Toggle failed.');
+        e.target.checked = !want;
+        return;
+    }
+    load();
+});
+document.getElementById('purgeBtn')?.addEventListener('click', async () => {
+    if (!confirm('Delete events older than the configured retention window? This cannot be undone.')) return;
+    const r = await fetch('/api/proof-of-play/purge', {method: 'POST'});
+    const j = await r.json();
+    if (j.status === 'success') {
+        alert(`Purged ${j.deleted} events.`);
+        load();
+    } else {
+        alert(j.message || 'Purge failed.');
+    }
+});
+
+async function loadTenants() {
+    if (!$tenantFilter) return;
+    const cur = $tenantFilter.value;
+    if (!isSuper) {
+        administrableDomains.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = String(d.id);
+            opt.textContent = d.name;
+            $tenantFilter.appendChild(opt);
+        });
+        const qsPre = new URLSearchParams(window.location.search);
+        if (qsPre.get('domain_id')) $tenantFilter.value = qsPre.get('domain_id');
+        else if (cur && $tenantFilter.querySelector(`option[value="${CSS.escape(cur)}"]`)) {
+            $tenantFilter.value = cur;
+        }
+        return;
+    }
+    try {
+        const r = await fetch('/api/session/domains');
+        const j = await r.json();
+        if (!r.ok || j.status !== 'success') throw new Error(j.message || 'Failed to load tenants');
+        $tenantFilter.innerHTML = '<option value="">Current tenant</option><option value="all">All tenants</option>';
+        (j.available || []).forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = String(d.id);
+            opt.textContent = d.name;
+            $tenantFilter.appendChild(opt);
+        });
+        const qsPre = new URLSearchParams(window.location.search);
+        if (qsPre.get('scope') === 'all') $tenantFilter.value = 'all';
+        else if (qsPre.get('domain_id')) $tenantFilter.value = qsPre.get('domain_id');
+        else if (cur && $tenantFilter.querySelector(`option[value="${CSS.escape(cur)}"]`)) {
+            $tenantFilter.value = cur;
+        }
+    } catch (e) {
+        console.warn('PoP tenants:', e);
+    }
+}
+
+loadTenants().then(() => loadDisplays()).then(() => loadFilterOptions()).then(load);
+</script>
+{% endblock %}

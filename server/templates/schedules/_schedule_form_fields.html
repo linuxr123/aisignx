@@ -1,0 +1,117 @@
+<div class="row">
+    <div class="col-md-6">
+        <div class="mb-3">
+            <label for="name" class="form-label">Schedule Name</label>
+            <input type="text" class="form-control" id="name" name="name" required>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="mb-3">
+            <label for="playlist_id" class="form-label">Playlist</label>
+            <select class="form-select" id="playlist_id" name="playlist_id" required>
+                <option value="">Select a playlist</option>
+                {% for playlist in playlists %}
+                <option value="{{ playlist.id }}">{{ playlist.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-6">
+        <div class="mb-3">
+            <label for="target_type" class="form-label">Target Type</label>
+            <select class="form-select" id="target_type" name="target_type" required onchange="toggleTargetSelect(this.form.id)">
+                <option value="">Select target type</option>
+                <option value="display">Display</option>
+                <option value="group">Group</option>
+            </select>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="mb-3" id="display_select_container" style="display: none;">
+            <label for="display_id" class="form-label">Display</label>
+            <select class="form-select" id="display_id" name="display_id">
+                <option value="">Select a display</option>
+                {% for display in displays %}
+                <option value="{{ display.id }}">{{ display.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3" id="group_select_container" style="display: none;">
+            <label for="group_id" class="form-label">Group</label>
+            <select class="form-select" id="group_id" name="group_id">
+                <option value="">Select a group</option>
+                {% for group in groups %}
+                <option value="{{ group.id }}">{% if group.parent %}{{ group.parent.name }} / {{ group.name }}{% else %}{{ group.name }}{% endif %}</option>
+                {% endfor %}
+            </select>
+            <div class="form-text">Schedules assigned to a parent group also apply to its subgroups.</div>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-6">
+        <div class="mb-3">
+            <label for="start_date" class="form-label">Start Date (optional)</label>
+            <input type="date" class="form-control" id="start_date" name="start_date">
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="mb-3">
+            <label for="end_date" class="form-label">End Date (optional)</label>
+            <input type="date" class="form-control" id="end_date" name="end_date">
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-6">
+        <div class="mb-3">
+            <label for="start_time" class="form-label">Start Time (optional)</label>
+            <input type="time" class="form-control" id="start_time" name="start_time">
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="mb-3">
+            <label for="end_time" class="form-label">End Time (optional)</label>
+            <input type="time" class="form-control" id="end_time" name="end_time">
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-6">
+        <div class="mb-3">
+            <label class="form-label">Days of Week (optional)</label>
+            {% for i in range(1,8) %}
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" value="{{ i }}" id="day{{ i }}" name="day{{ i }}" checked>
+                <label class="form-check-label" for="day{{ i }}">
+                    {{ ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][i-1] }}
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="mb-3">
+            <label for="priority" class="form-label">Priority</label>
+            <input type="number" class="form-control" id="priority" name="priority" value="0" min="0">
+            <div class="form-text">Higher priority schedules will override lower priority ones</div>
+        </div>
+        <div class="mb-3">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="is_active" name="is_active" checked>
+                <label class="form-check-label" for="is_active">Active</label>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-6">
+        <div class="mb-3">
+            <label for="timezone" class="form-label">Timezone (optional)</label>
+            <select class="form-select tz-select" id="timezone" name="timezone" data-tz-include-blank="1"></select>
+            <div class="form-text">Overrides the domain default for this schedule's start/end times.</div>
+        </div>
+    </div>
+</div>

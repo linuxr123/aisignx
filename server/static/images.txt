@@ -1,0 +1,48 @@
+While I can't provide actual image files directly in this chat, I'll list the essential images you should create or acquire:
+
+Logo Image
+
+File: static/img/logo.png
+Size: 200x50 pixels
+Description: Your digital signage system logo
+Default User Avatar
+
+File: static/img/default-avatar.png
+Size: 128x128 pixels
+Description: Default user profile image
+Placeholder Images
+
+File: static/img/placeholder-image.jpg
+
+Size: 640x360 pixels
+
+Description: Placeholder for image content
+
+File: static/img/placeholder-video.jpg
+
+Size: 640x360 pixels
+
+Description: Placeholder for video content
+
+File: static/img/placeholder-webpage.jpg
+
+Size: 640x360 pixels
+
+Description: Placeholder for webpage content
+
+File: static/img/placeholder-plugin.jpg
+
+Size: 640x360 pixels
+
+Description: Placeholder for plugin content
+
+Display Monitor Icon
+
+File: static/img/monitor.svg
+Description: Icon representing a display device
+Screen Error Image
+
+File: static/img/screen-error.png
+Size: 640x360 pixels
+Description: Shown when display encounters an error
+You can create these images yourself, download free stock images, or use icon libraries like Font Awesome or Bootstrap Icons which are already included via CDN in the HTML templates.

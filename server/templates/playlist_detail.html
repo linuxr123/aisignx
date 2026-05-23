@@ -1,0 +1,2452 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ playlist.name }} - AISignX{% endblock %}
+
+{% block head %}
+<!-- Sortable.js for drag and drop functionality -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<style>
+    .playlist-item {
+        cursor: grab;
+        transition: background-color 0.2s;
+        border-left: 3px solid transparent;
+    }
+    
+    .playlist-item:hover {
+        background-color: rgba(13, 110, 253, 0.05);
+        border-left-color: #0d6efd;
+    }
+    
+    .playlist-item.ghost {
+        opacity: 0.5;
+        background: #c8ebfb;
+    }
+    
+    .playlist-item .drag-handle {
+        cursor: grab;
+        color: #6c757d;
+    }
+    
+    .playlist-item:hover .drag-handle {
+        color: #0d6efd;
+    }
+    
+    .media-thumbnail {
+        width: 80px;
+        height: 60px;
+        object-fit: cover;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+    }
+    
+    .plugin-thumbnail {
+        width: 80px;
+        height: 60px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+    }
+    
+    .media-type-badge {
+        position: absolute;
+        top: 0;
+        right: 0;
+        font-size: 0.65rem;
+    }
+    
+    .duration-badge {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        font-size: 0.65rem;
+        background-color: rgba(0,0,0,0.5);
+        color: white;
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
+    
+    .preview-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0,0,0,0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+    
+    .media-thumbnail-container:hover .preview-overlay {
+        opacity: 1;
+    }
+    
+    #save-order-btn {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+        display: none;
+    }
+    
+    .save-order-active {
+        display: block !important;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% {
+            box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.7);
+        }
+        70% {
+            box-shadow: 0 0 0 10px rgba(13, 110, 253, 0);
+        }
+        100% {
+            box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
+        }
+    }
+
+    /* Plugin modal field styles */
+    .plugin-field-card {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 0.5rem;
+        padding: 0.85rem 1rem;
+        transition: border-color 0.15s;
+    }
+    .plugin-field-card:focus-within {
+        border-color: #0d6efd;
+        background: #fff;
+    }
+    .plugin-field-label {
+        font-weight: 600;
+        font-size: 0.875rem;
+        margin-bottom: 0.25rem;
+        color: #212529;
+    }
+    .plugin-field-desc {
+        font-size: 0.78rem;
+        color: #6c757d;
+        margin-bottom: 0.4rem;
+        line-height: 1.35;
+    }
+    .plugin-toggle-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .plugin-toggle-wrap .form-check-input {
+        width: 2.5em;
+        height: 1.25em;
+        cursor: pointer;
+    }
+    .plugin-nav-pill {
+        font-size: 0.82rem;
+        padding: 0.3rem 0.75rem;
+        border-radius: 50px;
+    }
+
+    /* --- Compact, modern playlist item rows --------------------------- */
+    /* Goal: tighter vertical density, no cut-off action buttons, and a
+       cleaner separation between content and the edit/delete cluster. */
+    #playlist-items .playlist-item {
+        padding: 0.5rem 0.75rem;
+        gap: 0.25rem;
+    }
+    #playlist-items .media-thumbnail,
+    #playlist-items .plugin-thumbnail {
+        width: 56px;
+        height: 42px;
+    }
+    #playlist-items .position-number .badge {
+        font-size: 0.7rem;
+        padding: 0.25em 0.5em;
+    }
+    #playlist-items .playlist-item h5 {
+        font-size: 0.95rem;
+        font-weight: 600;
+        line-height: 1.2;
+    }
+    #playlist-items .playlist-item small.text-muted {
+        font-size: 0.75rem;
+    }
+    #playlist-items .playlist-item-meta {
+        font-size: 0.78rem;
+        line-height: 1.35;
+    }
+    #playlist-items .playlist-item-meta .meta-label {
+        color: var(--bs-secondary-color);
+        font-weight: 600;
+    }
+    #playlist-items .playlist-item-meta .meta-value {
+        color: var(--bs-body-color);
+    }
+    #playlist-items .playlist-item .badge.bg-light {
+        font-size: 0.7rem;
+        font-weight: 500;
+    }
+    #playlist-items .duration-badge {
+        font-size: 0.6rem;
+    }
+    #playlist-items .actions {
+        display: flex;
+        gap: 0.25rem;
+        flex-shrink: 0;
+        white-space: nowrap;
+        margin-left: auto;
+    }
+    #playlist-items .actions .btn {
+        padding: 0.25rem 0.55rem;
+        font-size: 0.78rem;
+        border-radius: 0.375rem;
+    }
+    #playlist-items .actions .btn i { font-size: 0.85rem; }
+    @media (max-width: 575.98px) {
+        #playlist-items .actions .btn .label { display: none; }
+    }
+
+    /* Smart-rule checkbox lists. Native <select multiple> needs Ctrl/Cmd
+       to multi-select and is hard to deselect, so we use a scrollable
+       checklist instead. */
+    .smart-checklist {
+        max-height: 9rem;
+        overflow-y: auto;
+        background: #fff;
+    }
+    .smart-checklist .form-check {
+        padding-left: 1.5rem;
+        font-size: 0.85rem;
+        line-height: 1.4;
+    }
+    .smart-checklist .form-check-input {
+        margin-left: -1.5rem;
+        cursor: pointer;
+    }
+    .smart-checklist:empty::after {
+        content: 'No tags yet';
+        color: #6c757d;
+        font-style: italic;
+        font-size: 0.8rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>{{ playlist.name }}</h1>
+        <div>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addItemModal">
+                <i class="bi bi-plus-circle"></i> Add Item
+            </button>
+            <a href="{{ url_for('playlists.playlists') }}" class="btn btn-secondary ms-2">
+                <i class="bi bi-arrow-left"></i> Back to Playlists
+            </a>
+        </div>
+    </div>
+    
+    {% if playlist.description %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i> {{ playlist.description }}
+    </div>
+    {% endif %}
+
+    <!-- Playlist-wide settings: default transition between slides. Per-item
+         settings always override this value. -->
+    <div class="card mb-3">
+        <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+            <label for="playlistDefaultTransition" class="form-label mb-0 fw-semibold">
+                <i class="bi bi-arrow-left-right me-1"></i> Default transition
+            </label>
+            <select id="playlistDefaultTransition" class="form-select form-select-sm" style="width:auto;">
+                <option value="cut"        {% if (playlist.default_transition or 'cut') == 'cut' %}selected{% endif %}>None (cut)</option>
+                <option value="fade"       {% if playlist.default_transition == 'fade' %}selected{% endif %}>Fade</option>
+                <option value="crossfade"  {% if playlist.default_transition == 'crossfade' %}selected{% endif %}>Crossfade</option>
+                <option value="wipe"       {% if playlist.default_transition == 'wipe' %}selected{% endif %}>Wipe</option>
+                <option value="slide-left" {% if playlist.default_transition == 'slide-left' %}selected{% endif %}>Slide left</option>
+                <option value="slide-right"{% if playlist.default_transition == 'slide-right' %}selected{% endif %}>Slide right</option>
+                <option value="slide-up"   {% if playlist.default_transition == 'slide-up' %}selected{% endif %}>Slide up</option>
+                <option value="slide-down" {% if playlist.default_transition == 'slide-down' %}selected{% endif %}>Slide down</option>
+                <option value="zoom"       {% if playlist.default_transition == 'zoom' %}selected{% endif %}>Zoom</option>
+                <option value="spin"       {% if playlist.default_transition == 'spin' %}selected{% endif %}>Spin</option>
+                <option value="flip"       {% if playlist.default_transition == 'flip' %}selected{% endif %}>Flip</option>
+                <option value="iris"       {% if playlist.default_transition == 'iris' %}selected{% endif %}>Iris</option>
+                <option value="puzzle"     {% if playlist.default_transition == 'puzzle' %}selected{% endif %}>Puzzle</option>
+                <option value="random"     {% if playlist.default_transition == 'random' %}selected{% endif %}>Random (per slide)</option>
+            </select>
+            <span id="playlistDefaultStatus" class="small text-muted"></span>
+
+            <label for="playlistVideoAudio" class="form-label mb-0 fw-semibold ms-3">
+                <i class="bi bi-volume-up me-1"></i> Video audio
+            </label>
+            <select id="playlistVideoAudio" class="form-select form-select-sm" style="width:auto;">
+                {% set vad = playlist.video_audio_default or 'inherit' %}
+                <option value="inherit" {% if vad == 'inherit' %}selected{% endif %}>Inherit from media</option>
+                <option value="on"      {% if vad == 'on' %}selected{% endif %}>Force on</option>
+                <option value="off"     {% if vad == 'off' %}selected{% endif %}>Force off (mute)</option>
+            </select>
+            <span id="playlistVideoAudioStatus" class="small text-muted"></span>
+
+            <span class="small text-muted ms-auto">
+                Items with their own transition keep that override.
+            </span>
+        </div>
+        <!-- Random transition pool: only relevant when default_transition='random'.
+             JS toggles visibility based on the select above. -->
+        {% set _pool = (playlist.random_transitions or '').split(',') %}
+        <div class="card-body py-2 border-top" id="randomPoolBlock"
+             style="{% if (playlist.default_transition or '') != 'random' %}display:none;{% endif %}">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                <span class="fw-semibold small">
+                    <i class="bi bi-shuffle me-1"></i>Random pool
+                </span>
+                <span class="small text-muted">
+                    Pick which transitions the player may pick from.
+                    Empty selection means "use all animated transitions".
+                </span>
+                <span id="randomPoolStatus" class="small text-muted ms-auto"></span>
+            </div>
+            <div class="d-flex flex-wrap gap-2" id="randomPoolChecks">
+                {% for t in ['fade','crossfade','wipe','slide-left','slide-right','slide-up','slide-down','zoom','spin','flip','iris','puzzle'] %}
+                <label class="form-check form-check-inline mb-0 me-2">
+                    <input type="checkbox" class="form-check-input rand-pool-cb"
+                           value="{{ t }}"
+                           {% if t in _pool %}checked{% endif %}>
+                    <span class="form-check-label small">{{ t }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Smart playlist rules. When enabled, the items list below is
+         dynamically computed from the Media library at play time and the
+         manual item editor is hidden. -->
+    {% set sr = playlist.smart_rules and (playlist.smart_rules|fromjson if playlist.smart_rules is string else playlist.smart_rules) %}
+    <div class="card mb-3" id="smartCard">
+        <div class="card-header d-flex align-items-center">
+            <i class="bi bi-magic me-2"></i>
+            <span class="fw-semibold">Smart playlist rules</span>
+            <div class="form-check form-switch ms-auto mb-0">
+                <input class="form-check-input" type="checkbox" id="smartEnabled"
+                       {% if playlist.smart_rules %}checked{% endif %}>
+                <label class="form-check-label small" for="smartEnabled">Enable</label>
+            </div>
+        </div>
+        <div class="card-body" id="smartBody" style="{% if not playlist.smart_rules %}display:none;{% endif %}">
+            <div class="alert alert-info small py-2">
+                When enabled, items below are auto-populated from the Media
+                library at play time. Manual add/reorder is disabled while
+                rules are active.
+            </div>
+            {% set _sr = (playlist.smart_rules|fromjson) if playlist.smart_rules else {} %}
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">All of these tags</label>
+                            <div id="smartAllTags" class="smart-checklist border rounded p-2"
+                                 data-saved="{{ (_sr.all_tags or [])|join(',') }}"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Any of these tags</label>
+                            <div id="smartAnyTags" class="smart-checklist border rounded p-2"
+                                 data-saved="{{ (_sr.any_tags or [])|join(',') }}"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Exclude tags</label>
+                            <div id="smartExcludeTags" class="smart-checklist border rounded p-2"
+                                 data-saved="{{ (_sr.exclude_tags or [])|join(',') }}"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Media types</label>
+                            {% set _mt = _sr.media_types or [] %}
+                            <div id="smartTypes" class="smart-checklist border rounded p-2">
+                                <label class="form-check d-block mb-0">
+                                    <input class="form-check-input me-1" type="checkbox" value="image"   {% if 'image'   in _mt %}checked{% endif %}> Image
+                                </label>
+                                <label class="form-check d-block mb-0">
+                                    <input class="form-check-input me-1" type="checkbox" value="video"   {% if 'video'   in _mt %}checked{% endif %}> Video
+                                </label>
+                                <label class="form-check d-block mb-0">
+                                    <input class="form-check-input me-1" type="checkbox" value="webpage" {% if 'webpage' in _mt %}checked{% endif %}> Webpage
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Name contains</label>
+                            <input type="text" class="form-control form-control-sm smart-rule" id="smartName"
+                                   value="{{ _sr.name_contains or '' }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small mb-1">Folder</label>
+                            <select class="form-select form-select-sm smart-rule" id="smartFolder"
+                                    data-saved="{{ _sr.folder or '' }}"
+                                    data-saved-root="{{ '1' if (playlist.smart_rules and (_sr.folder or '') == '' and _sr.folder_recursive == false) else '0' }}">
+                                <option value="">Any folder</option>
+                                <option value="__root__">Root only (no folder)</option>
+                            </select>
+                        </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input smart-rule" type="checkbox" id="smartFolderRecursive"
+                               {% if not playlist.smart_rules or _sr.folder_recursive is not defined or _sr.folder_recursive %}checked{% endif %}>
+                        <label class="form-check-label small" for="smartFolderRecursive">
+                            Include subfolders
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Order</label>
+                    <select class="form-select form-select-sm smart-rule" id="smartOrder">
+                        {% set so = playlist.smart_order or 'newest' %}
+                        <option value="newest" {% if so=='newest' %}selected{% endif %}>Newest first</option>
+                        <option value="oldest" {% if so=='oldest' %}selected{% endif %}>Oldest first</option>
+                        <option value="name"   {% if so=='name'   %}selected{% endif %}>Name (A→Z)</option>
+                        <option value="random" {% if so=='random' %}selected{% endif %}>Random</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Limit</label>
+                    <input type="number" min="1" max="500" class="form-control form-control-sm smart-rule" id="smartLimit"
+                           value="{{ playlist.smart_limit or 50 }}">
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2 mt-3">
+                <button type="button" class="btn btn-sm btn-primary" id="smartSaveBtn">Save rules</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="smartPreviewBtn">Preview matches</button>
+                <span id="smartStatus" class="small text-muted"></span>
+            </div>
+            <div id="smartPreview" class="mt-3 small"></div>
+        </div>
+    </div>
+
+    <!-- Playlist items list with drag and drop -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Playlist Items</h5>
+            <span class="badge bg-primary">{{ items|length }} items</span>
+        </div>
+        {% if items %}
+        <div class="card-body py-2 border-bottom">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small text-muted mb-1" for="playlistItemFilterSearch">Search items</label>
+                    <input type="search" class="form-control form-control-sm" id="playlistItemFilterSearch" placeholder="Name, description, plugin config...">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1" for="playlistItemFilterType">Type</label>
+                    <select class="form-select form-select-sm" id="playlistItemFilterType">
+                        <option value="">Any type</option>
+                        <option value="image">Image</option>
+                        <option value="video">Video</option>
+                        <option value="webpage">Webpage</option>
+                        <option value="plugin">Plugin</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1" for="playlistItemFilterTransition">Transition</label>
+                    <select class="form-select form-select-sm" id="playlistItemFilterTransition">
+                        <option value="">Any transition</option>
+                        <option value="cut">Inherit / cut</option>
+                        <option value="fade">Fade</option>
+                        <option value="crossfade">Crossfade</option>
+                        <option value="wipe">Wipe</option>
+                        <option value="slide-left">Slide left</option>
+                        <option value="slide-right">Slide right</option>
+                        <option value="slide-up">Slide up</option>
+                        <option value="slide-down">Slide down</option>
+                        <option value="zoom">Zoom</option>
+                        <option value="spin">Spin</option>
+                        <option value="flip">Flip</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1" for="playlistItemFilterAudio">Audio</label>
+                    <select class="form-select form-select-sm" id="playlistItemFilterAudio">
+                        <option value="">Any</option>
+                        <option value="muted">Muted</option>
+                        <option value="audible">Audible</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="playlistItemFilterReset">Reset</button>
+                </div>
+            </div>
+            <div class="small text-muted mt-2">Showing <span id="playlistItemFilterCount">{{ items|length }}</span> of {{ items|length }} item(s)</div>
+        </div>
+        <div class="card-body py-2 border-bottom d-flex align-items-center gap-2 flex-wrap" id="itemsBulkBar">
+            <div class="form-check me-2">
+                <input class="form-check-input" type="checkbox" id="selectAllItems">
+                <label class="form-check-label small" for="selectAllItems">Select all</label>
+            </div>
+            <span class="small text-muted me-2"><strong id="selectedCount">0</strong> selected</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkSetTransitionBtn" disabled>Set transition…</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkSetDurationItemsBtn" disabled>Set duration…</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkUseVideoLengthItemsBtn" disabled>Use video length</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkToggleMuteBtn" disabled>Toggle mute</button>
+            <button type="button" class="btn btn-sm btn-danger ms-auto" id="bulkDeleteItemsBtn" disabled>Delete selected</button>
+        </div>
+        {% endif %}
+        <div class="card-body p-0">
+            {% if items %}
+            <ul id="playlist-items" class="list-group list-group-flush">
+                {% for item in items %}
+                <li class="list-group-item playlist-item d-flex align-items-center"
+                    data-id="{{ item.id }}"
+                    data-filter-search="{% if item.media %}{{ (item.media.name ~ ' ' ~ (item.media.description or '') ~ ' ' ~ (item.media.tags or ''))|lower }}{% else %}{{ ((plugin_meta.get(item.id, {}).get('name', '') if plugin_meta.get(item.id) else '') ~ ' ' ~ (plugin_meta.get(item.id, {}).get('description', '') if plugin_meta.get(item.id) else '') ~ ' ' ~ (item.plugin_type or '') ~ ' ' ~ (item.plugin_config or {}))|lower }}{% endif %}"
+                    data-filter-type="{% if item.media %}{{ item.media.media_type }}{% elif item.plugin_type %}plugin{% else %}unknown{% endif %}"
+                    data-filter-transition="{{ item.transition or 'cut' }}"
+                    data-filter-audio="{{ 'muted' if item.mute_audio else 'audible' }}">
+                    <div class="px-2">
+                        <input type="checkbox" class="form-check-input item-select" value="{{ item.id }}" aria-label="Select item">
+                    </div>
+                    <div class="drag-handle px-2">
+                        <i class="bi bi-grip-vertical"></i>
+                    </div>
+
+                    <div class="position-number me-3">
+                        <span class="badge bg-secondary">{{ item.position }}</span>
+                    </div>
+                    
+                    <div class="media-thumbnail-container position-relative me-3">
+                        {% if item.media %}
+                            {% set _m = item.media %}
+                            {% set _preview_url =
+                                (_m.file_path if _m.media_type == 'webpage' else
+                                 storage.signed_url(_m.file_path, external=False)) %}
+                            {% if _m.thumbnail_path %}
+                            <img src="{{ storage.signed_url(_m.thumbnail_path, external=False) }}" class="media-thumbnail" alt="{{ _m.name }}">
+                            {% elif _m.media_type == 'image' %}
+                            <img src="{{ _preview_url }}" class="media-thumbnail" alt="{{ _m.name }}">
+                            {% elif _m.media_type == 'video' %}
+                            <div class="media-thumbnail d-flex align-items-center justify-content-center">
+                                <i class="bi bi-film text-primary" style="font-size: 2rem;"></i>
+                            </div>
+                            {% elif _m.media_type == 'webpage' %}
+                            <div class="media-thumbnail d-flex align-items-center justify-content-center">
+                                <i class="bi bi-globe text-success" style="font-size: 2rem;"></i>
+                            </div>
+                            {% endif %}
+
+                            <span class="badge {% if _m.media_type == 'image' %}bg-primary{% elif _m.media_type == 'video' %}bg-danger{% else %}bg-success{% endif %} media-type-badge">
+                                {{ _m.media_type|capitalize }}
+                            </span>
+
+                            <div class="preview-overlay">
+                                <button class="btn btn-sm btn-light preview-btn" 
+                                        data-media-id="{{ _m.id }}" 
+                                        data-media-type="{{ _m.media_type }}" 
+                                        data-media-url="{{ _preview_url }}">
+                                    <i class="bi bi-eye"></i> Preview
+                                </button>
+                            </div>
+                        {% elif item.plugin_type %}
+                            <!-- Generic plugin rendering -->
+                            <div class="plugin-thumbnail d-flex align-items-center justify-content-center">
+                                <i class="bi bi-puzzle text-primary" style="font-size: 2rem;"></i>
+                            </div>
+                            <span class="badge bg-info media-type-badge">Plugin</span>
+                        {% endif %}
+                        
+                        <div class="duration-badge">
+                            {% if item.media and item.media.media_type == 'video' and item.duration == 0 %}
+                                Full video
+                            {% else %}
+                                {{ item.duration }}s
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="flex-grow-1 min-w-0">
+                        {% if item.media %}
+                            <h5 class="mb-0 text-truncate">{{ item.media.name }}</h5>
+                            <small class="text-muted d-block">{{ item.media.description or '—' }}</small>
+                            {% if item.media.tags %}
+                            <div class="mt-1">
+                                {% for _t in item.media.tags.split(',') %}{% if _t.strip() %}
+                                <span class="badge rounded-pill bg-info-subtle text-info-emphasis border border-info-subtle">
+                                    <i class="bi bi-tag-fill"></i> {{ _t.strip() }}
+                                </span>
+                                {% endif %}{% endfor %}
+                            </div>
+                            {% endif %}
+                        {% else %}
+                            {% set _plugin = plugin_meta.get(item.id, {}) %}
+                            <h5 class="mb-0">{{ _plugin.name or (item.plugin_type or 'Plugin')|capitalize }}</h5>
+                            <small class="text-muted d-block">{{ _plugin.description or 'Plugin slide' }}</small>
+                        {% endif %}
+
+                        {% set _aspect_labels = {
+                            '': 'Inherit from display',
+                            'fit': 'Fit (letterbox)',
+                            'fill': 'Fill (cover)',
+                            'stretch': 'Stretch',
+                            'center': 'Center (1:1)'
+                        } %}
+                        {% set _transition_labels = {
+                            'cut': 'Inherit / None (cut)',
+                            'fade': 'Fade',
+                            'crossfade': 'Crossfade',
+                            'wipe': 'Wipe',
+                            'slide-left': 'Slide left',
+                            'slide-right': 'Slide right',
+                            'slide-up': 'Slide up',
+                            'slide-down': 'Slide down',
+                            'zoom': 'Zoom',
+                            'spin': 'Spin',
+                            'flip': 'Flip',
+                            'iris': 'Iris',
+                            'puzzle': 'Puzzle'
+                        } %}
+                        {% set _raw_transition = item.transition or 'cut' %}
+                        {% set _eff_transition = item.transition if (item.transition and item.transition != 'cut') else (playlist.default_transition or 'cut') %}
+                        {% set _aspect_value = item.aspect_mode or '' %}
+
+                        <div class="playlist-item-meta mt-2">
+                            <div class="row g-1">
+                                <div class="col-sm-6 col-lg-4">
+                                    <span class="meta-label">Position</span>
+                                    <span class="meta-value">{{ item.position }}</span>
+                                </div>
+                                <div class="col-sm-6 col-lg-4">
+                                    <span class="meta-label">Duration</span>
+                                    <span class="meta-value">
+                                        {% if item.media and item.media.media_type == 'video' and item.duration == 0 %}
+                                            Full video{% if item.media.duration_seconds %} ({{ item.media.duration_seconds|round|int }}s){% endif %}
+                                        {% else %}
+                                            {{ item.duration }}s
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                <div class="col-sm-6 col-lg-4">
+                                    <span class="meta-label">Transition in</span>
+                                    <span class="meta-value">
+                                        {{ _transition_labels.get(_raw_transition, _raw_transition) }}
+                                        {% if _raw_transition == 'cut' and _eff_transition != 'cut' %}
+                                        <span class="text-muted">(plays as {{ _transition_labels.get(_eff_transition, _eff_transition) }})</span>
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                <div class="col-sm-6 col-lg-4">
+                                    <span class="meta-label">Aspect mode</span>
+                                    <span class="meta-value">{{ _aspect_labels.get(_aspect_value, _aspect_value or 'Inherit from display') }}</span>
+                                </div>
+                                <div class="col-sm-6 col-lg-4">
+                                    <span class="meta-label">Mute audio</span>
+                                    <span class="meta-value">{{ 'Yes' if item.mute_audio else 'No' }}</span>
+                                </div>
+                                {% if item.media and item.media.media_type == 'video' %}
+                                <div class="col-sm-6 col-lg-4">
+                                    <span class="meta-label">Clip start</span>
+                                    <span class="meta-value">{{ item.clip_start if item.clip_start is not none else '—' }}</span>
+                                </div>
+                                <div class="col-sm-6 col-lg-4">
+                                    <span class="meta-label">Clip end</span>
+                                    <span class="meta-value">{{ item.clip_end if item.clip_end is not none else '—' }}</span>
+                                </div>
+                                {% endif %}
+                                {% if item.plugin_type and item.plugin_config %}
+                                <div class="col-12">
+                                    <span class="meta-label d-block">Plugin configuration</span>
+                                    <div class="meta-value">
+                                        {% for _k, _v in item.plugin_config.items() %}
+                                        <div><code>{{ _k }}</code>: {{ _v }}</div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="actions">
+                        <button class="btn btn-sm btn-outline-primary edit-item-btn" 
+                                data-item-id="{{ item.id }}" 
+                                data-item-position="{{ item.position }}" 
+                                data-item-duration="{{ item.duration }}"
+                                data-media-duration-seconds="{{ item.media.duration_seconds if item.media and item.media.duration_seconds else '' }}"
+                                data-item-transition="{{ item.transition or 'cut' }}"
+                                data-item-aspect="{{ item.aspect_mode or '' }}"
+                                data-item-mute="{{ '1' if item.mute_audio else '0' }}"
+                                {% if item.media %}
+                                    data-media-id="{{ item.media.id }}"
+                                    data-media-name="{{ item.media.name }}"
+                                    data-media-type="{{ item.media.media_type }}"
+                                    data-clip-start="{{ item.clip_start or '' }}"
+                                    data-clip-end="{{ item.clip_end or '' }}"
+                                {% elif item.plugin_type %}
+                                    data-plugin-type="{{ item.plugin_type }}"
+                                    data-plugin-config='{{ (item.plugin_config or {}) | tojson | forceescape }}'
+                                {% endif %}>
+                            <i class="bi bi-pencil"></i> <span class="label">Edit</span>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger delete-item-btn" data-item-id="{{ item.id }}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+
+                        {% if item.plugin_type %}
+                        <!-- Robust config source for this item -->
+                        <script type="application/json" id="plugin-config-{{ item.id }}">{{ (item.plugin_config or {}) | tojson | safe }}</script>
+                        {% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-exclamation-circle text-muted" style="font-size: 3rem;"></i>
+                <h4 class="mt-3">No items in this playlist</h4>
+                <p class="text-muted">Click "Add Item" to add media to this playlist</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Fixed save order button -->
+    <button id="save-order-btn" class="btn btn-success btn-lg shadow">
+        <i class="bi bi-save"></i> Save New Order
+    </button>
+</div>
+
+<!-- Add Item Modal -->
+<div class="modal fade" id="addItemModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Item to Playlist</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" id="mediaTypeTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="images-tab" data-bs-toggle="tab" data-bs-target="#images-content" type="button">Images</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="videos-tab" data-bs-toggle="tab" data-bs-target="#videos-content" type="button">Videos</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="webpages-tab" data-bs-toggle="tab" data-bs-target="#webpages-content" type="button">Webpages</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="plugins-tab" data-bs-toggle="tab" data-bs-target="#plugins-content" type="button">Plugins</button>
+                    </li>
+                </ul>
+
+                {# Folder + name filters that apply to whichever media tab is
+                   currently visible. Folder is a real server-side filter
+                   (recursive), name is a client-side fuzzy match on the
+                   already-loaded cards so it stays snappy. #}
+                    <div class="row g-2 mb-3 align-items-center" id="addItemFilters">
+                    <div class="col-md-3">
+                        <select id="addItemTypeFilter" class="form-select form-select-sm">
+                            <option value="">Current tab type</option>
+                            <option value="image">Images only</option>
+                            <option value="video">Videos only</option>
+                            <option value="webpage">Webpages only</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text"><i class="bi bi-folder2"></i></span>
+                            <select id="addItemFolderFilter" class="form-select form-select-sm">
+                                <option value="">All folders</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <input type="text" id="addItemNameFilter" class="form-control form-control-sm"
+                               placeholder="Filter by name…">
+                    </div>
+                    <div class="col-md-2 text-end">
+                        <span class="small text-muted" id="addItemCount">0 items</span>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="mediaTypeContent">
+                    <div class="tab-pane fade show active" id="images-content" role="tabpanel">
+                        <div class="row row-cols-1 row-cols-md-3 g-4 media-items-container" data-media-type="image">
+                            <!-- Images will be loaded here -->
+                            <div class="text-center w-100 py-5">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="tab-pane fade" id="videos-content" role="tabpanel">
+                        <div class="row row-cols-1 row-cols-md-3 g-4 media-items-container" data-media-type="video">
+                            <!-- Videos will be loaded here -->
+                        </div>
+                    </div>
+                    
+                    <div class="tab-pane fade" id="webpages-content" role="tabpanel">
+                        <div class="row row-cols-1 row-cols-md-3 g-4 media-items-container" data-media-type="webpage">
+                            <!-- Webpages will be loaded here -->
+                        </div>
+                    </div>
+                    
+                    <div class="tab-pane fade" id="plugins-content" role="tabpanel">
+                        <!-- DYNAMIC PLUGIN CARDS RENDER HERE -->
+                        <div id="plugins-list" class="row row-cols-1 row-cols-md-3 g-4">
+                            <div class="text-center w-100 py-5" id="plugins-loading">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="plugins-empty" class="text-center w-100 py-4 text-muted" style="display:none;">
+                            <i class="bi bi-puzzle" style="font-size: 2rem;"></i>
+                            <div class="mt-2">No plugins available. Ensure plugin_system is configured.</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Debug info area -->
+                <div id="debug-info" class="mt-3 p-2 border rounded" style="display: none; background-color: #f8f9fa;">
+                    <h6>Debug Information</h6>
+                    <pre id="debug-content" class="mb-0" style="white-space: pre-wrap;"></pre>
+                </div>
+            </div>
+            <div class="modal-footer d-flex flex-wrap gap-2 align-items-center">
+                <span class="me-auto small text-muted">
+                    <strong id="pickCount">0</strong> selected
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-2" id="pickAllVisible">Select all visible</button>
+                    ·
+                    <button type="button" class="btn btn-link btn-sm p-0" id="pickClear">Clear</button>
+                </span>
+                <div class="input-group input-group-sm" style="width:auto;">
+                    <span class="input-group-text">Default duration</span>
+                    <input type="number" class="form-control" id="bulkAddDuration" value="" min="0" style="width:7rem;" placeholder="media">
+                    <span class="input-group-text">s · Transition</span>
+                    <select id="bulkAddTransition" class="form-select" style="width:8rem;">
+                        <option value="cut">Cut</option>
+                        <option value="fade">Fade</option>
+                        <option value="crossfade">Crossfade</option>
+                        <option value="wipe">Wipe</option>
+                        <option value="slide-left">Slide left</option>
+                        <option value="slide-right">Slide right</option>
+                        <option value="slide-up">Slide up</option>
+                        <option value="slide-down">Slide down</option>
+                        <option value="zoom">Zoom</option>
+                        <option value="spin">Spin</option>
+                        <option value="flip">Flip</option>
+                        <option value="iris">Iris</option>
+                        <option value="puzzle">Puzzle</option>
+                    </select>
+                </div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="bulkAddSelectedBtn" disabled>
+                    <i class="bi bi-plus-circle"></i> Add selected
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Plugin Item Modal (Create/Edit) -->
+<div class="modal fade" id="pluginItemModal" tabindex="-1" aria-labelledby="pluginItemModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow-lg">
+
+      <!-- Dynamic coloured header -->
+      <div class="modal-header text-white" id="pluginModalHeader" style="background: linear-gradient(135deg,#0d6efd,#0a58ca);">
+        <div class="d-flex align-items-center gap-3">
+          <div id="pluginModalIcon" class="d-flex align-items-center justify-content-center rounded-3"
+               style="width:3rem;height:3rem;background:rgba(255,255,255,0.2);font-size:1.5rem;">
+            <i class="bi bi-puzzle"></i>
+          </div>
+          <div>
+            <h5 class="modal-title mb-0 fw-bold" id="pluginItemModalLabel">Plugin</h5>
+            <small id="pluginModalSubtitle" class="opacity-75"></small>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body p-0">
+        <form id="pluginItemForm">
+          <input type="hidden" id="pluginItemId" value="">
+
+          <!-- Plugin selector row -->
+          <div class="px-4 pt-3 pb-2 border-bottom bg-light">
+            <div class="row align-items-end g-3">
+              <div class="col-md-6">
+                <label for="pluginType" class="form-label fw-semibold mb-1">Plugin</label>
+                <select id="pluginType" class="form-select"></select>
+              </div>
+              <div class="col-md-6">
+                <div id="pluginDescription" class="text-muted small fst-italic pt-1"></div>
+              </div>
+              <div class="col-md-4">
+                <label for="pluginItemTransition" class="form-label fw-semibold mb-1">Transition in</label>
+                <select id="pluginItemTransition" class="form-select form-select-sm">
+                    <option value="cut">Inherit / None (cut)</option>
+                    <option value="fade">Fade</option>
+                    <option value="crossfade">Crossfade</option>
+                    <option value="wipe">Wipe</option>
+                    <option value="slide-left">Slide left</option>
+                    <option value="slide-right">Slide right</option>
+                    <option value="slide-up">Slide up</option>
+                    <option value="slide-down">Slide down</option>
+                    <option value="zoom">Zoom</option>
+                    <option value="spin">Spin</option>
+                    <option value="flip">Flip</option>
+                    <option value="iris">Iris</option>
+                    <option value="puzzle">Puzzle</option>
+                </select>
+              </div>
+              <div class="col-md-8 d-flex align-items-center">
+                <div class="form-check form-switch mt-3">
+                  <input class="form-check-input" type="checkbox" role="switch" id="pluginItemMute">
+                  <label class="form-check-label small" for="pluginItemMute">Mute audio (for plugins that play sound)</label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabbed config sections -->
+          <div class="px-4 pt-3">
+            <ul class="nav nav-pills gap-1 mb-3" id="pluginConfigTabs" role="tablist"></ul>
+            <div id="pluginConfigFields" class="tab-content pb-2"></div>
+          </div>
+
+        </form>
+      </div>
+
+      <div class="modal-footer bg-light border-top">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x-circle me-1"></i>Cancel
+        </button>
+        <button id="btnSavePluginItem" type="button" class="btn btn-primary px-4">
+          <i class="bi bi-check-circle me-1"></i>Save Plugin
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Item Modal (Media only; plugin editing uses Plugin Item Modal) -->
+<div class="modal fade" id="editItemModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Playlist Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editItemForm">
+                    <input type="hidden" id="edit-item-id">
+                    
+                    <div id="media-fields">
+                        <div class="mb-3">
+                            <label for="edit-media-name" class="form-label">Media</label>
+                            <input type="text" class="form-control" id="edit-media-name" disabled>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="edit-item-position" class="form-label">Position</label>
+                        <input type="number" class="form-control" id="edit-item-position" min="1" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="edit-item-duration" class="form-label">Duration (seconds)</label>
+                        <input type="number" class="form-control" id="edit-item-duration" min="0" required>
+                        <button type="button" class="btn btn-outline-secondary" id="reset-item-video-duration" style="display:none;">
+                            Use detected length
+                        </button>
+                        <div class="form-text" id="edit-duration-help">For videos: 0 plays the full detected video length, or the clip start/end range.</div>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label for="edit-item-transition" class="form-label">Transition in</label>
+                            <select id="edit-item-transition" class="form-select">
+                                <option value="cut">Inherit / None (cut)</option>
+                                <option value="fade">Fade</option>
+                                <option value="crossfade">Crossfade</option>
+                                <option value="wipe">Wipe</option>
+                                <option value="slide-left">Slide left</option>
+                                <option value="slide-right">Slide right</option>
+                                <option value="slide-up">Slide up</option>
+                                <option value="slide-down">Slide down</option>
+                                <option value="zoom">Zoom</option>
+                                <option value="spin">Spin</option>
+                                <option value="flip">Flip</option>
+                                <option value="iris">Iris</option>
+                                <option value="puzzle">Puzzle</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label for="edit-item-aspect" class="form-label">Aspect mode</label>
+                            <select id="edit-item-aspect" class="form-select">
+                                <option value="">Inherit from display</option>
+                                <option value="fit">Fit (letterbox)</option>
+                                <option value="fill">Fill (cover)</option>
+                                <option value="stretch">Stretch</option>
+                                <option value="center">Center (1:1)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-check mt-3">
+                        <input type="checkbox" class="form-check-input" id="edit-item-mute">
+                        <label class="form-check-label" for="edit-item-mute">Mute audio (videos only)</label>
+                    </div>
+
+                    <!-- Video clip controls — shown only for video items -->
+                    <div id="edit-clip-fields" style="display:none">
+                        <hr>
+                        <p class="fw-semibold mb-2"><i class="bi bi-scissors me-1"></i>Video Clip Range</p>
+                        <p class="text-muted small mb-2">
+                            Leave both blank to play the full video. Set start/end to play only a segment
+                            (e.g. Start&nbsp;0, End&nbsp;30 plays the first 30&nbsp;seconds).
+                        </p>
+                        <div class="d-flex flex-wrap gap-2 mb-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="use-full-video-duration">
+                                Use full video length
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="use-clip-duration">
+                                Use start/end range
+                            </button>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label">Clip Start (seconds)</label>
+                                <input type="number" class="form-control" id="edit-clip-start"
+                                       min="0" step="0.1" placeholder="0">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Clip End (seconds)</label>
+                                <input type="number" class="form-control" id="edit-clip-end"
+                                       min="0" step="0.1" placeholder="e.g. 30">
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="save-item-btn">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Media Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="preview-container" class="d-flex justify-content-center align-items-center" style="min-height: 500px; background-color: #000;">
+                    <!-- Preview content will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Transition Modal -->
+<div class="modal fade" id="bulkTransitionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Set transition for selected</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label for="bulkTransitionSelect" class="form-label">Transition</label>
+                <select id="bulkTransitionSelect" class="form-select">
+                    <option value="cut">None (cut)</option>
+                    <option value="fade">Fade</option>
+                    <option value="crossfade">Crossfade</option>
+                    <option value="wipe">Wipe</option>
+                    <option value="slide-left">Slide left</option>
+                    <option value="slide-right">Slide right</option>
+                    <option value="slide-up">Slide up</option>
+                    <option value="slide-down">Slide down</option>
+                    <option value="zoom">Zoom</option>
+                    <option value="spin">Spin</option>
+                    <option value="flip">Flip</option>
+                    <option value="iris">Iris</option>
+                    <option value="puzzle">Puzzle</option>
+                </select>
+                <div class="form-text">Applies to every selected playlist item, including plugins.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="bulkTransitionApplyBtn">Apply</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteItemModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to remove this item from the playlist?</p>
+                <input type="hidden" id="delete-item-id">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirm-delete-btn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log('DOM loaded - initializing scripts');
+
+    // Expose playlist id for JS
+    const PLAYLIST_ID = {{ playlist.id }};
+
+    // Plugin registry cache
+    let PLUGIN_REGISTRY = [];
+    let CURRENT_PLUGIN_EDIT = null; // {itemId, pluginKey, config, duration}
+
+    // Debug helper function
+    function debugLog(message, data) {
+        console.log(message, data);
+        const debugInfo = document.getElementById('debug-info');
+        const debugContent = document.getElementById('debug-content');
+        if (debugInfo && debugContent) {
+            debugInfo.style.display = 'block';
+            const content = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+            debugContent.textContent = `${message}: ${content}`;
+        }
+    }
+
+    async function fetchPluginRegistry(force = false) {
+        if (!force && PLUGIN_REGISTRY.length) return;
+        try {
+            const url = '/api/plugins?t=' + Date.now(); // cache-bust
+            const res = await fetch(url, {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await res.json();
+            if (data && data.status === 'success' && Array.isArray(data.plugins)) {
+                PLUGIN_REGISTRY = data.plugins;
+            } else {
+                PLUGIN_REGISTRY = [];
+            }
+        } catch (e) {
+            console.error('Failed to load plugin registry', e);
+            PLUGIN_REGISTRY = [];
+        }
+    }
+
+    async function ensurePluginRegistryLoaded() {
+        await fetchPluginRegistry(false);
+        if (!PLUGIN_REGISTRY.length) {
+            // Force refresh once if still empty
+            await fetchPluginRegistry(true);
+        }
+    }
+
+    function findPluginMeta(keyOrType) {
+        return PLUGIN_REGISTRY.find(p => p.key === keyOrType || p.type === keyOrType);
+    }
+
+    function renderPluginCards() {
+        const list = document.getElementById('plugins-list');
+        const loading = document.getElementById('plugins-loading');
+        const empty = document.getElementById('plugins-empty');
+        if (!list) return;
+
+        if (loading) loading.remove();
+
+        if (!PLUGIN_REGISTRY.length) {
+            if (empty) empty.style.display = 'block';
+            return;
+        }
+
+        list.innerHTML = '';
+        PLUGIN_REGISTRY.forEach(meta => {
+            const name = meta.name || meta.type || meta.key;
+            const desc = meta.description || '';
+            const ver  = meta.version || '';
+            const icon = meta.icon || 'bi-puzzle';
+
+            const card = document.createElement('div');
+            card.className = 'col';
+            card.innerHTML = `
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="position-relative">
+                        <div class="card-img-top d-flex align-items-center justify-content-center"
+                             style="height:120px;background:linear-gradient(135deg,#0d6efd18,#0d6efd08);">
+                            <i class="bi ${icon} text-primary" style="font-size:2.8rem;"></i>
+                        </div>
+                        ${ver ? `<span class="position-absolute top-0 end-0 badge bg-secondary m-2">${ver}</span>` : ''}
+                    </div>
+                    <div class="card-body">
+                        <h6 class="card-title fw-bold mb-1">${name}</h6>
+                        <p class="card-text small text-muted mb-3" style="line-height:1.3">${desc}</p>
+                        <button class="btn btn-sm btn-primary w-100 btn-plugin-add" data-plugin-key="${meta.key || meta.type}">
+                            <i class="bi bi-plus-circle me-1"></i>Configure &amp; Add
+                        </button>
+                    </div>
+                </div>
+            `;
+            list.appendChild(card);
+        });
+
+        list.querySelectorAll('.btn-plugin-add').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const key = btn.dataset.pluginKey;
+                await openPluginModalCreate(key);
+            });
+        });
+    }
+
+    function populatePluginSelect(selectedKey) {
+        const select = document.getElementById('pluginType');
+        if (!select) return;
+        select.innerHTML = '';
+        PLUGIN_REGISTRY.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.key || p.type;
+            opt.textContent = `${p.name || p.type}${p.version ? '  v' + p.version : ''}`;
+            select.appendChild(opt);
+        });
+        if (selectedKey) select.value = selectedKey;
+        _updatePluginModalHeader(findPluginMeta(select.value));
+        select.onchange = () => {
+            const m = findPluginMeta(select.value);
+            _updatePluginModalHeader(m);
+            renderPluginConfigFields(select.value, {});
+        };
+    }
+
+    function _updatePluginModalHeader(meta) {
+        const icon    = document.getElementById('pluginModalIcon');
+        const title   = document.getElementById('pluginItemModalLabel');
+        const sub     = document.getElementById('pluginModalSubtitle');
+        const desc    = document.getElementById('pluginDescription');
+        if (!meta) return;
+        if (icon)  icon.innerHTML  = `<i class="bi ${meta.icon || 'bi-puzzle'}"></i>`;
+        if (title) title.textContent = meta.name || meta.type || 'Plugin';
+        if (sub)   sub.textContent   = `v${meta.version || '1.0.0'}`;
+        if (desc)  desc.textContent  = meta.description || '';
+    }
+
+    function renderPluginConfigFields(pluginKey, values) {
+        const meta = findPluginMeta(pluginKey);
+        const tabsEl    = document.getElementById('pluginConfigTabs');
+        const container = document.getElementById('pluginConfigFields');
+        if (!tabsEl || !container) return;
+        tabsEl.innerHTML = '';
+        container.innerHTML = '';
+
+        const schema = (meta && meta.schema) || [];
+
+        if (!schema.length) {
+            // Raw JSON fallback
+            container.innerHTML = `
+              <div class="tab-pane show active" id="pcfg_tab_raw">
+                <div class="plugin-field-card mb-2">
+                  <div class="plugin-field-label">Configuration (JSON)</div>
+                  <div class="plugin-field-desc">${meta ? 'This plugin has no schema — edit raw JSON.' : 'Plugin metadata unavailable — edit raw JSON.'}</div>
+                  <textarea class="form-control font-monospace" id="pcfg_raw_json" data-raw-json="1" rows="8"
+                    style="font-size:0.82rem">${values && Object.keys(values).length ? JSON.stringify(values, null, 2) : '{}'}</textarea>
+                </div>
+              </div>`;
+            return;
+        }
+
+        // Group fields
+        const groups = {};
+        const groupOrder = [];
+        schema.forEach(field => {
+            const g = field.group || 'General';
+            if (!groups[g]) { groups[g] = []; groupOrder.push(g); }
+            groups[g].push(field);
+        });
+
+        groupOrder.forEach((group, gi) => {
+            const tabId  = `pcfg_tab_${gi}`;
+            const paneId = `pcfg_pane_${gi}`;
+            const isFirst = gi === 0;
+
+            // Tab pill
+            const li = document.createElement('li');
+            li.className = 'nav-item';
+            li.innerHTML = `<button class="nav-link plugin-nav-pill ${isFirst ? 'active' : ''}" 
+                data-bs-toggle="pill" data-bs-target="#${paneId}" type="button">${group}</button>`;
+            tabsEl.appendChild(li);
+
+            // Pane
+            const pane = document.createElement('div');
+            pane.className = `tab-pane fade ${isFirst ? 'show active' : ''}`;
+            pane.id = paneId;
+
+            const row = document.createElement('div');
+            row.className = 'row g-3';
+
+            groups[group].forEach(field => {
+                const id   = `pcfg_${field.name}`;
+                const type = (field.type || 'string').toLowerCase();
+                const defv = values[field.name] !== undefined ? values[field.name] : field.default;
+
+                const colW = (type === 'boolean') ? 'col-md-6' : (type === 'textarea') ? 'col-12' : 'col-md-6';
+                const col  = document.createElement('div');
+                col.className = colW;
+
+                if (type === 'boolean') {
+                    const checked = (defv === true || defv === 'true');
+                    col.innerHTML = `
+                      <div class="plugin-field-card h-100">
+                        <div class="plugin-toggle-wrap">
+                          <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                              id="${id}" data-field-name="${field.name}" ${checked ? 'checked' : ''}>
+                          </div>
+                          <div>
+                            <div class="plugin-field-label mb-0">${field.label || field.name}</div>
+                            ${field.description ? `<div class="plugin-field-desc mb-0">${field.description}</div>` : ''}
+                          </div>
+                        </div>
+                      </div>`;
+                } else if (type === 'select' && Array.isArray(field.options)) {
+                    const opts = field.options.map(o => {
+                        const v = typeof o === 'object' ? o.value : o;
+                        const l = typeof o === 'object' ? (o.label || o.value) : o;
+                        const sel = String(defv) === String(v) ? 'selected' : '';
+                        return `<option value="${v}" ${sel}>${l}</option>`;
+                    }).join('');
+                    col.innerHTML = `
+                      <div class="plugin-field-card">
+                        <div class="plugin-field-label">${field.label || field.name}</div>
+                        ${field.description ? `<div class="plugin-field-desc">${field.description}</div>` : ''}
+                        <select class="form-select form-select-sm" id="${id}" data-field-name="${field.name}">${opts}</select>
+                      </div>`;
+                } else if (type === 'textarea') {
+                    col.innerHTML = `
+                      <div class="plugin-field-card">
+                        <div class="plugin-field-label">${field.label || field.name}</div>
+                        ${field.description ? `<div class="plugin-field-desc">${field.description}</div>` : ''}
+                        <textarea class="form-control form-control-sm font-monospace" id="${id}" data-field-name="${field.name}"
+                          rows="5" placeholder="${field.placeholder || ''}"
+                          style="font-size:0.82rem">${defv !== undefined ? defv : ''}</textarea>
+                      </div>`;
+                } else if (type === 'number' || type === 'integer') {
+                    col.innerHTML = `
+                      <div class="plugin-field-card">
+                        <div class="plugin-field-label">${field.label || field.name}</div>
+                        ${field.description ? `<div class="plugin-field-desc">${field.description}</div>` : ''}
+                        <input type="number" class="form-control form-control-sm" id="${id}" data-field-name="${field.name}"
+                          value="${defv !== undefined ? defv : 0}" ${type === 'integer' ? 'step="1"' : ''}>
+                      </div>`;
+                } else {
+                    col.innerHTML = `
+                      <div class="plugin-field-card">
+                        <div class="plugin-field-label">${field.label || field.name}</div>
+                        ${field.description ? `<div class="plugin-field-desc">${field.description}</div>` : ''}
+                        <input type="text" class="form-control form-control-sm" id="${id}" data-field-name="${field.name}"
+                          value="${defv !== undefined ? String(defv).replace(/"/g,'&quot;') : ''}"
+                          placeholder="${(field.placeholder || '').replace(/"/g,'&quot;')}">
+                      </div>`;
+                }
+                row.appendChild(col);
+            });
+
+            pane.appendChild(row);
+            container.appendChild(pane);
+        });
+    }
+
+    function gatherPluginConfig() {
+        const rawEl = document.querySelector('#pcfg_raw_json[data-raw-json="1"]');
+        if (rawEl) {
+            try { return JSON.parse(rawEl.value || '{}'); }
+            catch (e) { alert('Invalid JSON in configuration. Please fix and try again.'); throw e; }
+        }
+
+        const fields = Array.from(document.querySelectorAll('#pluginConfigFields [data-field-name]'));
+        const cfg = {};
+        fields.forEach(el => {
+            const name = el.dataset.fieldName;
+            if (!name) return;
+            if (el.type === 'checkbox') {
+                cfg[name] = el.checked;
+            } else if (el.tagName === 'SELECT') {
+                const opts = Array.from(el.options).map(o => o.value);
+                if (opts.length === 2 && opts.includes('true') && opts.includes('false')) {
+                    cfg[name] = (el.value === 'true');
+                } else {
+                    cfg[name] = el.value;
+                }
+            } else if (el.type === 'number') {
+                cfg[name] = el.value === '' ? null : Number(el.value);
+            } else {
+                cfg[name] = el.value;
+            }
+        });
+        return cfg;
+    }
+
+            async function openPluginModalCreate(pluginKey) {
+                await ensurePluginRegistryLoaded();
+                CURRENT_PLUGIN_EDIT = null;
+                document.getElementById('pluginItemId').value = '';
+                populatePluginSelect(pluginKey);
+                renderPluginConfigFields(pluginKey || (PLUGIN_REGISTRY[0] && (PLUGIN_REGISTRY[0].key || PLUGIN_REGISTRY[0].type)) || '', {});
+                // Reset per-item controls to defaults for new items.
+                const tSel = document.getElementById('pluginItemTransition');
+                const mChk = document.getElementById('pluginItemMute');
+                if (tSel) tSel.value = 'cut';
+                if (mChk) mChk.checked = false;
+                const modal = new bootstrap.Modal(document.getElementById('pluginItemModal'));
+                modal.show();
+            }
+
+    async function openPluginModalEdit(itemId, pluginKey, cfg, duration) {
+        await ensurePluginRegistryLoaded();
+        if (!findPluginMeta(pluginKey)) {
+            await fetchPluginRegistry(true);
+        }
+        CURRENT_PLUGIN_EDIT = { itemId, pluginKey };
+        document.getElementById('pluginItemId').value = itemId;
+        // Merge saved duration back into config so the plugin-schema duration field shows it
+        const mergedCfg = Object.assign({}, cfg || {});
+        if (duration && mergedCfg.duration === undefined) mergedCfg.duration = duration;
+        populatePluginSelect(pluginKey);
+        document.getElementById('pluginType').setAttribute('disabled', 'disabled');
+        renderPluginConfigFields(pluginKey, mergedCfg);
+        // Pre-fill per-item transition + mute from the row's data-* attributes.
+        const editBtn = document.querySelector(`.edit-item-btn[data-item-id="${itemId}"]`);
+        const tSel = document.getElementById('pluginItemTransition');
+        const mChk = document.getElementById('pluginItemMute');
+        if (tSel) tSel.value = (editBtn?.dataset.itemTransition) || 'cut';
+        if (mChk) mChk.checked = (editBtn?.dataset.itemMute === '1');
+        const modal = new bootstrap.Modal(document.getElementById('pluginItemModal'));
+        modal.show();
+    }
+
+    async function savePluginModal() {
+        const itemId    = document.getElementById('pluginItemId').value;
+        const pluginKey = document.getElementById('pluginType').value;
+        const plugin_config = gatherPluginConfig();
+        // Use plugin-schema duration field if present. YouTube uses
+        // video_duration, where 0 means "play the full video and let the
+        // plugin signal completion".
+        let duration = 30;
+        if (plugin_config.duration !== undefined && plugin_config.duration !== '') {
+            duration = Math.max(0, parseInt(plugin_config.duration || 0, 10));
+        } else if (plugin_config.video_duration !== undefined && plugin_config.video_duration !== '') {
+            duration = Math.max(0, parseInt(plugin_config.video_duration || 0, 10));
+        }
+        const transition = (document.getElementById('pluginItemTransition')?.value || 'cut');
+        const mute_audio = !!document.getElementById('pluginItemMute')?.checked;
+
+        if (itemId) {
+            const res = await fetch(`/api/playlists/${PLAYLIST_ID}/items/${itemId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                cache: 'no-store',
+                body: JSON.stringify({ duration, plugin_config, transition, mute_audio })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                bootstrap.Modal.getInstance(document.getElementById('pluginItemModal')).hide();
+                location.reload();
+            } else {
+                alert(`Failed to update plugin item: ${data.message || 'Unknown error'}`);
+            }
+        } else {
+            const res = await fetch(`/api/playlists/${PLAYLIST_ID}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                cache: 'no-store',
+                body: JSON.stringify({ plugin_type: pluginKey, duration, plugin_config, transition, mute_audio })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                bootstrap.Modal.getInstance(document.getElementById('pluginItemModal')).hide();
+                location.reload();
+            } else {
+                alert(`Failed to add plugin item: ${data.message || 'Unknown error'}`);
+            }
+        }
+    }
+
+    // Initialize Sortable for playlist items
+    const playlistItems = document.getElementById('playlist-items');
+    if (playlistItems) {
+        const sortable = new Sortable(playlistItems, {
+            animation: 150,
+            handle: '.drag-handle',
+            ghostClass: 'ghost',
+            onStart: function() {
+                document.querySelectorAll('.position-number').forEach(el => el.style.opacity = '0.3');
+            },
+            onEnd: function() {
+                document.querySelectorAll('.position-number').forEach(el => el.style.opacity = '1');
+                updatePositionNumbers();
+                document.getElementById('save-order-btn').classList.add('save-order-active');
+            }
+        });
+    }
+    
+    function updatePositionNumbers() {
+        const items = document.querySelectorAll('.playlist-item');
+        items.forEach((item, index) => {
+            const positionBadge = item.querySelector('.position-number .badge');
+            if (positionBadge) positionBadge.textContent = index + 1;
+        });
+    }
+    
+    // Save the new order
+    document.getElementById('save-order-btn').addEventListener('click', function() {
+        const items = document.querySelectorAll('.playlist-item');
+        const newOrder = [];
+        items.forEach((item, index) => {
+            newOrder.push({ id: parseInt(item.dataset.id), position: index + 1 });
+        });
+        fetch(`/api/playlists/{{ playlist.id }}/reorder`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: newOrder })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                document.getElementById('save-order-btn').classList.remove('save-order-active');
+                const alertHtml = `
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle me-2"></i> Playlist order updated successfully
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                `;
+                document.querySelector('.container-fluid').insertAdjacentHTML('afterbegin', alertHtml);
+                setTimeout(() => {
+                    const alert = document.querySelector('.alert');
+                    if (alert) {
+                        alert.classList.remove('show');
+                        setTimeout(() => alert.remove(), 150);
+                    }
+                }, 3000);
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while saving the order');
+        });
+    });
+    
+    // Load media items for the add item modal. We re-query whenever a tab
+    // is shown so the folder filter is always honoured for the active tab.
+    document.querySelectorAll('#mediaTypeTabs button').forEach(tab => {
+        tab.addEventListener('shown.bs.tab', function() {
+            const mediaType = currentAddItemTab();
+            const filterRow = document.getElementById('addItemFilters');
+            if (filterRow) filterRow.style.display = (mediaType === 'plugin') ? 'none' : '';
+            if (mediaType !== 'plugin') {
+                loadMediaItems(mediaType);
+            } else {
+                initPluginsTab();
+            }
+        });
+    });
+
+    document.getElementById('addItemModal').addEventListener('show.bs.modal', function() {
+        // Populate the folder dropdown from the media library before loading
+        // the first tab so the initial query can already be folder-scoped.
+        loadAddItemFolderFilter().finally(() => {
+            loadMediaItems(currentAddItemTab());
+            initPluginsTab();
+        });
+    });
+
+    // Use event delegation on the modal so the folder/name filters keep
+    // working even if the inputs are re-rendered. This is more robust than
+    // binding once to the elements directly and silently doing nothing if
+    // the binding ever gets skipped.
+    const _addItemModal = document.getElementById('addItemModal');
+    if (_addItemModal && !_addItemModal.dataset.filtersBound) {
+        _addItemModal.addEventListener('change', (e) => {
+            if (e.target && e.target.id === 'addItemFolderFilter') {
+                loadMediaItems(currentAddItemTab());
+            }
+            if (e.target && e.target.id === 'addItemTypeFilter') {
+                const requested = e.target.value;
+                const targetType = requested || currentAddItemTab();
+                const tabId = requested === 'video' ? 'videos-tab'
+                    : requested === 'webpage' ? 'webpages-tab'
+                    : requested === 'image' ? 'images-tab'
+                    : null;
+                if (tabId) {
+                    const tabBtn = document.getElementById(tabId);
+                    if (tabBtn) bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+                }
+                if (!tabId) loadMediaItems(targetType);
+                else applyAddItemNameFilter();
+            }
+        });
+        _addItemModal.addEventListener('input', (e) => {
+            if (e.target && e.target.id === 'addItemNameFilter') {
+                applyAddItemNameFilter();
+            }
+        });
+        _addItemModal.dataset.filtersBound = '1';
+    }
+
+    function currentAddItemTab() {
+        const active = document.querySelector('#mediaTypeTabs .nav-link.active');
+        if (!active) return 'image';
+        const id = active.id || '';
+        if (id.startsWith('images')) return 'image';
+        if (id.startsWith('videos')) return 'video';
+        if (id.startsWith('webpages')) return 'webpage';
+        if (id.startsWith('plugins')) return 'plugin';
+        return 'image';
+    }
+
+    function syncAddItemTypeFilter(mediaType) {
+        const sel = document.getElementById('addItemTypeFilter');
+        if (!sel || mediaType === 'plugin') return;
+        sel.value = mediaType;
+    }
+
+    async function loadAddItemFolderFilter() {
+        const sel = document.getElementById('addItemFolderFilter');
+        if (!sel) return;
+        try {
+            const r = await fetch('/api/media/library-folders');
+            const d = await r.json();
+            const folders = ((d && d.folders) || []).filter(f => f.path);
+            const rootRow = ((d && d.folders) || []).find(f => f.path === '');
+            sel.innerHTML =
+                '<option value="">All folders</option>' +
+                '<option value="__root__">Root only (no folder)' +
+                (rootRow ? ' (' + (rootRow.item_count || 0) + ')' : '') +
+                '</option>';
+            folders.forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = f.path;
+                const depth = (f.depth || 1) - 1;
+                opt.textContent = '\u00a0\u00a0'.repeat(depth) +
+                                  (depth ? '↳ ' : '') + f.path +
+                                  ' (' + (f.recursive_count || 0) + ')';
+                sel.appendChild(opt);
+            });
+        } catch (e) {
+            console.warn('folder filter load failed', e);
+        }
+    }
+
+    function applyAddItemNameFilter() {
+        const term = (document.getElementById('addItemNameFilter')?.value || '').toLowerCase();
+        const typeFilter = document.getElementById('addItemTypeFilter')?.value || '';
+        let visible = 0;
+        document.querySelectorAll('#addItemModal .tab-pane.active .media-pick-card').forEach(card => {
+            const col = card.closest('.col') || card;
+            const title = (card.querySelector('.card-title')?.textContent || '').toLowerCase();
+            const mediaType = card.dataset.mediaType || '';
+            const show = (!term || title.includes(term)) && (!typeFilter || mediaType === typeFilter);
+            col.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+        const c = document.getElementById('addItemCount');
+        if (c) c.textContent = visible + ' item' + (visible === 1 ? '' : 's');
+    }
+
+    async function initPluginsTab() {
+        const list = document.getElementById('plugins-list');
+        if (!list) return;
+        if (list.dataset.ready === '1') return;
+        await fetchPluginRegistry(false);
+        renderPluginCards();
+        list.dataset.ready = '1';
+    }
+
+    function loadMediaItems(mediaType) {
+        syncAddItemTypeFilter(mediaType);
+        const container = document.querySelector(`.media-items-container[data-media-type="${mediaType}"]`);
+        if (!container) return;
+        container.innerHTML = `
+            <div class="text-center w-100 py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        `;
+        const folder = document.getElementById('addItemFolderFilter')?.value || '';
+        const params = new URLSearchParams({ type: mediaType });
+        if (folder === '__root__') {
+            // Server: folder='' with no recursive flag → only items whose
+            // Media.folder is blank (i.e. uploaded to the library root).
+            params.set('folder', '');
+        } else if (folder) {
+            params.set('folder', folder);
+            params.set('recursive', '1');
+        }
+        fetch(`/api/media?${params.toString()}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success' && data.media.length > 0) {
+                    const mediaHtml = data.media.map(media => createMediaCard(media, mediaType)).join('');
+                    container.innerHTML = mediaHtml;
+                    container.querySelectorAll('.add-to-playlist-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const mediaId = parseInt(this.dataset.mediaId, 10);
+                            addItemToPlaylist(mediaId);
+                        });
+                    });
+                    applyAddItemNameFilter();
+                } else {
+                    container.innerHTML = `
+                        <div class="text-center w-100 py-5">
+                            <i class="bi bi-exclamation-circle text-muted" style="font-size: 3rem;"></i>
+                            <h4 class="mt-3">No ${mediaType}s found${folder ? ' in "' + (folder === '__root__' ? 'root' : folder) + '"' : ''}</h4>
+                            <p class="text-muted">${folder ? 'Try a different folder or upload some ' + mediaType + 's.' : 'Upload some ' + mediaType + 's first'}</p>
+                        </div>
+                    `;
+                    const c = document.getElementById('addItemCount');
+                    if (c) c.textContent = '0 items';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                container.innerHTML = `
+                    <div class="text-center w-100 py-5">
+                        <i class="bi bi-exclamation-triangle text-danger" style="font-size: 3rem;"></i>
+                        <h4 class="mt-3">Error loading media</h4>
+                        <p class="text-muted">Please try again later</p>
+                    </div>
+                `;
+            });
+    }
+    
+    function createMediaCard(media, mediaType) {
+        let thumbnailHtml = '';
+        if (media.thumbnail_url) {
+            thumbnailHtml = `<img src="${media.thumbnail_url}" class="card-img-top" alt="${media.name}" style="height: 140px; object-fit: cover;">`;
+        } else if (mediaType === 'image') {
+            thumbnailHtml = `<div class="card-img-top d-flex align-items-center justify-content-center" style="height: 140px; background-color: #f8f9fa;">
+                <i class="bi bi-image text-primary" style="font-size: 3rem;"></i>
+            </div>`;
+        } else if (mediaType === 'video') {
+            thumbnailHtml = `
+                <div class="card-img-top d-flex align-items-center justify-content-center" style="height: 140px; background-color: #f8f9fa;">
+                    <i class="bi bi-film text-primary" style="font-size: 3rem;"></i>
+                </div>
+            `;
+        } else if (mediaType === 'webpage') {
+            thumbnailHtml = `
+                <div class="card-img-top d-flex align-items-center justify-content-center" style="height: 140px; background-color: #f8f9fa;">
+                    <i class="bi bi-globe text-success" style="font-size: 3rem;"></i>
+                </div>
+            `;
+        }
+        
+        return `
+            <div class="col">
+                <div class="card h-100 media-pick-card" data-media-id="${media.id}" data-media-type="${mediaType}">
+                    <div class="position-relative">
+                        ${thumbnailHtml}
+                        <span class="position-absolute top-0 end-0 badge ${mediaType === 'image' ? 'bg-primary' : mediaType === 'video' ? 'bg-danger' : 'bg-success'}">
+                            ${mediaType}
+                        </span>
+                        <div class="position-absolute top-0 start-0 m-1">
+                            <input type="checkbox" class="form-check-input media-pick-cb" value="${media.id}" aria-label="Select ${media.name}">
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <h6 class="card-title mb-1">${media.name}</h6>
+                        <p class="card-text small text-muted mb-2">${media.description || ''}</p>
+                        <button class="btn btn-sm btn-outline-primary add-to-playlist-btn" data-media-id="${media.id}">
+                            <i class="bi bi-plus-circle"></i> Add now
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function addItemToPlaylist(mediaId) {
+        debugLog('Adding media to playlist', mediaId);
+        fetch(`/api/playlists/{{ playlist.id }}/items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ media_id: mediaId })
+        })
+        .then(response => {
+            debugLog('Media add response status', response.status);
+            return response.json();
+        })
+        .then(data => {
+            debugLog('Media add response data', data);
+            if (data.status === 'success') {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('addItemModal'));
+                if (modal) modal.hide();
+                window.location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while adding the item to the playlist');
+        });
+    }
+
+    // Edit item clicked
+    document.querySelectorAll('.edit-item-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const itemId = this.dataset.itemId;
+            const position = this.dataset.itemPosition;
+            const duration = parseInt(this.dataset.itemDuration, 10);
+
+            if (this.dataset.mediaId) {
+                // Media item
+                const mediaName = this.dataset.mediaName;
+                const mediaType = this.dataset.mediaType || '';
+                const mediaDuration = parseFloat(this.dataset.mediaDurationSeconds || '0') || 0;
+                document.getElementById('edit-item-id').value = itemId;
+                document.getElementById('edit-item-position').value = position;
+                document.getElementById('edit-item-duration').value = duration;
+                document.getElementById('edit-item-duration').dataset.mediaDurationSeconds = mediaDuration || '';
+                document.getElementById('edit-media-name').value = mediaName;
+                document.getElementById('edit-item-transition').value = this.dataset.itemTransition || 'cut';
+                document.getElementById('edit-item-aspect').value     = this.dataset.itemAspect     || '';
+                document.getElementById('edit-item-mute').checked     = this.dataset.itemMute === '1';
+
+                // Show clip fields only for video
+                const clipFields = document.getElementById('edit-clip-fields');
+                if (mediaType === 'video') {
+                    clipFields.style.display = '';
+                    document.getElementById('edit-clip-start').value = this.dataset.clipStart || '';
+                    document.getElementById('edit-clip-end').value   = this.dataset.clipEnd   || '';
+                    document.getElementById('reset-item-video-duration').style.display = mediaDuration > 0 ? '' : 'none';
+                    document.getElementById('edit-duration-help').textContent =
+                        `0 plays the full detected video${mediaDuration ? ` (${Math.ceil(mediaDuration)}s)` : ''}, or the clip start/end range.`;
+                } else {
+                    clipFields.style.display = 'none';
+                    document.getElementById('edit-clip-start').value = '';
+                    document.getElementById('edit-clip-end').value   = '';
+                    document.getElementById('reset-item-video-duration').style.display = 'none';
+                    document.getElementById('edit-duration-help').textContent = 'Duration in seconds for this playlist item.';
+                }
+
+                const modal = new bootstrap.Modal(document.getElementById('editItemModal'));
+                modal.show();
+                return;
+            }
+
+            if (this.dataset.pluginType) {
+                const pluginKey = this.dataset.pluginType;
+                // Prefer robust script tag JSON over data-attribute
+                let cfg = {};
+                const cfgNode = document.getElementById(`plugin-config-${itemId}`);
+                if (cfgNode && cfgNode.textContent) {
+                    try { cfg = JSON.parse(cfgNode.textContent); } catch { cfg = {}; }
+                } else {
+                    try { cfg = JSON.parse(this.dataset.pluginConfig || '{}'); } catch { cfg = {}; }
+                }
+                await openPluginModalEdit(itemId, pluginKey, cfg, duration);
+            }
+        });
+    });
+
+    // Save media item changes
+    document.getElementById('save-item-btn').addEventListener('click', function() {
+        const itemId = document.getElementById('edit-item-id').value;
+        const position = document.getElementById('edit-item-position').value;
+        const duration = document.getElementById('edit-item-duration').value;
+        const clipStartVal = document.getElementById('edit-clip-start').value;
+        const clipEndVal   = document.getElementById('edit-clip-end').value;
+        const payload = {
+            position: parseInt(position),
+            duration: Math.max(0, parseInt(duration || '0', 10)),
+            clip_start: clipStartVal !== '' ? parseFloat(clipStartVal) : null,
+            clip_end:   clipEndVal   !== '' ? parseFloat(clipEndVal)   : null,
+            transition: document.getElementById('edit-item-transition').value,
+            aspect_mode: document.getElementById('edit-item-aspect').value || null,
+            mute_audio:  document.getElementById('edit-item-mute').checked,
+        };
+        fetch(`/api/playlists/{{ playlist.id }}/items/${itemId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editItemModal'));
+                if (modal) modal.hide();
+                window.location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while updating the item');
+        });
+    });
+
+    document.getElementById('use-full-video-duration')?.addEventListener('click', () => {
+        document.getElementById('edit-item-duration').value = 0;
+        document.getElementById('edit-clip-start').value = '';
+        document.getElementById('edit-clip-end').value = '';
+    });
+    document.getElementById('reset-item-video-duration')?.addEventListener('click', () => {
+        const input = document.getElementById('edit-item-duration');
+        const detected = parseFloat(input.dataset.mediaDurationSeconds || '0') || 0;
+        if (detected > 0) input.value = Math.ceil(detected);
+    });
+    document.getElementById('use-clip-duration')?.addEventListener('click', () => {
+        const start = parseFloat(document.getElementById('edit-clip-start').value || '0') || 0;
+        const end = parseFloat(document.getElementById('edit-clip-end').value || '0') || 0;
+        if (end > start) {
+            document.getElementById('edit-item-duration').value = 0;
+        } else {
+            alert('Set a Clip End greater than Clip Start first.');
+        }
+    });
+    
+    // Delete item
+    document.querySelectorAll('.delete-item-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const itemId = this.dataset.itemId;
+            document.getElementById('delete-item-id').value = itemId;
+            const modal = new bootstrap.Modal(document.getElementById('deleteItemModal'));
+            modal.show();
+        });
+    });
+    
+    // Confirm delete
+    document.getElementById('confirm-delete-btn').addEventListener('click', function() {
+        const itemId = document.getElementById('delete-item-id').value;
+        fetch(`/api/playlists/{{ playlist.id }}/items/${itemId}`, { method: 'DELETE' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('deleteItemModal'));
+                if (modal) modal.hide();
+                window.location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while deleting the item');
+        });
+    });
+    
+    // Preview media
+    document.querySelectorAll('.preview-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const mediaType = this.dataset.mediaType;
+            const mediaUrl = this.dataset.mediaUrl;
+            const previewContainer = document.getElementById('preview-container');
+            previewContainer.innerHTML = '';
+            if (mediaType === 'image') {
+                previewContainer.innerHTML = `<img src="${mediaUrl}" class="img-fluid" style="max-height: 70vh;" alt="Preview">`;
+            } else if (mediaType === 'video') {
+                previewContainer.innerHTML = `<video src="${mediaUrl}" controls autoplay style="max-height: 70vh; max-width: 100%;" class="img-fluid"></video>`;
+            } else if (mediaType === 'webpage') {
+                previewContainer.innerHTML = `<iframe src="${mediaUrl}" style="width: 100%; height: 70vh; border: none;"></iframe>`;
+            }
+            const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+            modal.show();
+        });
+    });
+
+    // Bind save button in plugin modal
+    document.getElementById('btnSavePluginItem').addEventListener('click', async () => {
+        try {
+            await savePluginModal();
+        } catch (e) {
+            // invalid JSON already alerted
+        }
+    });
+
+    // Reset plugin selector when modal closes
+    document.getElementById('pluginItemModal').addEventListener('hidden.bs.modal', () => {
+        document.getElementById('pluginType').removeAttribute('disabled');
+    });
+
+    // ----------------------------------------------------------------------
+    // Bulk-add picker inside the Add Item modal
+    // ----------------------------------------------------------------------
+    const pickedMediaIds = new Set();
+    function refreshPickCount() {
+        const el = document.getElementById('pickCount');
+        if (el) el.textContent = String(pickedMediaIds.size);
+        const btn = document.getElementById('bulkAddSelectedBtn');
+        if (btn) btn.disabled = pickedMediaIds.size === 0;
+    }
+    document.getElementById('addItemModal')?.addEventListener('change', (e) => {
+        const cb = e.target.closest('.media-pick-cb');
+        if (!cb) return;
+        const id = parseInt(cb.value, 10);
+        if (cb.checked) pickedMediaIds.add(id); else pickedMediaIds.delete(id);
+        refreshPickCount();
+    });
+    document.getElementById('addItemModal')?.addEventListener('hidden.bs.modal', () => {
+        pickedMediaIds.clear();
+        refreshPickCount();
+    });
+    document.getElementById('pickAllVisible')?.addEventListener('click', () => {
+        document.querySelectorAll('#addItemModal .tab-pane.active .media-pick-cb').forEach(cb => {
+            cb.checked = true;
+            pickedMediaIds.add(parseInt(cb.value, 10));
+        });
+        refreshPickCount();
+    });
+    document.getElementById('pickClear')?.addEventListener('click', () => {
+        document.querySelectorAll('#addItemModal .media-pick-cb').forEach(cb => cb.checked = false);
+        pickedMediaIds.clear();
+        refreshPickCount();
+    });
+    document.getElementById('bulkAddSelectedBtn')?.addEventListener('click', async () => {
+        if (!pickedMediaIds.size) return;
+        const durationRaw = document.getElementById('bulkAddDuration').value;
+        const duration = durationRaw === '' ? null : Math.max(0, parseInt(durationRaw, 10) || 0);
+        const transition = document.getElementById('bulkAddTransition').value || 'cut';
+        const items = Array.from(pickedMediaIds).map(id => {
+            const item = { media_id: id };
+            if (duration !== null) item.duration = duration;
+            return item;
+        });
+        const res = await fetch(`/api/playlists/{{ playlist.id }}/items/bulk`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items, transition })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.status === 'success') {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('addItemModal'));
+            if (modal) modal.hide();
+            window.location.reload();
+        } else {
+            alert('Bulk add failed: ' + (data.message || 'unknown'));
+        }
+    });
+
+    // ----------------------------------------------------------------------
+    // Bulk actions on existing playlist items
+    // ----------------------------------------------------------------------
+    function playlistItemRows() {
+        return Array.from(document.querySelectorAll('#playlist-items .playlist-item'));
+    }
+    function visiblePlaylistItemRows() {
+        return playlistItemRows().filter(row => row.style.display !== 'none');
+    }
+    function applyPlaylistItemFilters() {
+        const q = (document.getElementById('playlistItemFilterSearch')?.value || '').trim().toLowerCase();
+        const type = document.getElementById('playlistItemFilterType')?.value || '';
+        const transition = document.getElementById('playlistItemFilterTransition')?.value || '';
+        const audio = document.getElementById('playlistItemFilterAudio')?.value || '';
+        let shown = 0;
+        playlistItemRows().forEach(row => {
+            let ok = true;
+            if (q && !(row.dataset.filterSearch || '').includes(q)) ok = false;
+            if (type && row.dataset.filterType !== type) ok = false;
+            if (transition && row.dataset.filterTransition !== transition) ok = false;
+            if (audio && row.dataset.filterAudio !== audio) ok = false;
+            if (ok) row.style.removeProperty('display');
+            else row.style.setProperty('display', 'none', 'important');
+            if (ok) shown++;
+        });
+        const count = document.getElementById('playlistItemFilterCount');
+        if (count) count.textContent = shown;
+        refreshItemSelectionBar();
+    }
+    document.getElementById('playlistItemFilterSearch')?.addEventListener('input', applyPlaylistItemFilters);
+    ['playlistItemFilterType', 'playlistItemFilterTransition', 'playlistItemFilterAudio']
+        .forEach(id => document.getElementById(id)?.addEventListener('change', applyPlaylistItemFilters));
+    document.getElementById('playlistItemFilterReset')?.addEventListener('click', () => {
+        ['playlistItemFilterSearch', 'playlistItemFilterType', 'playlistItemFilterTransition', 'playlistItemFilterAudio']
+            .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        applyPlaylistItemFilters();
+    });
+    function selectedItemIds() {
+        return Array.from(document.querySelectorAll('.item-select:checked'))
+                    .filter(cb => cb.closest('.playlist-item')?.style.display !== 'none')
+                    .map(cb => parseInt(cb.value, 10));
+    }
+    function selectedVideoItemIds() {
+        return Array.from(document.querySelectorAll('.item-select:checked'))
+                    .filter(cb => {
+                        const row = cb.closest('.playlist-item');
+                        return row?.style.display !== 'none' && row?.dataset.filterType === 'video';
+                    })
+                    .map(cb => parseInt(cb.value, 10));
+    }
+    function refreshItemSelectionBar() {
+        const ids = selectedItemIds();
+        const cnt = document.getElementById('selectedCount');
+        if (cnt) cnt.textContent = String(ids.length);
+        ['bulkSetTransitionBtn','bulkSetDurationItemsBtn','bulkUseVideoLengthItemsBtn','bulkToggleMuteBtn','bulkDeleteItemsBtn']
+            .forEach(id => { const b = document.getElementById(id); if (b) b.disabled = ids.length === 0; });
+        const selectAll = document.getElementById('selectAllItems');
+        if (selectAll) {
+            const visibleChecks = visiblePlaylistItemRows().map(row => row.querySelector('.item-select')).filter(Boolean);
+            selectAll.checked = visibleChecks.length > 0 && visibleChecks.every(cb => cb.checked);
+            selectAll.indeterminate = visibleChecks.some(cb => cb.checked) && !selectAll.checked;
+        }
+    }
+    document.querySelectorAll('.item-select').forEach(cb => cb.addEventListener('change', refreshItemSelectionBar));
+    document.getElementById('selectAllItems')?.addEventListener('change', (e) => {
+        visiblePlaylistItemRows().forEach(row => {
+            const cb = row.querySelector('.item-select');
+            if (cb) cb.checked = e.target.checked;
+        });
+        refreshItemSelectionBar();
+    });
+    applyPlaylistItemFilters();
+    async function bulkPatchItems(patch, idsOverride) {
+        const ids = idsOverride || selectedItemIds();
+        if (!ids.length) return;
+        const res = await fetch(`/api/playlists/{{ playlist.id }}/items/bulk-update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids, patch })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.status === 'success') window.location.reload();
+        else alert('Bulk update failed: ' + (data.message || 'unknown'));
+    }
+    document.getElementById('bulkSetTransitionBtn')?.addEventListener('click', () => {
+        const sel = document.getElementById('bulkTransitionSelect');
+        if (sel) sel.value = 'fade';
+        new bootstrap.Modal(document.getElementById('bulkTransitionModal')).show();
+    });
+    document.getElementById('bulkTransitionApplyBtn')?.addEventListener('click', () => {
+        const v = (document.getElementById('bulkTransitionSelect').value || 'cut').trim().toLowerCase();
+        bootstrap.Modal.getInstance(document.getElementById('bulkTransitionModal'))?.hide();
+        bulkPatchItems({ transition: v });
+    });
+    document.getElementById('bulkSetDurationItemsBtn')?.addEventListener('click', () => {
+        const raw = prompt('Duration in seconds for selected items (videos: 0 = full video/clip):', '10');
+        if (raw === null) return;
+        const d = parseInt(raw, 10);
+        if (!Number.isFinite(d) || d < 0) { alert('Invalid duration'); return; }
+        bulkPatchItems({ duration: d });
+    });
+    document.getElementById('bulkUseVideoLengthItemsBtn')?.addEventListener('click', () => {
+        const ids = selectedVideoItemIds();
+        if (!ids.length) { alert('No selected video playlist items.'); return; }
+        if (!confirm(`Reset ${ids.length} selected video playlist item(s) to detected video length?`)) return;
+        bulkPatchItems({ duration: 'detected' }, ids);
+    });
+    document.getElementById('bulkToggleMuteBtn')?.addEventListener('click', () => {
+        // Server flips per-item state when value === 'toggle'.
+        bulkPatchItems({ mute_audio: 'toggle' });
+    });
+    document.getElementById('bulkDeleteItemsBtn')?.addEventListener('click', async () => {
+        const ids = selectedItemIds();
+        if (!ids.length) return;
+        if (!confirm(`Delete ${ids.length} playlist item(s)?`)) return;
+        const res = await fetch(`/api/playlists/{{ playlist.id }}/items/bulk-delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.status === 'success') window.location.reload();
+        else alert('Bulk delete failed: ' + (data.message || 'unknown'));
+    });
+
+    // Auto-save the playlist-wide default transition. The select itself is
+    // the only UI; no separate save button is needed.
+    const defSel = document.getElementById('playlistDefaultTransition');
+    const defStatus = document.getElementById('playlistDefaultStatus');
+    defSel?.addEventListener('change', async () => {
+        if (defStatus) defStatus.textContent = 'Saving…';
+        try {
+            // 1) Persist the playlist-wide default.
+            const res = await fetch(`/api/playlists/{{ playlist.id }}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ default_transition: defSel.value })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (data.status !== 'success') {
+                if (defStatus) defStatus.textContent = 'Error: ' + (data.message || 'unknown');
+                return;
+            }
+            // 2) Apply the same transition to every existing item so the
+            //    list visibly reflects the change. Without this step the
+            //    badges still show whatever value each item was created
+            //    with (often 'fade' or 'cut'), which makes the dropdown
+            //    feel like it does nothing.
+            const itemIds = Array.from(document.querySelectorAll('.item-select'))
+                                  .map(cb => parseInt(cb.value, 10))
+                                  .filter(n => Number.isFinite(n));
+            if (itemIds.length && defSel.value && defSel.value !== 'random') {
+                await fetch(`/api/playlists/{{ playlist.id }}/items/bulk-update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: itemIds, patch: { transition: defSel.value } })
+                }).catch(() => {});
+            }
+            if (defStatus) defStatus.textContent = 'Saved';
+            // Reload so the badges on every row reflect the new effective
+            // transition. Use a slightly longer delay so the bulk-update
+            // commit is surely visible on next render.
+            setTimeout(() => location.reload(), 400);
+            return;
+        } catch (e) {
+            if (defStatus) defStatus.textContent = 'Network error';
+        }
+        // Show/hide the random-pool block based on the new value.
+        const poolBlock = document.getElementById('randomPoolBlock');
+        if (poolBlock) poolBlock.style.display = (defSel.value === 'random') ? '' : 'none';
+    });
+
+    // Auto-save the random pool whenever a checkbox toggles.
+    const poolStatus = document.getElementById('randomPoolStatus');
+    document.querySelectorAll('.rand-pool-cb').forEach(cb => {
+        cb.addEventListener('change', async () => {
+            const picked = Array.from(document.querySelectorAll('.rand-pool-cb:checked'))
+                                .map(c => c.value);
+            if (poolStatus) poolStatus.textContent = 'Saving…';
+            try {
+                const res = await fetch(`/api/playlists/{{ playlist.id }}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ random_transitions: picked })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (poolStatus) {
+                    poolStatus.textContent = data.status === 'success' ? 'Saved' : ('Error: ' + (data.message || 'unknown'));
+                    if (data.status === 'success') setTimeout(() => { poolStatus.textContent = ''; }, 1500);
+                }
+            } catch (e) {
+                if (poolStatus) poolStatus.textContent = 'Network error';
+            }
+        });
+    });
+
+    // Auto-save the playlist-wide video audio default.
+    const audSel = document.getElementById('playlistVideoAudio');
+    const audStatus = document.getElementById('playlistVideoAudioStatus');
+    audSel?.addEventListener('change', async () => {
+        if (audStatus) audStatus.textContent = 'Saving…';
+        try {
+            const res = await fetch(`/api/playlists/{{ playlist.id }}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ video_audio_default: audSel.value })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (data.status !== 'success') {
+                if (audStatus) audStatus.textContent = 'Error: ' + (data.message || 'unknown');
+                return;
+            }
+            // Force every item's mute flag so the rendered list visibly
+            // reflects the new default. 'inherit' clears explicit per-item
+            // mutes back to false (the per-media default still applies).
+            const itemIds = Array.from(document.querySelectorAll('.item-select'))
+                                  .map(cb => parseInt(cb.value, 10))
+                                  .filter(n => Number.isFinite(n));
+            if (itemIds.length) {
+                const mute = (audSel.value === 'off');
+                await fetch(`/api/playlists/{{ playlist.id }}/items/bulk-update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: itemIds, patch: { mute_audio: mute } })
+                }).catch(() => {});
+            }
+            if (audStatus) audStatus.textContent = 'Saved';
+            setTimeout(() => location.reload(), 250);
+            return;
+        } catch (e) {
+            if (audStatus) audStatus.textContent = 'Network error';
+        }
+    });
+
+    // Smart playlist editor: enable toggle, save, preview.
+    const smartEnabled = document.getElementById('smartEnabled');
+    const smartBody    = document.getElementById('smartBody');
+    const smartStatus  = document.getElementById('smartStatus');
+    const smartPreview = document.getElementById('smartPreview');
+
+    function _splitTags(s) {
+        return (s || '').split(',').map(t => t.trim()).filter(Boolean);
+    }
+    function _selectedValues(sel) {
+        if (!sel) return [];
+        return Array.from(sel.selectedOptions).map(o => o.value).filter(Boolean);
+    }
+    function _checkedValues(container) {
+        if (!container) return [];
+        return Array.from(container.querySelectorAll('input[type="checkbox"]:checked'))
+                    .map(cb => cb.value).filter(Boolean);
+    }
+    function _collectRules() {
+        const folderSel = document.getElementById('smartFolder');
+        const folderVal = folderSel ? folderSel.value : '';
+        const isRoot = (folderVal === '__root__');
+        const recursiveCb = document.getElementById('smartFolderRecursive');
+        return {
+            all_tags:         _checkedValues(document.getElementById('smartAllTags')),
+            any_tags:         _checkedValues(document.getElementById('smartAnyTags')),
+            exclude_tags:     _checkedValues(document.getElementById('smartExcludeTags')),
+            media_types:      _checkedValues(document.getElementById('smartTypes')),
+            name_contains:    document.getElementById('smartName').value || '',
+            // "Root only" maps to an empty folder filter with recursion off,
+            // which the resolver treats as "items whose folder is blank".
+            folder:           isRoot ? '' : folderVal.trim(),
+            folder_recursive: isRoot ? false : !!(recursiveCb && recursiveCb.checked),
+        };
+    }
+
+    // Populate the smart-rule tag checkbox lists from /api/media/tags
+    // and the folder dropdown from /api/media/library-folders. Re-applies
+    // any previously-saved selections from data-saved.
+    async function _initSmartPickers() {
+        const tagLists = ['smartAllTags', 'smartAnyTags', 'smartExcludeTags']
+            .map(id => document.getElementById(id))
+            .filter(Boolean);
+        if (tagLists.length) {
+            try {
+                const r = await fetch('/api/media/tags');
+                const j = await r.json();
+                const tags = (j.tags || []).map(t => t.tag);
+                tagLists.forEach(box => {
+                    const saved = new Set((box.dataset.saved || '').split(',').map(s => s.trim()).filter(Boolean));
+                    box.innerHTML = '';
+                    const all = new Set(tags);
+                    saved.forEach(t => all.add(t));    // keep tags no longer in the cloud
+                    Array.from(all).sort().forEach(t => {
+                        const wrap = document.createElement('label');
+                        wrap.className = 'form-check d-block mb-0';
+                        const cb = document.createElement('input');
+                        cb.type = 'checkbox';
+                        cb.className = 'form-check-input me-1';
+                        cb.value = t;
+                        if (saved.has(t)) cb.checked = true;
+                        wrap.appendChild(cb);
+                        wrap.appendChild(document.createTextNode(' ' + t + (tags.includes(t) ? '' : ' (unused)')));
+                        box.appendChild(wrap);
+                    });
+                });
+            } catch (e) { /* leave checklists empty */ }
+        }
+        const folderSel = document.getElementById('smartFolder');
+        if (folderSel) {
+            try {
+                const r = await fetch('/api/media/library-folders');
+                const j = await r.json();
+                const saved = folderSel.dataset.saved || '';
+                const savedRoot = folderSel.dataset.savedRoot === '1';
+                (j.folders || []).filter(f => f.path).forEach(f => {
+                    const opt = document.createElement('option');
+                    opt.value = f.path;
+                    opt.textContent = f.path + ' (' + f.recursive_count + ')';
+                    if (!savedRoot && f.path === saved) opt.selected = true;
+                    folderSel.appendChild(opt);
+                });
+                if (savedRoot) {
+                    const rootOpt = folderSel.querySelector('option[value="__root__"]');
+                    if (rootOpt) rootOpt.selected = true;
+                } else if (saved && ![...folderSel.options].some(o => o.value === saved)) {
+                    const opt = document.createElement('option');
+                    opt.value = saved; opt.textContent = saved + ' (missing)';
+                    opt.selected = true;
+                    folderSel.appendChild(opt);
+                }
+            } catch (e) { /* leave dropdown with only the default options */ }
+        }
+    }
+    _initSmartPickers();
+    function _collectPayload() {
+        return {
+            smart_rules: smartEnabled.checked ? _collectRules() : null,
+            smart_order: document.getElementById('smartOrder').value,
+            smart_limit: parseInt(document.getElementById('smartLimit').value, 10) || 50,
+        };
+    }
+
+    smartEnabled?.addEventListener('change', () => {
+        smartBody.style.display = smartEnabled.checked ? '' : 'none';
+    });
+
+    document.getElementById('smartSaveBtn')?.addEventListener('click', async () => {
+        smartStatus.textContent = 'Saving…';
+        try {
+            const r = await fetch(`/api/playlists/{{ playlist.id }}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(_collectPayload()),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (j.status === 'success') {
+                smartStatus.textContent = 'Saved. Reload to refresh items list.';
+                setTimeout(() => location.reload(), 800);
+            } else {
+                smartStatus.textContent = 'Error: ' + (j.message || 'unknown');
+            }
+        } catch (e) {
+            smartStatus.textContent = 'Network error';
+        }
+    });
+
+    document.getElementById('smartPreviewBtn')?.addEventListener('click', async () => {
+        smartStatus.textContent = 'Previewing…';
+        smartPreview.innerHTML = '';
+        try {
+            const r = await fetch(`/api/playlists/{{ playlist.id }}/smart-preview`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(_collectPayload()),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (j.status !== 'success') {
+                smartStatus.textContent = 'Error: ' + (j.message || 'unknown');
+                return;
+            }
+            smartStatus.textContent = `${j.count} match(es)`;
+            if (!j.matches.length) {
+                smartPreview.innerHTML = '<em class="text-muted">No media matches these rules.</em>';
+                return;
+            }
+            smartPreview.innerHTML =
+                '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>' +
+                '<th>#</th><th>Name</th><th>Type</th><th>Tags</th><th>Duration</th></tr></thead><tbody>' +
+                j.matches.map((m, i) => {
+                    const tags = (m.tags || []).map(t => `<span class="badge bg-info-subtle text-dark border">${t}</span>`).join(' ');
+                    return `<tr><td>${i+1}</td><td>${m.name||''}</td><td><span class="badge bg-secondary">${m.media_type}</span></td><td>${tags}</td><td>${m.duration||0}s</td></tr>`;
+                }).join('') +
+                '</tbody></table></div>';
+        } catch (e) {
+            smartStatus.textContent = 'Network error';
+        }
+    });
+
+    // Prefetch plugin registry at page load to avoid edit-time delay
+    await fetchPluginRegistry(false);
+
+    console.log('Scripts initialized successfully');
+});
+</script>
+{% endblock %}

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Display Unavailable</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            background: #111; color: #ccc; font-family: sans-serif;
+        }
+        .container {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; height: 100vh; gap: 1.5rem;
+            padding: 2rem; text-align: center;
+        }
+        .icon { color: #e55; }
+        h2   { color: #e55; font-size: 1.4rem; font-weight: 600; }
+        p    { max-width: 440px; line-height: 1.7; color: #999; }
+        .sub { font-size: 0.9rem; color: #666; }
+        #countdown { font-weight: bold; color: #aaa; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+        <path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995z"/>
+    </svg>
+    <h2>Display Already Connected</h2>
+    <p>{{ reason or 'Another browser session is already displaying this screen.' }}</p>
+    <p class="sub">Close the other session, then this page will automatically retry.</p>
+    <p class="sub">Retrying in <span id="countdown">30</span> seconds…</p>
+</div>
+<script>
+    let s = 30;
+    const el = document.getElementById('countdown');
+    setInterval(() => { s--; el.textContent = s; if (s <= 0) location.reload(); }, 1000);
+</script>
+</body>
+</html>

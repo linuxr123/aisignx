@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TV banner - 320x180dp, shown on the Android TV / Google TV home launcher
+  in the apps row. Required for android.software.leanback launchers.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+	android:width="320dp"
+	android:height="180dp"
+	android:viewportWidth="320"
+	android:viewportHeight="180">
+
+	<!-- Background -->
+	<path android:fillColor="#0f172a" android:pathData="M0,0h320v180H0z" />
+
+	<!-- Monitor body, centered -->
+	<path android:fillColor="#38bdf8"
+		android:pathData="M100,55 Q100,48 107,48 L213,48 Q220,48 220,55 L220,118 Q220,125 213,125 L107,125 Q100,125 100,118 Z" />
+	<!-- Screen inset -->
+	<path android:fillColor="#0f172a"
+		android:pathData="M108,62 L212,62 L212,118 L108,118 Z" />
+	<!-- Play triangle -->
+	<path android:fillColor="#38bdf8"
+		android:pathData="M148,77 L148,103 L178,90 Z" />
+	<!-- Stand base -->
+	<path android:fillColor="#38bdf8"
+		android:pathData="M138,130 L182,130 L188,142 L132,142 Z" />
+
+	<!-- Wordmark -->
+	<group>
+		<path android:fillColor="#38bdf8"
+			android:pathData="M40,160 L60,160 L60,165 L40,165 Z" />
+	</group>
+</vector>

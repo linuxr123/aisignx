@@ -1,0 +1,97 @@
+<div class="col-md-3 col-lg-2 d-md-block sidebar">
+    <div class="position-sticky">
+        {% set ds = domain_switcher() %}
+        {% if ds.visible %}
+        <div class="px-2 pt-2 pb-3 border-bottom mb-2">
+            <label for="domainSwitcher" class="form-label small text-muted mb-1">
+                <i class="bi bi-building"></i> Active tenant
+            </label>
+            <select id="domainSwitcher" class="form-select form-select-sm">
+                {% for d in ds.available %}
+                <option value="{{ d.id }}" {% if d.id == ds.current_id %}selected{% endif %}>
+                    {{ d.name }}
+                </option>
+                {% endfor %}
+                {% if ds.current_id and ds.current_id not in ds.available|map(attribute='id')|list %}
+                <option value="{{ ds.current_id }}" selected>
+                    {{ ds.current_name }} (read-only)
+                </option>
+                {% endif %}
+            </select>
+        </div>
+        <script>
+        (function() {
+            const sel = document.getElementById('domainSwitcher');
+            if (!sel) return;
+            sel.addEventListener('change', async () => {
+                const target = parseInt(sel.value, 10);
+                const r = await fetch('/api/session/domain', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({domain_id: target}),
+                });
+                const j = await r.json();
+                if (j.status === 'success') {
+                    // Reload the current page so server-rendered content
+                    // reflects the new tenant.
+                    window.location.reload();
+                } else {
+                    alert(j.message || 'Failed to switch tenant.');
+                }
+            });
+        })();
+        </script>
+        {% endif %}
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('main.dashboard') }}">Dashboard</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('displays.displays') }}">Displays</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('groups.groups') }}">Display Groups</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('media.media') }}">Media</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('playlists.playlists') }}">Playlists</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('schedules.schedules') }}">Schedules</a>
+            </li>
+            <!-- Add User Management link here -->
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('auth.users') }}">User Management</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link d-flex align-items-center gap-2" href="{{ url_for('downloads_page') }}">
+                    Downloads
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link d-flex align-items-center gap-2" href="{{ url_for('audit.audit_page') }}">
+                    <i class="bi bi-shield-check"></i> Audit Log
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link d-flex align-items-center gap-2" href="{{ url_for('admin.admin_proof_of_play_page') }}">
+                    <i class="bi bi-clipboard-check"></i> Proof of Play
+                </a>
+            </li>
+            {% if current_user.is_admin %}
+            <li class="nav-item">
+                <a class="nav-link admin-link" href="{{ url_for('logs_page') }}">
+                    <i class="bi bi-terminal"></i> System Logs
+                </a>
+            </li>
+            {% endif %}
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('registration.request_access_page') }}" target="_blank">
+                    Browser Access Link <i class="bi bi-box-arrow-up-right" style="font-size:.7rem;"></i>
+                </a>
+            </li>
+        </ul>
+    </div>
+</div>

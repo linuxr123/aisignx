@@ -1,0 +1,532 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if tenant_only %}Tenant Settings{% else %}System Settings{% endif %} - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-gear-fill"></i> {% if tenant_only %}Tenant Settings{% else %}System Settings{% endif %}</h1>
+    <div class="d-flex align-items-center gap-2">
+        <label for="scopeSelect" class="form-label small mb-0 text-muted">Scope:</label>
+        <select id="scopeSelect" class="form-select form-select-sm" style="width:auto;">
+            <option value="">Global (server-wide)</option>
+        </select>
+    </div>
+</div>
+
+<div class="alert alert-info py-2 small">
+    <i class="bi bi-info-circle"></i>
+    {% if tenant_only %}
+    <strong>Tenant settings</strong> — you can edit notification and SMTP options for this tenant only.
+    Storage quota, rate limits, backups, and other server-wide options are managed by a superadmin.
+    {% else %}
+    <strong>Precedence:</strong> tenant override &rarr; global value &rarr; built-in default.
+    Select <em>Global</em> for server-wide keys; select a tenant for per-tenant SMTP/alerts and
+    <code>tenant.storage_quota_mb</code> (superadmin only).
+    {% endif %}
+    Auto-detected values (<code>auto.*</code>) are read-only. Sensitive values show as <code>***</code>.
+    {% if tenant_only %}
+    For alert rules and snooze windows, use
+    <a href="{{ url_for('settings_admin.admin_tenant_alerts_page') }}">Tenant Alert Settings</a>.
+    {% endif %}
+</div>
+
+{% if tenant_only %}
+<div class="card mb-3" id="tenantBrandingCard">
+    <div class="card-header"><strong><i class="bi bi-palette"></i> Branding</strong></div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">
+            Logo and accent color apply to the admin UI for users in this tenant.
+            Changes use the sidebar <strong>Active tenant</strong> — reload after switching tenants.
+        </p>
+        <div class="row g-3 align-items-start">
+            <div class="col-md-6">
+                <label class="form-label">Brand color</label>
+                <div class="input-group">
+                    <input type="color" class="form-control form-control-color" id="brandColorPicker" style="max-width:60px;">
+                    <input type="text" class="form-control" id="brandColorHex" placeholder="#0d6efd" pattern="#[0-9a-fA-F]{6}">
+                </div>
+                <button type="button" class="btn btn-sm btn-primary mt-2" id="brandColorSaveBtn">Save color</button>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Brand logo</label>
+                <div class="d-flex align-items-center gap-3 mb-2">
+                    <img id="brandLogoPreview" src="" alt="" style="max-height:48px; max-width:160px; display:none; background:#eee; padding:4px; border-radius:4px;">
+                    <span id="brandLogoNone" class="text-muted small">No custom logo (using default)</span>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <input type="file" id="brandLogoFile" class="form-control form-control-sm" accept=".png,.jpg,.jpeg,.gif,.webp,.svg" style="max-width:220px;">
+                    <button type="button" id="brandLogoUploadBtn" class="btn btn-sm btn-outline-primary">Upload</button>
+                    <button type="button" id="brandLogoClearBtn" class="btn btn-sm btn-outline-danger">Clear</button>
+                </div>
+                <div class="form-text small">PNG, JPG, GIF, WebP, or SVG. Max 2MB.</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label for="settingsSearch" class="form-label small text-muted mb-1">Search settings</label>
+                <input id="settingsSearch" class="form-control form-control-sm"
+                       placeholder="Search by key or description, e.g. smtp, alerts, disk">
+            </div>
+            <div class="col-md-3">
+                <label for="settingsCategory" class="form-label small text-muted mb-1">Category</label>
+                <select id="settingsCategory" class="form-select form-select-sm">
+                    <option value="">All categories</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <div class="text-muted small" id="settingsCount"></div>
+            </div>
+        </div>
+        <div class="mt-3 d-flex flex-wrap gap-2" id="settingsQuickLinks"></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Key</th>
+                        <th>Type</th>
+                        <th>Default</th>
+                        <th>Global value</th>
+                        <th id="domainHeader" style="display:none;">Tenant override</th>
+                        <th>Effective</th>
+                        <th style="width:120px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="settingsRows">
+                    <tr><td colspan="7" class="text-center text-muted py-4">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Edit modal -->
+<div class="modal fade" id="editSettingModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="editSettingForm">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Setting</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small text-muted mb-1">Key</label>
+            <div><code id="editKey"></code></div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small text-muted mb-1">Description</label>
+            <div id="editDesc" class="small"></div>
+          </div>
+          <div class="row mb-3">
+            <div class="col">
+                <label class="form-label small text-muted mb-1">Default</label>
+                <div><code id="editDefault"></code></div>
+            </div>
+            <div class="col">
+                <label class="form-label small text-muted mb-1">Type</label>
+                <div><code id="editType"></code></div>
+            </div>
+          </div>
+          <div class="mb-3">
+              <label for="editValue" class="form-label">New value (<span id="editScopeLabel">global</span>)</label>
+              <input type="text" id="editValue" class="form-control" autofocus>
+              <div class="form-text" id="editValueHelp"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-link text-danger me-auto" id="editRevertBtn">
+                Revert to default
+            </button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+    const tenantOnly = {{ 'true' if tenant_only else 'false' }};
+    const administrableDomains = {{ administrable_domains|default([])|tojson }};
+    const activeDomainId = {{ active_domain_id|default(none)|tojson }};
+    const rowsEl  = document.getElementById('settingsRows');
+    const scopeEl = document.getElementById('scopeSelect');
+    const dHdr    = document.getElementById('domainHeader');
+    const searchEl = document.getElementById('settingsSearch');
+    const categoryEl = document.getElementById('settingsCategory');
+    const countEl = document.getElementById('settingsCount');
+    const quickLinksEl = document.getElementById('settingsQuickLinks');
+    let currentScopeId = null;
+    let editing = null;   // {key, spec_dict}
+    let allEntries = [];
+
+    const CATEGORY_LABELS = {
+        alerts: 'Alerts and Notifications',
+        audit: 'Audit Log',
+        backup: 'Backups',
+        cache: 'Cache',
+        disk: 'Disk and Storage',
+        heartbeat: 'Display Heartbeats',
+        job: 'Background Jobs',
+        plugin: 'Plugins',
+        proof_of_play: 'Proof of Play',
+        tenant: 'Tenant Policy',
+        ratelimit: 'Rate Limiting',
+        security: 'Security',
+        sse: 'Display Connections',
+        upload: 'Uploads',
+        auto: 'Server Detected',
+        default: 'General',
+    };
+
+    function categoryFor(key) {
+        const prefix = String(key || '').split('.')[0];
+        return CATEGORY_LABELS[prefix] ? prefix : 'default';
+    }
+
+    function categoryLabel(cat) {
+        return CATEGORY_LABELS[cat] || cat;
+    }
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function fmt(v) {
+        if (v === null || v === undefined) return '<span class="text-muted">—</span>';
+        if (typeof v === 'boolean') return v ? 'true' : 'false';
+        if (typeof v === 'object') return '<code class="small">' + escapeHtml(JSON.stringify(v)) + '</code>';
+        return escapeHtml(String(v));
+    }
+
+    async function loadDomains() {
+        if (tenantOnly) {
+            const globalOpt = scopeEl.querySelector('option[value=""]');
+            if (globalOpt) globalOpt.remove();
+            for (const d of administrableDomains) {
+                const o = document.createElement('option');
+                o.value = d.id;
+                o.textContent = `Tenant: ${d.name}`;
+                scopeEl.appendChild(o);
+            }
+            if (administrableDomains.length) {
+                const prefer = activeDomainId && administrableDomains.some(d => d.id === activeDomainId)
+                    ? activeDomainId : administrableDomains[0].id;
+                scopeEl.value = String(prefer);
+            }
+            return;
+        }
+        const r = await fetch('/api/domains');
+        if (!r.ok) return;
+        const j = await r.json();
+        for (const d of (j.domains || [])) {
+            const o = document.createElement('option');
+            o.value = d.id;
+            o.textContent = `Tenant: ${d.name}`;
+            scopeEl.appendChild(o);
+        }
+    }
+
+    async function load() {
+        const qs = currentScopeId ? `?domain_id=${currentScopeId}` : '';
+        const r = await fetch('/api/settings' + qs);
+        const j = await r.json();
+        if (j.status !== 'success') {
+            rowsEl.innerHTML = `<tr><td colspan="7" class="text-danger text-center py-4">${escapeHtml(j.message || 'failed')}</td></tr>`;
+            return;
+        }
+        dHdr.style.display = currentScopeId ? '' : 'none';
+
+        allEntries = j.entries || [];
+        populateCategories();
+        applyUrlSearchOnce();
+        renderSettings();
+    }
+
+    function populateCategories() {
+        const current = categoryEl.value;
+        const cats = Array.from(new Set(allEntries.map(e => categoryFor(e.key))))
+            .sort((a, b) => categoryLabel(a).localeCompare(categoryLabel(b)));
+        categoryEl.innerHTML = '<option value="">All categories</option>' +
+            cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(categoryLabel(c))}</option>`).join('');
+        categoryEl.value = cats.includes(current) ? current : '';
+        quickLinksEl.innerHTML = cats.map(c =>
+            `<button type="button" class="btn btn-sm btn-outline-secondary" data-cat="${escapeHtml(c)}">${escapeHtml(categoryLabel(c))}</button>`
+        ).join('');
+        quickLinksEl.querySelectorAll('button[data-cat]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                categoryEl.value = btn.dataset.cat;
+                renderSettings();
+            });
+        });
+    }
+
+    let _urlSearchApplied = false;
+    function applyUrlSearchOnce() {
+        if (_urlSearchApplied) return;
+        _urlSearchApplied = true;
+        const params = new URLSearchParams(window.location.search);
+        const q = params.get('q');
+        if (q) searchEl.value = q;
+    }
+
+    function filteredEntries() {
+        const q = searchEl.value.trim().toLowerCase();
+        const cat = categoryEl.value;
+        return allEntries.filter(e => {
+            if (cat && categoryFor(e.key) !== cat) return false;
+            if (!q) return true;
+            return String(e.key || '').toLowerCase().includes(q) ||
+                   String(e.description || '').toLowerCase().includes(q);
+        });
+    }
+
+    function renderSettings() {
+        const entries = filteredEntries();
+        countEl.textContent = `${entries.length} of ${allEntries.length} setting(s) shown`;
+        if (!entries.length) {
+            rowsEl.innerHTML = '<tr><td colspan="7" class="text-muted text-center py-4">No settings.</td></tr>';
+            return;
+        }
+        rowsEl.innerHTML = entries.map(e => {
+            const isAuto = e.is_auto_key;
+            const tags = [];
+            if (e.scope === 'tenant') tags.push('<span class="badge bg-primary ms-1">tenant</span>');
+            else if (e.scope === 'superadmin_tenant') tags.push('<span class="badge bg-dark ms-1">quota</span>');
+            else tags.push('<span class="badge bg-secondary ms-1">global</span>');
+            if (e.is_sensitive) tags.push('<span class="badge bg-warning text-dark ms-1">sensitive</span>');
+            if (isAuto)         tags.push('<span class="badge bg-info ms-1">auto</span>');
+            if (!e.is_builtin && !isAuto) tags.push('<span class="badge bg-secondary ms-1">unknown</span>');
+            if (!e.editable) tags.push('<span class="badge bg-light text-muted border ms-1">read-only</span>');
+            const overridden = (currentScopeId && e.domain_value !== null && e.domain_value !== undefined);
+            const globalOverridden = (e.global_value !== null && e.global_value !== undefined && !e.global_is_auto);
+            const dCol = currentScopeId
+                ? `<td>${overridden ? fmt(e.domain_value) : '<span class="text-muted">—</span>'}</td>`
+                : '';
+            const editBtn = (isAuto || !e.editable)
+                ? ''
+                : `<button class="btn btn-sm btn-outline-primary" data-edit="${escapeHtml(e.key)}">Edit</button>`;
+            return `<tr>
+                <td>
+                    <div><code>${escapeHtml(e.key)}</code>${tags.join('')}</div>
+                    <div class="small text-muted">${escapeHtml(e.description || '')}</div>
+                </td>
+                <td><span class="small text-muted">${escapeHtml(e.value_type)}</span></td>
+                <td>${fmt(e.default)}</td>
+                <td>${globalOverridden ? '<strong>'+fmt(e.global_value)+'</strong>'
+                                      : (e.global_value !== null && e.global_value !== undefined
+                                         ? fmt(e.global_value)
+                                         : '<span class="text-muted">—</span>')}</td>
+                ${dCol}
+                <td><strong>${fmt(e.effective)}</strong></td>
+                <td class="text-end">${editBtn}</td>
+            </tr>`;
+        }).join('');
+
+        // Stash entries by key for the modal.
+        window._entriesByKey = Object.fromEntries(allEntries.map(e => [e.key, e]));
+
+        rowsEl.querySelectorAll('button[data-edit]').forEach(b => {
+            b.addEventListener('click', () => openEdit(b.dataset.edit));
+        });
+    }
+
+    function openEdit(key) {
+        const e = window._entriesByKey[key];
+        if (!e || !e.editable) return;
+        editing = e;
+        document.getElementById('editKey').textContent = key;
+        document.getElementById('editDesc').textContent = e.description || '(no description)';
+        document.getElementById('editDefault').textContent = fmtPlain(e.default);
+        document.getElementById('editType').textContent = e.value_type;
+        document.getElementById('editScopeLabel').textContent = currentScopeId
+            ? `domain ${currentScopeId}` : 'global';
+        const cur = currentScopeId ? e.domain_value : e.global_value;
+        const input = document.getElementById('editValue');
+        input.value = (cur === null || cur === undefined) ? '' : fmtPlain(cur);
+        input.placeholder = `default: ${fmtPlain(e.default)}`;
+        document.getElementById('editValueHelp').textContent =
+            e.is_sensitive ? 'Sensitive value -- leave blank to keep current.'
+                            : '';
+        document.getElementById('editRevertBtn').style.display =
+            (cur !== null && cur !== undefined) ? '' : 'none';
+        new bootstrap.Modal(document.getElementById('editSettingModal')).show();
+    }
+
+    function fmtPlain(v) {
+        if (v === null || v === undefined) return '';
+        if (typeof v === 'object') return JSON.stringify(v);
+        return String(v);
+    }
+
+    function coerce(raw, type) {
+        if (raw === '') return null;
+        if (type === 'int')  return parseInt(raw, 10);
+        if (type === 'bool') return ['1','true','yes','on'].includes(raw.toLowerCase());
+        if (type === 'json') {
+            try { return JSON.parse(raw); }
+            catch (e) { throw new Error('invalid JSON'); }
+        }
+        return raw;
+    }
+
+    document.getElementById('editSettingForm').addEventListener('submit', async ev => {
+        ev.preventDefault();
+        if (!editing) return;
+        let parsed;
+        try {
+            parsed = coerce(document.getElementById('editValue').value, editing.value_type);
+        } catch (e) { alert(e.message); return; }
+        if (editing.is_sensitive && (parsed === null || parsed === '')) {
+            // Empty input means "leave alone" for sensitive values.
+            bootstrap.Modal.getInstance(document.getElementById('editSettingModal')).hide();
+            return;
+        }
+        const r = await fetch('/api/settings/' + encodeURIComponent(editing.key), {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({value: parsed, domain_id: currentScopeId}),
+        });
+        const j = await r.json();
+        if (j.status === 'success') {
+            bootstrap.Modal.getInstance(document.getElementById('editSettingModal')).hide();
+            load();
+        } else {
+            alert(j.message || 'Save failed');
+        }
+    });
+
+    document.getElementById('editRevertBtn').addEventListener('click', async () => {
+        if (!editing) return;
+        if (!confirm(`Revert "${editing.key}" to its default by removing the override at this scope?`)) return;
+        const qs = currentScopeId ? `?domain_id=${currentScopeId}` : '';
+        const r = await fetch('/api/settings/' + encodeURIComponent(editing.key) + qs, {method: 'DELETE'});
+        const j = await r.json();
+        if (j.status === 'success') {
+            bootstrap.Modal.getInstance(document.getElementById('editSettingModal')).hide();
+            load();
+        } else {
+            alert(j.message || 'Revert failed');
+        }
+    });
+
+    searchEl.addEventListener('input', renderSettings);
+    categoryEl.addEventListener('change', renderSettings);
+
+    function brandingDomainId() {
+        return currentScopeId || (administrableDomains[0] && administrableDomains[0].id);
+    }
+
+    function renderBrandLogo(domain) {
+        const img = document.getElementById('brandLogoPreview');
+        const none = document.getElementById('brandLogoNone');
+        if (!img || !none) return;
+        const p = domain && domain.branding_logo_path;
+        if (p) {
+            img.src = '/uploads/' + p + '?t=' + Date.now();
+            img.style.display = '';
+            none.style.display = 'none';
+        } else {
+            img.style.display = 'none';
+            none.style.display = '';
+        }
+    }
+
+    async function loadBranding() {
+        if (!tenantOnly) return;
+        const id = brandingDomainId();
+        if (!id) return;
+        const r = await fetch('/api/domains/' + id);
+        const j = await r.json();
+        if (j.status !== 'success' || !j.domain) return;
+        const d = j.domain;
+        const hex = document.getElementById('brandColorHex');
+        const picker = document.getElementById('brandColorPicker');
+        if (hex) hex.value = d.branding_primary_color || '';
+        if (picker) picker.value = d.branding_primary_color || '#0d6efd';
+        renderBrandLogo(d);
+    }
+
+    if (tenantOnly) {
+        document.getElementById('brandColorPicker')?.addEventListener('input', e => {
+            document.getElementById('brandColorHex').value = e.target.value;
+        });
+        document.getElementById('brandColorHex')?.addEventListener('input', e => {
+            const v = e.target.value;
+            if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+                document.getElementById('brandColorPicker').value = v;
+            }
+        });
+        document.getElementById('brandColorSaveBtn')?.addEventListener('click', async () => {
+            const id = brandingDomainId();
+            const color = document.getElementById('brandColorHex').value.trim() || null;
+            const r = await fetch('/api/domains/' + id, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({branding_primary_color: color}),
+            });
+            const j = await r.json();
+            if (j.status === 'success') {
+                alert('Brand color saved. Reload the page to see it in the sidebar.');
+            } else {
+                alert(j.message || 'Save failed');
+            }
+        });
+        document.getElementById('brandLogoUploadBtn')?.addEventListener('click', async () => {
+            const id = brandingDomainId();
+            const file = document.getElementById('brandLogoFile').files[0];
+            if (!file) { alert('Pick a file first.'); return; }
+            if (file.size > 2 * 1024 * 1024) { alert('Logo must be 2MB or smaller.'); return; }
+            const fd = new FormData();
+            fd.append('file', file);
+            const r = await fetch(`/api/domains/${id}/branding/logo`, {method: 'POST', body: fd});
+            const j = await r.json();
+            if (j.status === 'success') {
+                renderBrandLogo({branding_logo_path: j.logo_path});
+                document.getElementById('brandLogoFile').value = '';
+                alert('Logo uploaded. Reload the page to see it in the sidebar.');
+            } else {
+                alert(j.message || 'Upload failed');
+            }
+        });
+        document.getElementById('brandLogoClearBtn')?.addEventListener('click', async () => {
+            const id = brandingDomainId();
+            if (!confirm('Remove the custom logo?')) return;
+            const r = await fetch(`/api/domains/${id}/branding/logo`, {method: 'DELETE'});
+            const j = await r.json();
+            if (j.status === 'success') {
+                renderBrandLogo({branding_logo_path: null});
+                alert('Logo cleared.');
+            } else {
+                alert(j.message || 'Clear failed');
+            }
+        });
+    }
+
+    scopeEl.addEventListener('change', () => {
+        currentScopeId = scopeEl.value ? parseInt(scopeEl.value, 10) : null;
+        load();
+        if (tenantOnly) loadBranding();
+    });
+
+    loadDomains().then(() => {
+        currentScopeId = scopeEl.value ? parseInt(scopeEl.value, 10) : null;
+        load();
+        if (tenantOnly) loadBranding();
+    });
+})();
+</script>
+{% endblock %}

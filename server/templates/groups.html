@@ -1,0 +1,893 @@
+{% extends 'base.html' %}
+
+{% block title %}Display Groups - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center">
+    <h1>Display Groups</h1>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal">
+        Create Group
+    </button>
+</div>
+
+<div class="alert alert-info mt-3 small">
+    <i class="bi bi-info-circle"></i>
+    <strong>Why use subgroups?</strong>
+    Subgroups let you organize displays by hierarchy, such as Region &rarr; Store &rarr; Screen Type.
+    They are useful for filtering, commands, snoozing alerts, and inherited schedule targeting while still keeping each smaller group manageable.
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                {% if groups %}
+                <div class="card mb-2">
+                    <div class="card-body py-2">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted mb-1" for="groupFilterSearch">Search</label>
+                                <input type="search" class="form-control form-control-sm" id="groupFilterSearch"
+                                       placeholder="Name or description...">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small text-muted mb-1" for="groupFilterParent">Parent</label>
+                                <select class="form-select form-select-sm" id="groupFilterParent">
+                                    <option value="">All parents</option>
+                                    <option value="__root__">Root groups</option>
+                                    {% for group in groups %}
+                                    <option value="{{ group.name|lower }}">{{ group.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small text-muted mb-1" for="groupFilterSync">Sync</label>
+                                <select class="form-select form-select-sm" id="groupFilterSync">
+                                    <option value="">Any</option>
+                                    <option value="on">Sync on</option>
+                                    <option value="off">Sync off</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small text-muted mb-1" for="groupFilterDisplays">Displays</label>
+                                <select class="form-select form-select-sm" id="groupFilterDisplays">
+                                    <option value="">Any</option>
+                                    <option value="has">Has displays</option>
+                                    <option value="empty">Empty</option>
+                                </select>
+                            </div>
+                            <div class="col-md-1 d-grid">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="groupFilterReset">Reset</button>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-2">
+                            <span class="small text-muted">
+                                Showing <span id="groupFilterCount">{{ groups|length }}</span> of {{ groups|length }} group(s)
+                            </span>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="View toggle">
+                                <button type="button" class="btn btn-outline-secondary active" id="viewFlatBtn">Flat</button>
+                                <button type="button" class="btn btn-outline-secondary" id="viewTreeBtn">Tree</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2 px-1" id="groupBulkBar" style="display:none !important;">
+                    <span class="small text-muted"><span id="groupBulkCount">0</span> selected</span>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-outline-primary" id="groupBulkEditBtn" data-bs-toggle="modal" data-bs-target="#bulkEditGroupModal">Edit&hellip;</button>
+                        <button type="button" class="btn btn-outline-secondary" id="groupBulkClear">Clear</button>
+                    </div>
+                </div>
+                <div class="table-responsive" id="flatViewContainer">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th style="width:32px;"><input type="checkbox" id="selectAllGroups" class="form-check-input"></th>
+                                <th>Name</th>
+                                <th>Parent</th>
+                                <th>Sync</th>
+                                <th>Description</th>
+                                <th>Displays</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for group in groups %}
+                            <tr data-row-group-id="{{ group.id }}"
+                                class="{% if group.parent %}table-light{% endif %}"
+                                data-filter-name="{{ group.name|lower }}"
+                                data-filter-description="{{ (group.description or '')|lower }}"
+                                data-filter-parent="{{ (group.parent.name if group.parent else 'root')|lower }}"
+                                data-filter-sync="{{ 'on' if group.sync_playback else 'off' }}"
+                                data-filter-displays="{{ group.displays|length }}">
+                                <td><input type="checkbox" class="form-check-input group-select" value="{{ group.id }}"></td>
+                                <td>
+                                    {% if group.parent %}
+                                    <div class="d-flex align-items-start gap-2" style="padding-left: {{ (group._grid_depth or 1) * 1.5 }}rem;">
+                                        <span class="text-muted mt-1">↳</span>
+                                        <div class="border-start border-3 border-primary-subtle ps-2">
+                                            <div class="fw-semibold">{{ group.name }}</div>
+                                            <div class="small text-muted">Subgroup under {{ group.parent.name }}</div>
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    <div class="fw-semibold">{{ group.name }}</div>
+                                    <div class="small text-muted">Parent group</div>
+                                    {% endif %}
+                                </td>
+                                <td class="small">
+                                    {% if group.parent %}
+                                    <span class="badge bg-light text-dark">{{ group.parent.name }}</span>
+                                    {% else %}
+                                    <span class="text-muted">Root</span>
+                                    {% endif %}
+                                </td>
+                                <td>{% if group.sync_playback %}<span class="badge bg-info text-dark">Sync</span>{% else %}<span class="text-muted small">—</span>{% endif %}</td>
+                                <td>{{ group.description or '' }}</td>
+                                <td>{{ group.displays|length }}</td>
+                                <td>{{ group.created_at|format_datetime }}</td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="editGroup({{ group.id }})">Edit</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="commandGroup({{ group.id }}, '{{ group.name|e }}')">Command</button>
+                                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="snoozeGroup({{ group.id }}, '{{ group.name|e }}')" title="Snooze offline alerts for every display in this group">Snooze</button>
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="deleteGroup({{ group.id }})">Delete</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div id="treeViewContainer" class="d-none">
+                    <div id="treeRoot" class="small"></div>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <p>No display groups available. Create a group to organize your displays.</p>
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal">
+                        Create Group
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Edit Groups Modal -->
+<div class="modal fade" id="bulkEditGroupModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Bulk edit groups</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">
+                    Apply to <strong><span id="groupBulkEditCount">0</span></strong> selected group(s).
+                    Only checked fields are changed.
+                </p>
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input group-bulk-field" type="checkbox" id="bulkChkGroupParent">
+                        <label class="form-check-label small text-muted" for="bulkChkGroupParent">Set parent group</label>
+                    </div>
+                    <select class="form-select form-select-sm mt-1" id="bulkValGroupParent" disabled>
+                        <option value="">— None (root) —</option>
+                        {% for group in groups %}
+                        <option value="{{ group.id }}">{{ group.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text small">Rows that would create a cycle are skipped and reported by the API.</div>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input group-bulk-field" type="checkbox" id="bulkChkGroupSync">
+                        <label class="form-check-label small text-muted" for="bulkChkGroupSync">Set synchronized playback</label>
+                    </div>
+                    <select class="form-select form-select-sm mt-1" id="bulkValGroupSync" disabled>
+                        <option value="1">Enabled</option>
+                        <option value="0">Disabled</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="groupBulkApply">Apply changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Group Modal -->
+<div class="modal fade" id="addGroupModal" tabindex="-1" aria-labelledby="addGroupModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addGroupModalLabel">Create Display Group</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addGroupForm">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Group Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="parent_id" class="form-label">Parent group <span class="text-muted small">(optional)</span></label>
+                        <select class="form-select" id="parent_id" name="parent_id">
+                            <option value="">— None (root) —</option>
+                        </select>
+                        <div class="form-text small">Optional. Use this to build a hierarchy such as Region → Store → Screen Type.</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveGroup">Create Group</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Group Modal -->
+<div class="modal fade" id="editGroupModal" tabindex="-1" aria-labelledby="editGroupModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editGroupModalLabel">Edit Display Group</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_group_id">
+                <form id="editGroupForm">
+                    <div class="mb-3">
+                        <label for="edit_name" class="form-label">Group Name</label>
+                        <input type="text" class="form-control" id="edit_name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_description" class="form-label">Description</label>
+                        <textarea class="form-control" id="edit_description" name="description"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_parent_id" class="form-label">Parent group <span class="text-muted small">(optional)</span></label>
+                        <select class="form-select" id="edit_parent_id" name="parent_id">
+                            <option value="">— None (root) —</option>
+                        </select>
+                        <div class="form-text small">Optional hierarchy for filtering, commands, alert snoozes, and schedule inheritance. Cannot select self or any descendant.</div>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="edit_sync_playback">
+                        <label class="form-check-label small" for="edit_sync_playback">
+                            <strong>Synchronized playback</strong>
+                            — every display in this group lands on the
+                            same slide together using a shared wall-clock anchor.
+                            Item durations must be deterministic
+                            (plugin and video early-advance signals are
+                            ignored when this is on).
+                        </label>
+                    </div>
+                </form>
+
+                <h5 class="mt-4">Displays in Group</h5>
+                <div class="table-responsive" id="group_displays_container">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Location</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="group_displays">
+                            <!-- Display list will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <h5 class="mt-4">Add Displays to Group</h5>
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="display_search" placeholder="Search displays...">
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Location</th>
+                                <th>Current Group</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="available_displays">
+                            <!-- Available display list will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="updateGroup">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Cache of all groups -- populated on page load and used to fill the
+// parent dropdowns + the tree view. Keeps us from re-fetching on every
+// modal open. The Jinja-rendered table stays the source of truth for
+// initial render.
+let _allGroups = [];
+
+async function refreshGroupCache() {
+    const r = await fetch('/api/groups');
+    const j = await r.json();
+    if (j.status === 'success') {
+        _allGroups = j.groups || [];
+    }
+    return _allGroups;
+}
+
+function _descendantIds(rootId) {
+    // BFS over the cached flat list. O(N*depth) which is fine for the
+    // dozens-of-groups scale we expect.
+    const out = new Set();
+    const stack = [rootId];
+    while (stack.length) {
+        const cur = stack.pop();
+        for (const g of _allGroups) {
+            if (g.parent_id === cur && !out.has(g.id)) {
+                out.add(g.id);
+                stack.push(g.id);
+            }
+        }
+    }
+    return out;
+}
+
+function fillParentSelect(selectEl, currentValue, excludeIds) {
+    excludeIds = excludeIds || new Set();
+    const opts = ['<option value="">— None (root) —</option>'];
+    // Sort by name for predictable ordering.
+    const sorted = [..._allGroups].sort((a, b) =>
+        (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
+    for (const g of sorted) {
+        if (excludeIds.has(g.id)) continue;
+        const sel = (currentValue != null && currentValue === g.id) ? ' selected' : '';
+        opts.push(`<option value="${g.id}"${sel}>${escapeHtml(g.name)}</option>`);
+    }
+    selectEl.innerHTML = opts.join('');
+}
+
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Uniform list filters + bulk selection
+const groupFilterEls = {
+    search:   document.getElementById('groupFilterSearch'),
+    parent:   document.getElementById('groupFilterParent'),
+    sync:     document.getElementById('groupFilterSync'),
+    displays: document.getElementById('groupFilterDisplays'),
+    count:    document.getElementById('groupFilterCount'),
+};
+const groupCheckboxes = () => Array.from(document.querySelectorAll('.group-select'));
+function isVisibleGroupCheckbox(c) {
+    const row = c.closest('tr');
+    return !row || row.style.display !== 'none';
+}
+function selectedGroupIds() {
+    return groupCheckboxes().filter(c => c.checked && isVisibleGroupCheckbox(c)).map(c => parseInt(c.value, 10));
+}
+function refreshGroupBulkBar() {
+    const ids = selectedGroupIds();
+    document.getElementById('groupBulkCount').textContent = ids.length;
+    document.getElementById('groupBulkBar')
+        .style.setProperty('display', ids.length ? 'flex' : 'none', 'important');
+    const sa = document.getElementById('selectAllGroups');
+    const all = groupCheckboxes().filter(isVisibleGroupCheckbox);
+    if (sa) {
+        sa.checked = all.length > 0 && ids.length === all.length;
+        sa.indeterminate = ids.length > 0 && ids.length < all.length;
+    }
+}
+function applyGroupFilters() {
+    const q = (groupFilterEls.search?.value || '').trim().toLowerCase();
+    const parent = groupFilterEls.parent?.value || '';
+    const sync = groupFilterEls.sync?.value || '';
+    const displays = groupFilterEls.displays?.value || '';
+    let shown = 0;
+    document.querySelectorAll('tr[data-row-group-id]').forEach(row => {
+        const hay = `${row.dataset.filterName || ''} ${row.dataset.filterDescription || ''}`;
+        const displayCount = parseInt(row.dataset.filterDisplays || '0', 10) || 0;
+        let ok = true;
+        if (q && !hay.includes(q)) ok = false;
+        if (parent === '__root__' && row.dataset.filterParent !== 'root') ok = false;
+        if (parent && parent !== '__root__' && row.dataset.filterParent !== parent) ok = false;
+        if (sync && row.dataset.filterSync !== sync) ok = false;
+        if (displays === 'has' && displayCount <= 0) ok = false;
+        if (displays === 'empty' && displayCount > 0) ok = false;
+        row.style.display = ok ? '' : 'none';
+        if (ok) shown++;
+    });
+    if (groupFilterEls.count) groupFilterEls.count.textContent = shown;
+    refreshGroupBulkBar();
+}
+['search','parent','sync','displays'].forEach(k => {
+    groupFilterEls[k]?.addEventListener(k === 'search' ? 'input' : 'change', applyGroupFilters);
+});
+document.getElementById('groupFilterReset')?.addEventListener('click', () => {
+    if (groupFilterEls.search) groupFilterEls.search.value = '';
+    if (groupFilterEls.parent) groupFilterEls.parent.value = '';
+    if (groupFilterEls.sync) groupFilterEls.sync.value = '';
+    if (groupFilterEls.displays) groupFilterEls.displays.value = '';
+    applyGroupFilters();
+});
+document.getElementById('selectAllGroups')?.addEventListener('change', e => {
+    groupCheckboxes().filter(isVisibleGroupCheckbox).forEach(c => { c.checked = e.target.checked; });
+    refreshGroupBulkBar();
+});
+groupCheckboxes().forEach(c => c.addEventListener('change', refreshGroupBulkBar));
+document.getElementById('groupBulkClear')?.addEventListener('click', () => {
+    groupCheckboxes().forEach(c => { c.checked = false; });
+    refreshGroupBulkBar();
+});
+document.querySelectorAll('.group-bulk-field').forEach(chk => {
+    chk.addEventListener('change', () => {
+        const targetId = chk.id.replace('bulkChk', 'bulkVal');
+        const el = document.getElementById(targetId);
+        if (el) el.disabled = !chk.checked;
+    });
+});
+document.getElementById('groupBulkEditBtn')?.addEventListener('click', () => {
+    document.getElementById('groupBulkEditCount').textContent = selectedGroupIds().length;
+});
+document.getElementById('groupBulkApply')?.addEventListener('click', () => {
+    const ids = selectedGroupIds();
+    if (!ids.length) { alert('Select at least one group first.'); return; }
+    const changes = {};
+    if (document.getElementById('bulkChkGroupParent')?.checked) {
+        const v = document.getElementById('bulkValGroupParent').value;
+        changes.parent_id = v === '' ? null : parseInt(v, 10);
+    }
+    if (document.getElementById('bulkChkGroupSync')?.checked) {
+        changes.sync_playback = document.getElementById('bulkValGroupSync').value === '1';
+    }
+    if (!Object.keys(changes).length) { alert('Tick at least one field to change.'); return; }
+    if (!confirm(`Apply ${Object.keys(changes).length} change(s) to ${ids.length} group(s)?`)) return;
+    fetch('/api/groups/bulk-update', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ids, changes })
+    })
+    .then(r => r.json())
+    .then(j => {
+        if (j.status !== 'success') {
+            alert('Error: ' + (j.message || 'bulk update failed'));
+            return;
+        }
+        const skipped = (j.results || []).filter(r => !r.ok).length + (j.not_found || []).length;
+        alert(`Updated ${j.updated}/${j.requested}.` + (skipped ? ` ${skipped} skipped.` : ''));
+        bootstrap.Modal.getInstance(document.getElementById('bulkEditGroupModal'))?.hide();
+        window.location.reload();
+    })
+    .catch(err => { console.error(err); alert('Request failed.'); });
+});
+
+// Create new group
+document.getElementById('saveGroup').addEventListener('click', function() {
+    const form = document.getElementById('addGroupForm');
+    const parentRaw = form.elements.parent_id.value;
+    const formData = {
+        name: form.elements.name.value,
+        description: form.elements.description.value,
+        parent_id: parentRaw === '' ? null : parseInt(parentRaw, 10),
+    };
+
+    fetch('/api/groups', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred. Please try again.');
+    });
+});
+
+// Edit group
+function editGroup(groupId) {
+    // Clear previous data
+    document.getElementById('edit_group_id').value = groupId;
+    document.getElementById('group_displays').innerHTML = '';
+    document.getElementById('available_displays').innerHTML = '';
+
+    // Fetch group details
+    fetch('/api/groups/' + groupId)
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            const group = data.group;
+
+            // Set form values
+            document.getElementById('edit_name').value = group.name;
+            document.getElementById('edit_description').value = group.description || '';
+            document.getElementById('edit_sync_playback').checked = !!group.sync_playback;
+
+            // Populate parent select. Exclude self + all descendants
+            // so the user can never create a cycle through the UI;
+            // the API enforces this too as defense in depth.
+            const exclude = _descendantIds(groupId);
+            exclude.add(groupId);
+            fillParentSelect(document.getElementById('edit_parent_id'),
+                             group.parent_id, exclude);
+
+            // Load displays in group
+            loadGroupDisplays(groupId);
+
+            // Load available displays
+            loadAvailableDisplays(groupId);
+
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('editGroupModal'));
+            modal.show();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred. Please try again.');
+    });
+}
+
+// Load displays in group
+function loadGroupDisplays(groupId) {
+    fetch('/api/groups/' + groupId + '/displays')
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            const displaysList = document.getElementById('group_displays');
+            displaysList.innerHTML = '';
+            
+            if (data.displays && data.displays.length > 0) {
+                data.displays.forEach(display => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${display.name}</td>
+                        <td>${display.location || 'N/A'}</td>
+                        <td>
+                            ${display.status === 'online' 
+                                ? '<span class="badge bg-success">Online</span>' 
+                                : '<span class="badge bg-danger">Offline</span>'}
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-danger" onclick="removeDisplayFromGroup(${display.id}, ${groupId})">
+                                Remove
+                            </button>
+                        </td>
+                    `;
+                    displaysList.appendChild(row);
+                });
+            } else {
+                displaysList.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center">No displays in this group</td>
+                    </tr>
+                `;
+            }
+        } else {
+            document.getElementById('group_displays').innerHTML = `
+                <tr>
+                    <td colspan="4" class="text-center">Error loading displays: ${data.message}</td>
+                </tr>
+            `;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('group_displays').innerHTML = `
+            <tr>
+                <td colspan="4" class="text-center">Error loading displays. Please try again.</td>
+            </tr>
+        `;
+    });
+}
+
+// Load available displays not in the group
+function loadAvailableDisplays(groupId) {
+    fetch('/api/displays')
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            const displaysList = document.getElementById('available_displays');
+            displaysList.innerHTML = '';
+            
+            if (data.displays && data.displays.length > 0) {
+                // Filter displays not in this group
+                const availableDisplays = data.displays.filter(display => !display.group_id || display.group_id != groupId);
+                
+                if (availableDisplays.length > 0) {
+                    availableDisplays.forEach(display => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${display.name}</td>
+                            <td>${display.location || 'N/A'}</td>
+                            <td>${display.group ? display.group.name : 'None'}</td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-primary" onclick="addDisplayToGroup(${display.id}, ${groupId})">
+                                    Add to Group
+                                </button>
+                            </td>
+                        `;
+                        displaysList.appendChild(row);
+                    });
+                } else {
+                    displaysList.innerHTML = `
+                        <tr>
+                            <td colspan="4" class="text-center">No available displays to add</td>
+                        </tr>
+                    `;
+                }
+            } else {
+                displaysList.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center">No displays available</td>
+                    </tr>
+                `;
+            }
+        } else {
+            document.getElementById('available_displays').innerHTML = `
+                <tr>
+                    <td colspan="4" class="text-center">Error loading displays: ${data.message}</td>
+                </tr>
+            `;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('available_displays').innerHTML = `
+            <tr>
+                <td colspan="4" class="text-center">Error loading displays. Please try again.</td>
+            </tr>
+        `;
+    });
+}
+
+// Add display to group
+function addDisplayToGroup(displayId, groupId) {
+    fetch(`/api/displays/${displayId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            group_id: groupId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Refresh display lists
+            loadGroupDisplays(groupId);
+            loadAvailableDisplays(groupId);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred. Please try again.');
+    });
+}
+
+// Remove display from group
+function removeDisplayFromGroup(displayId, groupId) {
+    fetch(`/api/displays/${displayId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            group_id: null
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Refresh display lists
+            loadGroupDisplays(groupId);
+            loadAvailableDisplays(groupId);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred. Please try again.');
+    });
+}
+
+// Update group details
+document.getElementById('updateGroup').addEventListener('click', function() {
+    const groupId = document.getElementById('edit_group_id').value;
+    const parentRaw = document.getElementById('edit_parent_id').value;
+    const formData = {
+        name: document.getElementById('edit_name').value,
+        description: document.getElementById('edit_description').value,
+        parent_id: parentRaw === '' ? null : parseInt(parentRaw, 10),
+        sync_playback: document.getElementById('edit_sync_playback').checked,
+    };
+    
+    fetch('/api/groups/' + groupId, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred. Please try again.');
+    });
+});
+
+// Search available displays
+document.getElementById('display_search').addEventListener('input', function() {
+    const searchTerm = this.value.toLowerCase();
+    const rows = document.querySelectorAll('#available_displays tr');
+    
+    rows.forEach(row => {
+        const name = row.cells[0]?.textContent.toLowerCase() || '';
+        const location = row.cells[1]?.textContent.toLowerCase() || '';
+        
+        if (name.includes(searchTerm) || location.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+
+// Delete group
+function deleteGroup(groupId) {
+    if (confirm('Are you sure you want to delete this group? This will not delete the displays in the group.')) {
+        fetch('/api/groups/' + groupId, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                window.location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred. Please try again.');
+        });
+    }
+}
+
+function commandGroup(groupId, name) {
+    const action = prompt('Push command to all displays in "' + name + '".\nEnter one of: reload, reboot, update', 'reload');
+    if (!action) return;
+    const a = action.trim().toLowerCase();
+    if (!['reload','reboot','update'].includes(a)) {
+        alert('Action must be reload, reboot, or update.');
+        return;
+    }
+    fetch('/api/groups/' + groupId + '/command', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: a, recursive: true})
+    })
+    .then(r => r.json())
+    .then(j => {
+        if (j.status === 'success') {
+            alert(a + ' sent to ' + j.delivered + '/' + j.targets + ' displays.');
+        } else {
+            alert('Error: ' + (j.message || 'failed'));
+        }
+    })
+    .catch(err => { console.error(err); alert('Request failed.'); });
+}
+
+function snoozeGroup(groupId, name) {
+    const raw = prompt('Snooze offline alerts for every display in "' + name + '".\n' +
+                       'Enter hours (0 to clear all snoozes in this group):', '4');
+    if (raw === null) return;
+    const hours = parseFloat(raw);
+    if (Number.isNaN(hours) || hours < 0) { alert('Enter a non-negative number.'); return; }
+    const reason = (hours > 0)
+        ? (prompt('Optional reason (shown in the audit log):', '') || '')
+        : '';
+    fetch('/api/groups/' + groupId + '/snooze-alerts', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({hours: hours, reason: reason, recursive: true})
+    })
+    .then(r => r.json())
+    .then(j => {
+        if (j.status !== 'success') { alert('Error: ' + (j.message || 'failed')); return; }
+        if (hours > 0) {
+            alert('Snoozed alerts for ' + j.targets + ' display(s) for ' + hours + 'h.');
+        } else {
+            alert('Cleared snoozes on ' + j.targets + ' display(s).');
+        }
+    })
+    .catch(err => { console.error(err); alert('Request failed.'); });
+}
+async function renderTreeView() {
+    const r = await fetch('/api/groups?tree=true');
+    const j = await r.json();
+    const root = document.getElementById('treeRoot');
+    if (j.status !== 'success' || !j.groups || !j.groups.length) {
+        root.innerHTML = '<div class="text-muted py-3 text-center">No groups.</div>';
+        return;
+    }
+    function renderNode(node, depth) {
+        const indent = depth * 20;
+        const childHtml = (node.children || []).map(c => renderNode(c, depth + 1)).join('');
+        return `<div class="border-start ps-2 my-1" style="margin-left:${indent}px;">
+            <span class="fw-semibold">${escapeHtml(node.name)}</span>
+            <span class="badge bg-light text-dark ms-2">${node.display_count} display${node.display_count === 1 ? '' : 's'}</span>
+            ${node.description ? `<span class="text-muted small ms-2">${escapeHtml(node.description)}</span>` : ''}
+            ${childHtml}
+        </div>`;
+    }
+    root.innerHTML = j.groups.map(g => renderNode(g, 0)).join('');
+}
+
+document.getElementById('viewFlatBtn')?.addEventListener('click', () => {
+    document.getElementById('viewFlatBtn').classList.add('active');
+    document.getElementById('viewTreeBtn').classList.remove('active');
+    document.getElementById('flatViewContainer').classList.remove('d-none');
+    document.getElementById('treeViewContainer').classList.add('d-none');
+});
+document.getElementById('viewTreeBtn')?.addEventListener('click', () => {
+    document.getElementById('viewTreeBtn').classList.add('active');
+    document.getElementById('viewFlatBtn').classList.remove('active');
+    document.getElementById('flatViewContainer').classList.add('d-none');
+    document.getElementById('treeViewContainer').classList.remove('d-none');
+    renderTreeView();
+});
+
+// On page load: warm the group cache so the create modal's parent
+// dropdown is populated. Also fill the create-modal parent select.
+(async () => {
+    await refreshGroupCache();
+    const sel = document.getElementById('parent_id');
+    if (sel) fillParentSelect(sel, null, new Set());
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ plugin_meta.name }} | Plugin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #000; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; }
+    #root { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
+  </style>
+  <script>
+    window.PLUGIN_CONFIG = {{ plugin_config | tojson | safe }};
+    window.PLUGIN_META = {{ plugin_meta | tojson | safe }};
+    /* Granted permissions (intersection of plugin.json declared list and
+       per-tenant DomainPluginPolicy grant). Plugins can check this to
+       degrade gracefully -- e.g. skip a fetch if 'network.fetch' is not
+       granted. The actual capability gate is the iframe sandbox set by
+       the parent display player. */
+    window.PLUGIN_PERMISSIONS = {{ (plugin_permissions or []) | tojson | safe }};
+    /* Whitelisted outbound origins from plugin.json's `csp_origins` field.
+       The runner page itself is also locked down to these origins via a
+       Content-Security-Policy header set by the server. Plugins can read
+       this list to decide what's safe to fetch. */
+    window.PLUGIN_CSP_ORIGINS = {{ (plugin_csp_origins or []) | tojson | safe }};
+
+    /* ── Offline-mode broadcast from parent player ────────────────────────
+       The display player pings the server every 60s and broadcasts its
+       online state to all plugin iframes via postMessage. Plugins can
+       check window.SIGNAGE_OFFLINE before issuing network requests, or
+       listen for the 'signage:online_changed' custom event to react to
+       state changes. */
+    window.SIGNAGE_OFFLINE = false;
+
+    /* ── Server clock offset (Phase 5) ─────────────────────────────────────
+       The parent display player calibrates its local clock against the
+       AISignX server via /server_time and publishes the offset (in ms)
+       here so plugins that show time -- the clock plugin, the weather
+       plugin's "last updated", the stocks plugin's chart timestamps --
+       can render server-anchored time instead of the OS clock. Without
+       this, two hardware boxes with slightly different system clocks
+       will show different times even when reporting from the same
+       upstream feed.
+
+       Helpers:
+         window.signageNowMs()        -> server-anchored unix-ms (number)
+         window.signageDate()         -> Date object representing server now
+         window.SIGNAGE_CLOCK_OFFSET  -> raw offset (serverNow - localNow)
+
+       Plugins keep working offline; the offset just stops updating until
+       the player can reach /server_time again, at which point it broadcasts
+       the new offset. Drift between calibrations is bounded by the local
+       OS clock crystal (a few ms per minute for typical hardware). */
+    window.SIGNAGE_CLOCK_OFFSET = 0;
+    window.signageNowMs  = function () { return Date.now() + (window.SIGNAGE_CLOCK_OFFSET || 0); };
+    window.signageDate   = function () { return new Date(window.signageNowMs()); };
+
+    window.addEventListener('message', (e) => {
+      if (!e.data) return;
+      if (e.data.type === 'signage:online_state') {
+        const wasOffline = window.SIGNAGE_OFFLINE;
+        window.SIGNAGE_OFFLINE = !!e.data.offline;
+        if (wasOffline !== window.SIGNAGE_OFFLINE) {
+          window.dispatchEvent(new CustomEvent('signage:online_changed', {
+            detail: { offline: window.SIGNAGE_OFFLINE }
+          }));
+        }
+      } else if (e.data.type === 'signage:clock_offset') {
+        if (typeof e.data.offsetMs === 'number' && isFinite(e.data.offsetMs)) {
+          window.SIGNAGE_CLOCK_OFFSET = e.data.offsetMs;
+          window.dispatchEvent(new CustomEvent('signage:clock_offset_changed', {
+            detail: {
+              offsetMs: window.SIGNAGE_CLOCK_OFFSET,
+              serverNowMs: e.data.serverNowMs || window.signageNowMs()
+            }
+          }));
+        }
+      } else if (e.data.type === 'signage:plugin_policy') {
+        // Per-tenant policy changed (Phase 4 push notifications). The
+        // parent player will reload this iframe shortly after sending
+        // this message so sandbox+CSP get reapplied; plugins can use
+        // this hook to flush in-memory state before that happens.
+        window.PLUGIN_PERMISSIONS = e.data.granted_permissions || [];
+        window.dispatchEvent(new CustomEvent('signage:plugin_policy_changed', {
+          detail: {
+            plugin_key: e.data.plugin_key,
+            enabled: !!e.data.enabled,
+            granted_permissions: window.PLUGIN_PERMISSIONS,
+          }
+        }));
+      }
+    });
+  </script>
+  <!-- Shared offline-cache helper. Exposes window.cachedFetch() and
+       window.signageCache for plugins to keep rendering when the network
+       is down. Loaded BEFORE the plugin's main.js so it's available the
+       moment the plugin starts running. -->
+  <script src="{{ url_for('static', filename='js/signage_offline.js') }}"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="{{ url_for('plugins.plugin_asset', plugin_type=plugin_meta.type, filename='main.js') }}"></script>
+</body>
+</html>

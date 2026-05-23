@@ -1,0 +1,94 @@
+# =============================================================================
+# AISignX — Git ignores local dev/build/runtime files. Your working copy can
+# keep uploads, databases, logs, and build outputs; they are not published.
+# =============================================================================
+
+# --- Secrets and local config (never commit) ---
+.env
+.env.*
+!.env.example
+server/.env
+server/config.py
+**/keystore.properties
+*.keystore
+**/keystorepass.txt
+**/my-release-key.keystore
+
+# --- Internal / machine-specific notes ---
+RESUME_CONTEXT.md
+*.v1backup
+**/*.v1backup
+
+# --- Python ---
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+server/.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# --- Databases and runtime data ---
+*.db
+*.sqlite
+*.sqlite3
+server/uploads/
+server/logs/
+server/instance/
+server/backups/
+server/backups/**
+
+# --- Node / Electron ---
+node_modules/
+clients/electron-client/node_modules/
+clients/electron-client/dist/
+clients/electron-client/out/
+npm-debug.log*
+
+# --- Android ---
+clients/android-client/.gradle/
+clients/android-client/**/build/
+clients/android-client/local.properties
+clients/android-client/.idea/
+clients/android-client/captures/
+*.apk
+*.aab
+!server/static/clients/.gitkeep
+
+# --- Built client installers (build locally; optional download artifacts) ---
+server/static/clients/*
+!server/static/clients/README.txt
+!server/static/clients/client_versions.json
+!server/static/clients/.gitkeep
+
+# --- Playwright browser cache ---
+.playwright/
+**/playwright/.cache/
+
+# --- IDE / OS ---
+.vs/
+.cursor/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# --- Misc build / temp ---
+*.log
+*.tmp
+*.temp
+dist/
+build/
+.cache/

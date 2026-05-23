@@ -1,0 +1,430 @@
+{% extends 'base.html' %}
+
+{% block title %}Backup &amp; Restore - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-hdd-stack-fill"></i> Backup &amp; Restore</h1>
+    <button class="btn btn-primary" id="newBackupBtn">
+        <i class="bi bi-plus-lg"></i> Create Backup
+    </button>
+</div>
+
+<div class="alert alert-warning py-2 small">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    A backup is a complete dump of every tenant's data. Treat the .zip
+    file as <strong>highly sensitive</strong> -- it contains hashed
+    credentials, signed-URL secrets, and all uploaded media.
+</div>
+
+<!-- Schedule + location -->
+<div class="card mb-3">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-calendar-event"></i> Scheduled backups</span>
+    <button class="btn btn-sm btn-outline-primary" id="runNowBtn" type="button">
+      <i class="bi bi-play-fill"></i> Run now
+    </button>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label small mb-1">Backup location</label>
+        <div class="input-group input-group-sm">
+          <input type="text" id="schedLocation" class="form-control form-control-sm font-monospace"
+                 placeholder="(default: ./backups beside the app)">
+          <button class="btn btn-outline-secondary" type="button" id="schedLocationDefaultBtn"
+                  title="Clear the field to use the built-in default location">
+            Use default
+          </button>
+        </div>
+        <div class="form-text">
+          Absolute server-side path where archives are written. Leave blank
+          to use the default. The directory will be created if missing and
+          must be writable by the server account.
+          <span class="d-block text-muted">
+            (Browsers can't open a server-side folder picker, so the path
+            must be typed or pasted.)
+          </span>
+          Resolved location: <code id="schedResolved" class="small">…</code>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="form-check form-switch mt-3">
+          <input class="form-check-input" type="checkbox" id="schedEnabled">
+          <label class="form-check-label" for="schedEnabled">
+            Enable scheduled backups
+          </label>
+        </div>
+        <div class="row g-2 mt-1">
+          <div class="col-6">
+            <label class="form-label small mb-1">Every (hours)</label>
+            <input type="number" id="schedInterval" min="1" step="1" class="form-control form-control-sm" value="24">
+          </div>
+          <div class="col-6">
+            <label class="form-label small mb-1">Keep last (0 = unlimited)</label>
+            <input type="number" id="schedRetain" min="0" step="1" class="form-control form-control-sm" value="14">
+          </div>
+        </div>
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" id="schedUploads" checked>
+          <label class="form-check-label small" for="schedUploads">Include uploads</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="schedPlugins" checked>
+          <label class="form-check-label small" for="schedPlugins">Include plugins</label>
+        </div>
+      </div>
+    </div>
+    <div class="mt-3 d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-primary" id="schedSaveBtn" type="button">Save schedule</button>
+      <span id="schedStatus" class="small text-muted"></span>
+    </div>
+    <div class="form-text mt-2">
+      Cadence changes take effect after the next server restart; all other
+      schedule settings apply on the next run.
+    </div>
+  </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Filename</th>
+                        <th>Source</th>
+                        <th>Created</th>
+                        <th>Size</th>
+                        <th>Contents</th>
+                        <th>Counts</th>
+                        <th style="width:240px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="backupsRows">
+                    <tr><td colspan="7" class="text-center text-muted py-4">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Create modal -->
+<div class="modal fade" id="createBackupModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Create Backup</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted">The database snapshot is always included.
+        Uncheck items below to make a smaller backup.</p>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="optUploads" checked>
+            <label class="form-check-label" for="optUploads">Include uploads (media files)</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="optPlugins" checked>
+            <label class="form-check-label" for="optPlugins">Include plugins</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="createBackupSubmit">Create</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Restore modal -->
+<div class="modal fade" id="restoreModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Restore from Backup</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-danger small">
+            <strong>This is destructive.</strong> The current database,
+            uploads, and plugins will be moved aside (to <code>.restore-&lt;ts&gt;</code>
+            sibling directories) and replaced with the contents of this
+            backup. <strong>The server must be restarted</strong> for the
+            new database to take effect.
+        </div>
+        <div class="mb-2 small">Restoring: <code id="restoreFilename"></code></div>
+        <div class="form-check mb-1">
+            <input class="form-check-input" type="checkbox" id="restUploads" checked>
+            <label class="form-check-label" for="restUploads">Restore uploads tree</label>
+        </div>
+        <div class="form-check mb-1">
+            <input class="form-check-input" type="checkbox" id="restPlugins" checked>
+            <label class="form-check-label" for="restPlugins">Restore plugins tree</label>
+        </div>
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="restPreSnapshot" checked>
+            <label class="form-check-label" for="restPreSnapshot">
+              Auto-snapshot current state first
+              <span class="text-muted small">(recommended; one-click rollback)</span>
+            </label>
+        </div>
+        <label class="form-label small">Type the filename below to confirm:</label>
+        <input type="text" class="form-control font-monospace small" id="restoreConfirmInput">
+        <div id="restoreError" class="alert alert-danger d-none mt-3 small"></div>
+        <div id="restoreSuccess" class="alert alert-success d-none mt-3 small"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="restoreSubmit" disabled>Restore</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // NOTE: This script lives inside the content block, which renders
+    // above the bootstrap.min.js <script> tag in base.html. We MUST wait
+    // for DOMContentLoaded so `bootstrap.Modal` is defined; otherwise the
+    // whole IIFE throws and the Create button + backup list both die
+    // silently (table stuck on "Loading…").
+    const rowsEl = document.getElementById('backupsRows');
+    const createModal = new bootstrap.Modal(document.getElementById('createBackupModal'));
+    const restoreModal = new bootstrap.Modal(document.getElementById('restoreModal'));
+    let restoreTarget = null;
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function fmtBytes(n) {
+        if (n == null) return '—';
+        const u = ['B','KB','MB','GB','TB'];
+        let i = 0;
+        while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+        return n.toFixed(i ? 1 : 0) + ' ' + u[i];
+    }
+    function fmtDate(s) {
+        if (!s) return '';
+        return s.replace('T', ' ').replace('Z', '').slice(0, 19);
+    }
+
+    async function load() {
+        const r = await fetch('/api/backups');
+        const j = await r.json();
+        if (j.status !== 'success') {
+            rowsEl.innerHTML = `<tr><td colspan="7" class="text-danger text-center py-4">${escapeHtml(j.message || 'failed')}</td></tr>`;
+            return;
+        }
+        if (!j.backups.length) {
+            rowsEl.innerHTML = '<tr><td colspan="7" class="text-muted text-center py-4">No backups yet. Create one to get started.</td></tr>';
+            return;
+        }
+        rowsEl.innerHTML = j.backups.map(b => {
+            const m = b.manifest || {};
+            const c = m.counts || {};
+            const tags = [];
+            if (m.contents) {
+                if (m.contents.db)      tags.push('<span class="badge bg-success">DB</span>');
+                if (m.contents.uploads) tags.push('<span class="badge bg-info">uploads</span>');
+                if (m.contents.plugins) tags.push('<span class="badge bg-secondary">plugins</span>');
+            }
+            const src = (m.source || 'manual');
+            const srcCls = src === 'pre-restore' ? 'bg-warning text-dark'
+                         : src === 'scheduled'   ? 'bg-info'
+                         : 'bg-secondary';
+            const srcBadge = `<span class="badge ${srcCls}">${escapeHtml(src)}</span>` +
+                             (m.note ? ` <span class="small text-muted" title="${escapeHtml(m.note)}">📝</span>` : '');
+            const counts = [];
+            if (c.users    != null) counts.push(`${c.users}u`);
+            if (c.domains  != null) counts.push(`${c.domains}d`);
+            if (c.displays != null) counts.push(`${c.displays}disp`);
+            if (c.media    != null) counts.push(`${c.media}m`);
+            return `<tr>
+                <td><code class="small">${escapeHtml(b.filename)}</code>
+                    ${b.manifest_error ? '<div class="text-danger small">⚠ ' + escapeHtml(b.manifest_error) + '</div>' : ''}</td>
+                <td>${srcBadge}</td>
+                <td class="small">${escapeHtml(fmtDate(m.created_at || b.mtime))}</td>
+                <td class="small">${fmtBytes(b.size_bytes)}</td>
+                <td>${tags.join(' ') || '<span class="text-muted">—</span>'}</td>
+                <td class="small text-muted">${counts.join(' / ')}</td>
+                <td class="text-end">
+                    <a href="/api/backups/${encodeURIComponent(b.filename)}/download"
+                       class="btn btn-sm btn-outline-primary" download>Download</a>
+                    <button class="btn btn-sm btn-outline-warning" data-restore="${escapeHtml(b.filename)}">Restore</button>
+                    <button class="btn btn-sm btn-outline-danger" data-delete="${escapeHtml(b.filename)}">Delete</button>
+                </td>
+            </tr>`;
+        }).join('');
+
+        rowsEl.querySelectorAll('button[data-restore]').forEach(b =>
+            b.addEventListener('click', () => openRestore(b.dataset.restore)));
+        rowsEl.querySelectorAll('button[data-delete]').forEach(b =>
+            b.addEventListener('click', () => deleteBackup(b.dataset.delete)));
+    }
+
+    document.getElementById('newBackupBtn').addEventListener('click', () => createModal.show());
+
+    document.getElementById('createBackupSubmit').addEventListener('click', async () => {
+        const btn = document.getElementById('createBackupSubmit');
+        btn.disabled = true; btn.textContent = 'Creating…';
+        try {
+            const r = await fetch('/api/backups', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    include_uploads: document.getElementById('optUploads').checked,
+                    include_plugins: document.getElementById('optPlugins').checked,
+                }),
+            });
+            const j = await r.json();
+            if (j.status === 'success') {
+                createModal.hide();
+                load();
+            } else {
+                alert(j.message || 'Backup failed');
+            }
+        } finally {
+            btn.disabled = false; btn.textContent = 'Create';
+        }
+    });
+
+    async function deleteBackup(filename) {
+        if (!confirm(`Delete backup "${filename}"? This cannot be undone.`)) return;
+        const r = await fetch('/api/backups/' + encodeURIComponent(filename),
+                              {method: 'DELETE'});
+        const j = await r.json();
+        if (j.status === 'success') load();
+        else alert(j.message || 'Delete failed');
+    }
+
+    function openRestore(filename) {
+        restoreTarget = filename;
+        document.getElementById('restoreFilename').textContent = filename;
+        document.getElementById('restoreError').classList.add('d-none');
+        document.getElementById('restoreSuccess').classList.add('d-none');
+        document.getElementById('restUploads').checked = true;
+        document.getElementById('restPlugins').checked = true;
+        document.getElementById('restPreSnapshot').checked = true;
+        const sub = document.getElementById('restoreSubmit');
+        sub.disabled = false;
+        sub.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> Restore this backup';
+        restoreModal.show();
+    }
+
+    document.getElementById('restoreSubmit').addEventListener('click', async () => {
+        const btn = document.getElementById('restoreSubmit');
+        const errEl = document.getElementById('restoreError');
+        const okEl  = document.getElementById('restoreSuccess');
+        errEl.classList.add('d-none'); okEl.classList.add('d-none');
+        if (!restoreTarget) return;
+        if (!confirm('Restore "' + restoreTarget + '" now?\n\n'
+                   + 'The current database, uploads, and plugins will be replaced. '
+                   + 'A server restart is required afterward.')) {
+            return;
+        }
+        btn.disabled = true; btn.textContent = 'Restoring…';
+        try {
+            const r = await fetch('/api/backups/' + encodeURIComponent(restoreTarget) + '/restore', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    confirm: true,
+                    confirm_filename: restoreTarget,
+                    restore_uploads: document.getElementById('restUploads').checked,
+                    restore_plugins: document.getElementById('restPlugins').checked,
+                    pre_snapshot:    document.getElementById('restPreSnapshot').checked,
+                }),
+            });
+            const j = await r.json();
+            if (j.status === 'success') {
+                okEl.innerHTML = `Restore complete. <strong>Restart the server now</strong>
+                                 for the new database to take effect.<br>
+                                 Old data staged at: ${(j.result.staged_paths || []).map(p => '<code class="small">' + p + '</code>').join(', ')}`;
+                okEl.classList.remove('d-none');
+                btn.textContent = 'Done';
+            } else {
+                errEl.textContent = j.message || 'Restore failed';
+                errEl.classList.remove('d-none');
+                btn.disabled = false; btn.textContent = 'Restore';
+            }
+        } catch (e) {
+            errEl.textContent = e.message || 'Network error';
+            errEl.classList.remove('d-none');
+            btn.disabled = false; btn.textContent = 'Restore';
+        }
+    });
+
+    load();
+
+    // ---- Schedule + location ----
+    async function loadSchedule() {
+        const r = await fetch('/api/backups/schedule');
+        const j = await r.json();
+        if (j.status !== 'success') return;
+        const s = j.schedule;
+        document.getElementById('schedLocation').value  = s['backup.location'] || '';
+        document.getElementById('schedResolved').textContent = s.resolved_location || '';
+        document.getElementById('schedEnabled').checked = !!s['backup.schedule.enabled'];
+        document.getElementById('schedInterval').value  = s['backup.schedule.interval_hours'] || 24;
+        document.getElementById('schedRetain').value    = s['backup.schedule.retain'] ?? 14;
+        document.getElementById('schedUploads').checked = s['backup.schedule.include_uploads'] !== false;
+        document.getElementById('schedPlugins').checked = s['backup.schedule.include_plugins'] !== false;
+    }
+
+    document.getElementById('schedSaveBtn').addEventListener('click', async () => {
+        const status = document.getElementById('schedStatus');
+        status.textContent = 'Saving…';
+        const body = {
+            location:        document.getElementById('schedLocation').value,
+            enabled:         document.getElementById('schedEnabled').checked,
+            interval_hours:  parseInt(document.getElementById('schedInterval').value || '24', 10),
+            retain:          parseInt(document.getElementById('schedRetain').value || '0', 10),
+            include_uploads: document.getElementById('schedUploads').checked,
+            include_plugins: document.getElementById('schedPlugins').checked,
+        };
+        const r = await fetch('/api/backups/schedule', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+        });
+        const j = await r.json();
+        if (j.status === 'success') {
+            document.getElementById('schedResolved').textContent = j.schedule.resolved_location || '';
+            status.textContent = 'Saved';
+            setTimeout(() => { status.textContent = ''; }, 1500);
+        } else {
+            status.textContent = 'Error: ' + (j.message || 'unknown');
+        }
+    });
+
+    document.getElementById('runNowBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('runNowBtn');
+        btn.disabled = true;
+        const orig = btn.innerHTML;
+        btn.innerHTML = 'Running…';
+        try {
+            const r = await fetch('/api/backups/run-now', { method: 'POST' });
+            const j = await r.json();
+            if (j.status === 'success') {
+                load();
+            } else {
+                alert(j.message || 'Run failed');
+            }
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+        }
+    });
+
+    document.getElementById('schedLocationDefaultBtn').addEventListener('click', () => {
+        document.getElementById('schedLocation').value = '';
+        document.getElementById('schedLocation').focus();
+    });
+
+    loadSchedule();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network security policy for AISignX Player.
+
+  Allows cleartext (plain HTTP) traffic for ALL domains. This is required
+  because the player typically targets a self-hosted server on a LAN that
+  doesn't have HTTPS configured (e.g. http://192.168.1.22:5000).
+
+  In production deployments where the server is behind an HTTPS reverse
+  proxy / Cloudflare, you can tighten this by changing cleartextTrafficPermitted
+  to "false" and adding a <domain-config cleartextTrafficPermitted="true"> block
+  for any LAN-only addresses you still need to reach.
+-->
+<network-security-config>
+	<base-config cleartextTrafficPermitted="true">
+		<trust-anchors>
+			<certificates src="system" />
+			<certificates src="user" />
+		</trust-anchors>
+	</base-config>
+</network-security-config>

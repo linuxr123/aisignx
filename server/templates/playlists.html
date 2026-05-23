@@ -1,0 +1,657 @@
+{% extends 'base.html' %}
+
+{% block title %}Playlists - AISignX{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Playlists</h1>
+        <div class="d-flex gap-2 align-items-center">
+            <div class="btn-group btn-group-sm" role="group" aria-label="View mode">
+                <input type="radio" class="btn-check" name="playlistView" id="viewRows" value="rows" autocomplete="off" checked>
+                <label class="btn btn-outline-secondary" for="viewRows" title="Row view">
+                    <i class="bi bi-list-ul"></i> Rows
+                </label>
+                <input type="radio" class="btn-check" name="playlistView" id="viewCards" value="cards" autocomplete="off">
+                <label class="btn btn-outline-secondary" for="viewCards" title="Card view">
+                    <i class="bi bi-grid-3x3-gap"></i> Cards
+                </label>
+            </div>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createPlaylistModal">
+                <i class="bi bi-plus-circle"></i> Create Playlist
+            </button>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-6">
+                    <label class="form-label small text-muted mb-1" for="playlistFilterSearch">Search</label>
+                    <input type="search" class="form-control form-control-sm" id="playlistFilterSearch"
+                           placeholder="Name or description...">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1" for="playlistFilterItems">Items</label>
+                    <select class="form-select form-select-sm" id="playlistFilterItems">
+                        <option value="">Any</option>
+                        <option value="empty">Empty</option>
+                        <option value="has">Has items</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-grid">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="playlistFilterReset">Reset</button>
+                </div>
+            </div>
+            <div class="small text-muted mt-2">
+                Showing <span id="playlistFilterCount">{{ playlists|length }}</span> of {{ playlists|length }} playlist(s)
+            </div>
+        </div>
+    </div>
+    <div class="d-flex justify-content-between align-items-center mb-2 px-1" id="playlistBulkBar" style="display:none !important;">
+        <span class="small text-muted"><span id="playlistBulkCount">0</span> selected</span>
+        <div class="btn-group btn-group-sm" role="group">
+            <button type="button" class="btn btn-outline-primary" id="playlistBulkEditBtn" data-bs-toggle="modal" data-bs-target="#bulkEditPlaylistModal">Edit&hellip;</button>
+            <button type="button" class="btn btn-outline-danger" id="playlistBulkDeleteBtn">Delete</button>
+            <button type="button" class="btn btn-outline-secondary" id="playlistBulkClear">Clear</button>
+        </div>
+    </div>
+
+    <!-- Row view (default) -->
+    <div id="playlistRows" class="card">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:32px;"><input type="checkbox" id="selectAllPlaylists" class="form-check-input"></th>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th class="text-center">Items</th>
+                        <th>Created</th>
+                        <th class="text-end" style="width: 280px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for playlist in playlists %}
+                    <tr data-row-playlist-id="{{ playlist.id }}"
+                        data-filter-name="{{ playlist.name|lower }}"
+                        data-filter-description="{{ (playlist.description or '')|lower }}"
+                        data-filter-items="{{ playlist.item_count }}">
+                        <td><input type="checkbox" class="form-check-input playlist-select" value="{{ playlist.id }}"></td>
+                        <td class="fw-semibold">{{ playlist.name }}</td>
+                        <td class="text-muted">{{ playlist.description or '—' }}</td>
+                        <td class="text-center"><span class="badge bg-primary">{{ playlist.item_count }}</span></td>
+                        <td class="small text-muted">{{ playlist.created_at|format_datetime('%Y-%m-%d') }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('playlists.playlist_detail', playlist_id=playlist.id) }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> View
+                            </a>
+                            <button class="btn btn-sm btn-outline-info copy-playlist-btn" data-playlist-id="{{ playlist.id }}" data-playlist-name="{{ playlist.name }}">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary edit-playlist-btn" data-playlist-id="{{ playlist.id }}" data-playlist-name="{{ playlist.name }}" data-playlist-description="{{ playlist.description }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger delete-playlist-btn" data-playlist-id="{{ playlist.id }}" data-playlist-name="{{ playlist.name }}">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="bi bi-exclamation-circle" style="font-size: 2rem;"></i>
+                            <div class="mt-2">No playlists yet. Use "Create Playlist" to get started.</div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Card view (kept for users who liked the old layout) -->
+    <div id="playlistCards" class="row row-cols-1 row-cols-md-3 g-4" style="display:none;">
+        {% for playlist in playlists %}
+        <div class="col" data-card-playlist-id="{{ playlist.id }}"
+             data-filter-name="{{ playlist.name|lower }}"
+             data-filter-description="{{ (playlist.description or '')|lower }}"
+             data-filter-items="{{ playlist.item_count }}">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">{{ playlist.name }}</h5>
+                    <span class="badge bg-primary">{{ playlist.item_count }} items</span>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">{{ playlist.description or 'No description' }}</p>
+                </div>
+                <div class="card-footer bg-transparent d-flex justify-content-between">
+                    <small class="text-muted">Created: {{ playlist.created_at|format_datetime('%Y-%m-%d') }}</small>
+                    <div>
+                        <a href="{{ url_for('playlists.playlist_detail', playlist_id=playlist.id) }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-eye"></i> View
+                        </a>
+                        <button class="btn btn-sm btn-outline-info copy-playlist-btn" data-playlist-id="{{ playlist.id }}" data-playlist-name="{{ playlist.name }}">
+                            <i class="bi bi-clipboard"></i> Copy
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary edit-playlist-btn" data-playlist-id="{{ playlist.id }}" data-playlist-name="{{ playlist.name }}" data-playlist-description="{{ playlist.description }}">
+                            <i class="bi bi-pencil"></i> Edit
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger delete-playlist-btn" data-playlist-id="{{ playlist.id }}" data-playlist-name="{{ playlist.name }}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Bulk Edit Playlists Modal -->
+<div class="modal fade" id="bulkEditPlaylistModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Bulk edit playlists</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">
+                    Apply to <strong><span id="playlistBulkEditCount">0</span></strong> selected playlist(s).
+                    Only checked fields are changed.
+                </p>
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input playlist-bulk-field" type="checkbox" id="bulkChkPlaylistDescription">
+                        <label class="form-check-label small text-muted" for="bulkChkPlaylistDescription">Set description</label>
+                    </div>
+                    <textarea class="form-control form-control-sm mt-1" id="bulkValPlaylistDescription" rows="3" disabled></textarea>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input playlist-bulk-field" type="checkbox" id="bulkChkPlaylistTransition">
+                        <label class="form-check-label small text-muted" for="bulkChkPlaylistTransition">Set default transition</label>
+                    </div>
+                    <select class="form-select form-select-sm mt-1" id="bulkValPlaylistTransition" disabled>
+                        <option value="cut">Cut</option>
+                        <option value="fade">Fade</option>
+                        <option value="crossfade">Crossfade</option>
+                        <option value="wipe">Wipe</option>
+                        <option value="slide-left">Slide left</option>
+                        <option value="slide-right">Slide right</option>
+                        <option value="zoom">Zoom</option>
+                        <option value="random">Random</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input playlist-bulk-field" type="checkbox" id="bulkChkPlaylistAudio">
+                        <label class="form-check-label small text-muted" for="bulkChkPlaylistAudio">Set video audio default</label>
+                    </div>
+                    <select class="form-select form-select-sm mt-1" id="bulkValPlaylistAudio" disabled>
+                        <option value="inherit">Inherit media default</option>
+                        <option value="on">Force audio on</option>
+                        <option value="off">Force audio off</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="playlistBulkApply">Apply changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Playlist Modal -->
+<div class="modal fade" id="createPlaylistModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create Playlist</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createPlaylistForm">
+                    <div class="mb-3">
+                        <label for="playlist-name" class="form-label">Playlist Name</label>
+                        <input type="text" class="form-control" id="playlist-name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="playlist-description" class="form-label">Description (optional)</label>
+                        <textarea class="form-control" id="playlist-description" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="create-playlist-btn">Create</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Playlist Modal -->
+<div class="modal fade" id="editPlaylistModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Playlist</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editPlaylistForm">
+                    <input type="hidden" id="edit-playlist-id">
+                    <div class="mb-3">
+                        <label for="edit-playlist-name" class="form-label">Playlist Name</label>
+                        <input type="text" class="form-control" id="edit-playlist-name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-playlist-description" class="form-label">Description (optional)</label>
+                        <textarea class="form-control" id="edit-playlist-description" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="update-playlist-btn">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Playlist Modal -->
+<div class="modal fade" id="deletePlaylistModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Delete Playlist</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the playlist "<span id="delete-playlist-name"></span>"?</p>
+                <p class="text-danger">This action cannot be undone.</p>
+                <input type="hidden" id="delete-playlist-id">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirm-delete-btn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Copy Playlist Modal -->
+<div class="modal fade" id="copyPlaylistModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Copy Playlist</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Create a copy of "<span id="copy-playlist-source-name"></span>"</p>
+                <form id="copyPlaylistForm">
+                    <input type="hidden" id="copy-playlist-id">
+                    <div class="mb-3">
+                        <label for="copy-playlist-name" class="form-label">New Playlist Name</label>
+                        <input type="text" class="form-control" id="copy-playlist-name" required>
+                        <small class="form-text text-muted">Leave blank to auto-generate name</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-info" id="confirm-copy-btn">Copy Playlist</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const playlistFilterEls = {
+        search: document.getElementById('playlistFilterSearch'),
+        items: document.getElementById('playlistFilterItems'),
+        count: document.getElementById('playlistFilterCount'),
+    };
+    function playlistMatches(el) {
+        const q = (playlistFilterEls.search?.value || '').trim().toLowerCase();
+        const itemFilter = playlistFilterEls.items?.value || '';
+        const count = parseInt(el.dataset.filterItems || '0', 10) || 0;
+        const hay = `${el.dataset.filterName || ''} ${el.dataset.filterDescription || ''}`;
+        if (q && !hay.includes(q)) return false;
+        if (itemFilter === 'empty' && count !== 0) return false;
+        if (itemFilter === 'has' && count <= 0) return false;
+        return true;
+    }
+    function applyPlaylistFilters() {
+        let shown = 0;
+        document.querySelectorAll('tr[data-row-playlist-id]').forEach(row => {
+            const ok = playlistMatches(row);
+            row.style.display = ok ? '' : 'none';
+            if (ok) shown++;
+        });
+        document.querySelectorAll('[data-card-playlist-id]').forEach(card => {
+            const ok = playlistMatches(card);
+            card.style.display = ok ? '' : 'none';
+        });
+        if (playlistFilterEls.count) playlistFilterEls.count.textContent = shown;
+        refreshPlaylistBulkBar();
+    }
+    playlistFilterEls.search?.addEventListener('input', applyPlaylistFilters);
+    playlistFilterEls.items?.addEventListener('change', applyPlaylistFilters);
+    document.getElementById('playlistFilterReset')?.addEventListener('click', () => {
+        if (playlistFilterEls.search) playlistFilterEls.search.value = '';
+        if (playlistFilterEls.items) playlistFilterEls.items.value = '';
+        applyPlaylistFilters();
+    });
+
+    const playlistCheckboxes = () => Array.from(document.querySelectorAll('.playlist-select'));
+    function isVisiblePlaylistCheckbox(c) {
+        const row = c.closest('tr');
+        return !row || row.style.display !== 'none';
+    }
+    function selectedPlaylistIds() {
+        return playlistCheckboxes().filter(c => c.checked && isVisiblePlaylistCheckbox(c)).map(c => parseInt(c.value, 10));
+    }
+    function refreshPlaylistBulkBar() {
+        const ids = selectedPlaylistIds();
+        document.getElementById('playlistBulkCount').textContent = ids.length;
+        document.getElementById('playlistBulkBar')
+            .style.setProperty('display', ids.length ? 'flex' : 'none', 'important');
+        const sa = document.getElementById('selectAllPlaylists');
+        if (sa) {
+            const all = playlistCheckboxes().filter(isVisiblePlaylistCheckbox);
+            sa.checked = all.length > 0 && ids.length === all.length;
+            sa.indeterminate = ids.length > 0 && ids.length < all.length;
+        }
+    }
+    document.getElementById('selectAllPlaylists')?.addEventListener('change', e => {
+        playlistCheckboxes().filter(isVisiblePlaylistCheckbox).forEach(c => { c.checked = e.target.checked; });
+        refreshPlaylistBulkBar();
+    });
+    playlistCheckboxes().forEach(c => c.addEventListener('change', refreshPlaylistBulkBar));
+    document.getElementById('playlistBulkClear')?.addEventListener('click', () => {
+        playlistCheckboxes().forEach(c => { c.checked = false; });
+        refreshPlaylistBulkBar();
+    });
+    document.querySelectorAll('.playlist-bulk-field').forEach(chk => {
+        chk.addEventListener('change', () => {
+            const el = document.getElementById(chk.id.replace('bulkChk', 'bulkVal'));
+            if (el) el.disabled = !chk.checked;
+        });
+    });
+    document.getElementById('playlistBulkEditBtn')?.addEventListener('click', () => {
+        document.getElementById('playlistBulkEditCount').textContent = selectedPlaylistIds().length;
+    });
+    document.getElementById('playlistBulkApply')?.addEventListener('click', () => {
+        const ids = selectedPlaylistIds();
+        if (!ids.length) { alert('Select at least one playlist first.'); return; }
+        const changes = {};
+        if (document.getElementById('bulkChkPlaylistDescription')?.checked) {
+            changes.description = document.getElementById('bulkValPlaylistDescription').value || '';
+        }
+        if (document.getElementById('bulkChkPlaylistTransition')?.checked) {
+            changes.default_transition = document.getElementById('bulkValPlaylistTransition').value;
+        }
+        if (document.getElementById('bulkChkPlaylistAudio')?.checked) {
+            changes.video_audio_default = document.getElementById('bulkValPlaylistAudio').value;
+        }
+        if (!Object.keys(changes).length) { alert('Tick at least one field to change.'); return; }
+        if (!confirm(`Apply ${Object.keys(changes).length} change(s) to ${ids.length} playlist(s)?`)) return;
+        fetch('/api/playlists/bulk-update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ids, changes })
+        })
+        .then(r => r.json())
+        .then(j => {
+            if (j.status !== 'success') { alert('Error: ' + (j.message || 'bulk update failed')); return; }
+            alert(`Updated ${j.updated}/${j.requested}.`);
+            bootstrap.Modal.getInstance(document.getElementById('bulkEditPlaylistModal'))?.hide();
+            location.reload();
+        })
+        .catch(err => { console.error(err); alert('Request failed.'); });
+    });
+    document.getElementById('playlistBulkDeleteBtn')?.addEventListener('click', () => {
+        const ids = selectedPlaylistIds();
+        if (!ids.length) return;
+        if (!confirm(`Delete ${ids.length} selected playlist(s)? This cannot be undone.`)) return;
+        fetch('/api/playlists/bulk-delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ids })
+        })
+        .then(r => r.json())
+        .then(j => {
+            if (j.status !== 'success') { alert('Error: ' + (j.message || 'bulk delete failed')); return; }
+            alert(`Deleted ${j.deleted}/${j.requested}.`);
+            location.reload();
+        })
+        .catch(err => { console.error(err); alert('Request failed.'); });
+    });
+
+    // Create playlist
+    document.getElementById('create-playlist-btn').addEventListener('click', function() {
+        const name = document.getElementById('playlist-name').value;
+        const description = document.getElementById('playlist-description').value;
+        
+        if (!name) {
+            alert('Please enter a playlist name');
+            return;
+        }
+        
+        // Add log for debugging
+        console.log('Creating playlist:', { name, description });
+        
+        fetch('/api/playlists', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: name,
+                description: description
+            })
+        })
+        .then(response => {
+            console.log('Response status:', response.status);
+            return response.json();
+        })
+        .then(data => {
+            console.log('Response data:', data);
+            if (data.status === 'success') {
+                // Close the modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('createPlaylistModal'));
+                modal.hide();
+                
+                // Reload the page to show the new playlist
+                window.location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while creating the playlist');
+        });
+    });
+    
+    // Edit playlist button click
+    document.querySelectorAll('.edit-playlist-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const playlistId = this.dataset.playlistId;
+            const playlistName = this.dataset.playlistName;
+            const playlistDescription = this.dataset.playlistDescription || '';
+            
+            document.getElementById('edit-playlist-id').value = playlistId;
+            document.getElementById('edit-playlist-name').value = playlistName;
+            document.getElementById('edit-playlist-description').value = playlistDescription;
+            
+            const modal = new bootstrap.Modal(document.getElementById('editPlaylistModal'));
+            modal.show();
+        });
+    });
+    
+    // Update playlist
+    document.getElementById('update-playlist-btn').addEventListener('click', function() {
+        const playlistId = document.getElementById('edit-playlist-id').value;
+        const name = document.getElementById('edit-playlist-name').value;
+        const description = document.getElementById('edit-playlist-description').value;
+        
+        if (!name) {
+            alert('Please enter a playlist name');
+            return;
+        }
+        
+        fetch(`/api/playlists/${playlistId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: name,
+                description: description
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Close the modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editPlaylistModal'));
+                modal.hide();
+                
+                // Reload the page to show the updated playlist
+                window.location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while updating the playlist');
+        });
+    });
+    
+    // Delete playlist button click
+    document.querySelectorAll('.delete-playlist-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const playlistId = this.dataset.playlistId;
+            const playlistName = this.dataset.playlistName;
+            
+            document.getElementById('delete-playlist-id').value = playlistId;
+            document.getElementById('delete-playlist-name').textContent = playlistName;
+            
+            const modal = new bootstrap.Modal(document.getElementById('deletePlaylistModal'));
+            modal.show();
+        });
+    });
+    
+    // Confirm delete playlist
+    document.getElementById('confirm-delete-btn').addEventListener('click', function() {
+        const playlistId = document.getElementById('delete-playlist-id').value;
+        
+        fetch(`/api/playlists/${playlistId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Close the modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('deletePlaylistModal'));
+                modal.hide();
+                
+                // Reload the page to update the list
+                window.location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while deleting the playlist');
+        });
+    });
+    // Copy playlist button click
+    document.querySelectorAll('.copy-playlist-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const playlistId = this.dataset.playlistId;
+            const playlistName = this.dataset.playlistName;
+            
+            document.getElementById('copy-playlist-id').value = playlistId;
+            document.getElementById('copy-playlist-source-name').textContent = playlistName;
+            document.getElementById('copy-playlist-name').value = `Copy of ${playlistName}`;
+            
+            const modal = new bootstrap.Modal(document.getElementById('copyPlaylistModal'));
+            modal.show();
+        });
+    });
+    
+    // Confirm copy playlist
+    document.getElementById('confirm-copy-btn').addEventListener('click', function() {
+        const playlistId = document.getElementById('copy-playlist-id').value;
+        const newName = document.getElementById('copy-playlist-name').value;
+        
+        const requestBody = newName ? { name: newName } : {};
+        
+        fetch(`/api/playlists/${playlistId}/copy`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Close the modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('copyPlaylistModal'));
+                modal.hide();
+                
+                // Show success message
+                alert(data.message);
+                
+                // Reload the page to show the copied playlist
+                window.location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while copying the playlist');
+        });
+    });
+
+    // View toggle: rows vs. cards. Persist choice in localStorage so the
+    // page reopens in the same mode the user last picked.
+    const VIEW_KEY = 'aisignx.playlists.view';
+    function applyView(mode) {
+        const rows  = document.getElementById('playlistRows');
+        const cards = document.getElementById('playlistCards');
+        if (!rows || !cards) return;
+        if (mode === 'cards') {
+            rows.style.display = 'none';
+            cards.style.display = '';
+        } else {
+            rows.style.display = '';
+            cards.style.display = 'none';
+        }
+    }
+    const saved = localStorage.getItem(VIEW_KEY) || 'rows';
+    const radio = document.querySelector(`input[name="playlistView"][value="${saved}"]`);
+    if (radio) radio.checked = true;
+    applyView(saved);
+    document.querySelectorAll('input[name="playlistView"]').forEach(r => {
+        r.addEventListener('change', () => {
+            if (!r.checked) return;
+            localStorage.setItem(VIEW_KEY, r.value);
+            applyView(r.value);
+        });
+    });
+});
+</script>
+{% endblock %}

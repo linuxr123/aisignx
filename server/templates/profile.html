@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+
+{% block title %}My Profile - AISignX{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <!-- Tabs for navigation between sections -->
+            <ul class="nav nav-tabs mb-4" id="profileTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link {{ 'active' if active_section == 'profile' else '' }}" 
+                            id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile-tab-pane" 
+                            type="button" role="tab" aria-controls="profile-tab-pane" 
+                            aria-selected="{{ 'true' if active_section == 'profile' else 'false' }}">
+                        <i class="bi bi-person-gear me-1"></i> Profile Information
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link {{ 'active' if active_section == 'password' else '' }}" 
+                            id="password-tab" data-bs-toggle="tab" data-bs-target="#password-tab-pane" 
+                            type="button" role="tab" aria-controls="password-tab-pane" 
+                            aria-selected="{{ 'true' if active_section == 'password' else 'false' }}">
+                        <i class="bi bi-key me-1"></i> Change Password
+                    </button>
+                </li>
+            </ul>
+            
+            <!-- Tab content -->
+            <div class="tab-content" id="profileTabContent">
+                <!-- Profile Information Tab -->
+                <div class="tab-pane fade {{ 'show active' if active_section == 'profile' else '' }}" 
+                     id="profile-tab-pane" role="tabpanel" aria-labelledby="profile-tab" tabindex="0">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Profile Information</h3>
+                        </div>
+                        <div class="card-body">
+                            <form method="POST" action="{{ url_for('auth.profile', action='update_profile') }}">
+                                <div class="mb-3">
+                                    <label for="username" class="form-label">Username</label>
+                                    <input type="text" class="form-control" id="username" name="username" 
+                                           value="{{ current_user.username }}" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="email" class="form-label">Email Address</label>
+                                    <input type="email" class="form-control" id="email" name="email" 
+                                           value="{{ current_user.email }}" required>
+                                </div>
+                                <div class="d-flex justify-content-end">
+                                    <button type="submit" class="btn btn-primary">Update Profile</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h3>Account Information</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="row mb-3">
+                                <div class="col-md-4 fw-bold">Account Type:</div>
+                                <div class="col-md-8">
+                                    {% if current_user.is_admin %}
+                                    <span class="badge bg-warning text-dark">Administrator</span>
+                                    {% else %}
+                                    <span class="badge bg-primary">Standard User</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-4 fw-bold">Account Status:</div>
+                                <div class="col-md-8">
+                                    {% if current_user.active %}
+                                    <span class="badge bg-success">Active</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Inactive</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-4 fw-bold">Last Login:</div>
+                                <div class="col-md-8">
+                                    {{ current_user.last_login|format_datetime if current_user.last_login else 'Never' }}
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-4 fw-bold">Created:</div>
+                                <div class="col-md-8">
+                                    {{ current_user.created_at|format_datetime if current_user.created_at else 'Unknown' }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Change Password Tab -->
+                <div class="tab-pane fade {{ 'show active' if active_section == 'password' else '' }}" 
+                     id="password-tab-pane" role="tabpanel" aria-labelledby="password-tab" tabindex="0">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Change Password</h3>
+                        </div>
+                        <div class="card-body">
+                            <form method="POST" action="{{ url_for('auth.profile', action='change_password') }}">
+                                <div class="mb-3">
+                                    <label for="current_password" class="form-label">Current Password</label>
+                                    <input type="password" class="form-control" id="current_password" 
+                                           name="current_password" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="new_password" class="form-label">New Password</label>
+                                    <input type="password" class="form-control" id="new_password" 
+                                           name="new_password" required>
+                                    <div class="form-text">
+                                        Password must be at least 8 characters long and include at least one 
+                                        uppercase letter, one lowercase letter, one number, and one 
+                                        special character (!@#$%^&*).
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="confirm_password" class="form-label">Confirm New Password</label>
+                                    <input type="password" class="form-control" id="confirm_password" 
+                                           name="confirm_password" required>
+                                </div>
+                                <div class="d-flex justify-content-end">
+                                    <button type="submit" class="btn btn-primary">Change Password</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h3>Password Security Tips</h3>
+                        </div>
+                        <div class="card-body">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item">
+                                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                    Use a unique password for this account
+                                </li>
+                                <li class="list-group-item">
+                                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                    Include uppercase and lowercase letters, numbers, and special characters
+                                </li>
+                                <li class="list-group-item">
+                                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                    Avoid using personal information in your password
+                                </li>
+                                <li class="list-group-item">
+                                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                    Consider using a password manager to generate and store complex passwords
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Automatically activate the proper tab based on URL parameter
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const section = urlParams.get('section') || 'profile';
+        
+        if (section === 'password') {
+            document.getElementById('password-tab').click();
+        } else {
+            document.getElementById('profile-tab').click();
+        }
+    });
+</script>
+{% endblock %}

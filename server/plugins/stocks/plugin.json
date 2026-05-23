@@ -1,0 +1,85 @@
+﻿{
+  "key": "stocks",
+  "type": "stocks",
+  "name": "Stock Ticker",
+  "version": "3.2.0",
+  "icon": "bi-graph-up-arrow",
+  "description": "Live scrolling stock ticker powered by the free Finnhub.io API.",
+  "schema": [
+    {
+      "name": "apikey",
+      "type": "string",
+      "label": "Finnhub API Key",
+      "description": "Free API key from finnhub.io — no credit card required.",
+      "placeholder": "Get your free key at https://finnhub.io/register",
+      "default": "",
+      "group": "Data"
+    },
+    {
+      "name": "symbols",
+      "type": "string",
+      "label": "Stock Symbols",
+      "description": "Comma-separated ticker symbols to display.",
+      "placeholder": "AAPL, MSFT, GOOGL, TSLA, NVDA",
+      "default": "AAPL, MSFT, GOOGL, NVDA, TSLA",
+      "group": "Data"
+    },
+    {
+      "name": "refresh_seconds",
+      "type": "integer",
+      "label": "Refresh Every (seconds)",
+      "description": "How often to fetch fresh price data. Minimum 30s.",
+      "default": 60,
+      "group": "Data"
+    },
+    {
+      "name": "direction",
+      "type": "select",
+      "label": "Scroll Direction",
+      "description": "Horizontal scrolls left; Vertical scrolls up.",
+      "options": [
+        { "label": "Horizontal (left scroll)", "value": "horizontal" },
+        { "label": "Vertical (upward scroll)", "value": "vertical" }
+      ],
+      "default": "horizontal",
+      "group": "Display"
+    },
+    {
+      "name": "scroll_speed",
+      "type": "integer",
+      "label": "Scroll Speed (px/s)",
+      "description": "Pixels per second. 20 = slow, 50 = medium, 100 = fast.",
+      "default": 50,
+      "group": "Display"
+    },
+    {
+      "name": "theme",
+      "type": "select",
+      "label": "Colour Theme",
+      "description": "Visual colour scheme for the ticker.",
+      "options": [
+        { "label": "Dark", "value": "dark" },
+        { "label": "Light", "value": "light" },
+        { "label": "Auto (system preference)", "value": "auto" }
+      ],
+      "default": "dark",
+      "group": "Display"
+    },
+    {
+      "name": "loops",
+      "type": "integer",
+      "label": "Loops Before Advancing",
+      "description": "Number of complete ticker cycles before moving to the next playlist item. 0 = loop forever.",
+      "default": 0,
+      "group": "Playback"
+    },
+    {
+      "name": "duration",
+      "type": "integer",
+      "label": "Duration (seconds)",
+      "description": "Hard time limit before advancing. Used as a fallback when Loops is 0.",
+      "default": 30,
+      "group": "Playback"
+    }
+  ]
+}

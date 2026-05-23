@@ -1,0 +1,194 @@
+{% extends 'base.html' %}
+
+{% block title %}Plugins - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-puzzle-fill"></i> Plugins</h1>
+    <select id="domainSelect" class="form-select" style="width:auto;"></select>
+</div>
+
+<div class="alert alert-info py-2 small">
+    <i class="bi bi-info-circle"></i>
+    Enable or disable each installed plugin for the selected tenant.
+    Sandbox permissions are defined in each plugin’s <code>plugin.json</code> at install time
+    and cannot be changed here.
+    {% if is_superadmin %}
+    Install new plugins from
+    <a href="{{ url_for('plugins.plugins_page') }}">Install Plugins</a>.
+    {% else %}
+    Contact a superadmin to install new plugins or change what a plugin declares.
+    {% endif %}
+    Disabled plugins cannot be used in playlists or on displays.
+    Policy changes push to connected displays in real time.
+</div>
+
+<div id="policyToast" class="alert alert-success py-2 small d-none" role="status"></div>
+<div id="policyError" class="alert alert-danger py-2 small d-none" role="alert"></div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Plugin</th>
+                        <th>Version</th>
+                        <th>Enabled</th>
+                        <th>Declared permissions</th>
+                        <th>CSP origins</th>
+                    </tr>
+                </thead>
+                <tbody id="rows">
+                    <tr><td colspan="5" class="text-center text-muted py-4">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const rowsEl = document.getElementById('rows');
+    const domainSelect = document.getElementById('domainSelect');
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    let _flashTimer = null;
+    function flash(msg, ok = true) {
+        const okEl = document.getElementById('policyToast');
+        const errEl = document.getElementById('policyError');
+        const target = ok ? okEl : errEl;
+        const other = ok ? errEl : okEl;
+        other.classList.add('d-none');
+        target.textContent = msg;
+        target.classList.remove('d-none');
+        if (_flashTimer) clearTimeout(_flashTimer);
+        _flashTimer = setTimeout(() => target.classList.add('d-none'), 3500);
+    }
+
+    async function loadDomains() {
+        let r, j;
+        try {
+            r = await fetch('/api/session/domains');
+            j = await r.json();
+        } catch (e) {
+            rowsEl.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-4">Could not load domains: ${escapeHtml(e.message || e)}</td></tr>`;
+            return false;
+        }
+        const list = j.available || [];
+        if (!list.length) {
+            domainSelect.innerHTML = '';
+            rowsEl.innerHTML = '<tr><td colspan="5" class="text-muted text-center py-4">No domains available for this account.</td></tr>';
+            return false;
+        }
+        domainSelect.innerHTML = list.map(d =>
+            `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+        if (j.current_id) {
+            const opt = domainSelect.querySelector(`option[value="${j.current_id}"]`);
+            if (opt) domainSelect.value = String(j.current_id);
+        }
+        return true;
+    }
+
+    async function loadPolicies() {
+        const did = domainSelect.value;
+        if (!did) {
+            rowsEl.innerHTML = '<tr><td colspan="5" class="text-muted text-center py-4">Select a domain.</td></tr>';
+            return;
+        }
+        rowsEl.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Loading…</td></tr>';
+        let r, j;
+        try {
+            r = await fetch(`/api/plugin-policy?domain_id=${did}`);
+            j = await r.json();
+        } catch (e) {
+            rowsEl.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-4">Request failed: ${escapeHtml(e.message || e)}</td></tr>`;
+            return;
+        }
+        if (!r.ok || j.status !== 'success') {
+            rowsEl.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-4">${escapeHtml(j.message || ('HTTP ' + r.status))}</td></tr>`;
+            return;
+        }
+        if (!j.policies.length) {
+            rowsEl.innerHTML = '<tr><td colspan="5" class="text-muted text-center py-4">No plugins installed.</td></tr>';
+            return;
+        }
+        rowsEl.innerHTML = j.policies.map(p => {
+            const declared = p.declared_permissions || [];
+            const granted = p.granted_permissions || [];
+            const grants = declared.length === 0
+                ? '<span class="text-muted small">none declared</span>'
+                : declared.map(perm => {
+                    const has = granted.includes(perm);
+                    return `<span class="badge ${has ? 'bg-success' : 'bg-secondary'} me-1 mb-1">${escapeHtml(perm)}</span>`;
+                  }).join('');
+            const cspOrigins = p.csp_origins || [];
+            const cspCell = cspOrigins.length === 0
+                ? '<span class="text-muted small">\'self\' only</span>'
+                : cspOrigins.map(o => `<span class="badge bg-info text-dark me-1 mb-1">${escapeHtml(o)}</span>`).join('');
+            return `<tr class="${p.enabled ? '' : 'table-secondary text-muted'}">
+                <td><code>${escapeHtml(p.plugin_key)}</code><div class="small text-muted">${escapeHtml(p.name || '')}</div></td>
+                <td class="small text-muted">${escapeHtml(p.version || '')}</td>
+                <td>
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox"
+                               ${p.enabled ? 'checked' : ''}
+                               data-toggle-key="${escapeHtml(p.plugin_key)}">
+                    </div>
+                </td>
+                <td>${grants}</td>
+                <td>${cspCell}</td>
+            </tr>`;
+        }).join('');
+
+        rowsEl.querySelectorAll('input[data-toggle-key]').forEach(el =>
+            el.addEventListener('change', () => toggleEnabled(el.dataset.toggleKey, el.checked)));
+    }
+
+    async function toggleEnabled(pluginKey, enabled) {
+        let r, j;
+        try {
+            r = await fetch(`/api/plugin-policy/${encodeURIComponent(pluginKey)}?domain_id=${domainSelect.value}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({enabled}),
+            });
+            j = await r.json();
+        } catch (e) {
+            flash(e.message || 'Save failed', false);
+            loadPolicies();
+            return;
+        }
+        if (j.status !== 'success') {
+            flash(j.message || 'Save failed', false);
+        } else {
+            flash(`${pluginKey}: ${enabled ? 'enabled' : 'disabled'} — change pushed to displays.`);
+        }
+        loadPolicies();
+    }
+
+    domainSelect.addEventListener('change', loadPolicies);
+
+    function init() {
+        (async () => {
+            try {
+                const ok = await loadDomains();
+                if (ok) await loadPolicies();
+            } catch (e) {
+                rowsEl.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-4">Init failed: ${escapeHtml(e.message || e)}</td></tr>`;
+            }
+        })();
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>
+{% endblock %}

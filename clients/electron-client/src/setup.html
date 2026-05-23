@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';">
+  <title>Signage Player Setup</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 48px 56px;
+      width: 460px;
+      box-shadow: 0 25px 60px rgba(0,0,0,.5);
+    }
+    .logo { font-size: 2rem; font-weight: 800; color: #38bdf8; margin-bottom: 6px; letter-spacing: -1px; }
+    .subtitle { font-size: .9rem; color: #94a3b8; margin-bottom: 36px; }
+    .step { display: none; }
+    .step.active { display: block; }
+    label { display: block; font-size: .8rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+    input {
+      width: 100%; padding: 12px 16px; border-radius: 10px;
+      border: 1.5px solid #334155; background: #0f172a; color: #f1f5f9;
+      font-size: 1rem; outline: none; transition: border-color .2s;
+      margin-bottom: 20px;
+    }
+    input:focus { border-color: #38bdf8; }
+    .hint { font-size: .78rem; color: #64748b; margin-top: -14px; margin-bottom: 20px; }
+    button.primary {
+      width: 100%; padding: 14px; border: none; border-radius: 10px;
+      background: #38bdf8; color: #0f172a; font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: background .2s;
+    }
+    button.primary:hover { background: #7dd3fc; }
+    button.primary:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+    button.secondary {
+      width: 100%; padding: 12px; border: 1px solid #334155; border-radius: 10px;
+      background: #0f172a; color: #e2e8f0; font-size: .95rem;
+      cursor: pointer; margin-bottom: 14px;
+    }
+    button.secondary:hover { background: #334155; }
+    button.secondary:disabled { opacity: .55; cursor: not-allowed; }
+    .error {
+      color: #fef2f2;
+      background: #7f1d1d;
+      border: 1px solid #f87171;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: .85rem;
+      margin-bottom: 16px;
+      display: none;
+    }
+    /* Error modal */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.75);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: #1e293b;
+      border: 1px solid #f87171;
+      border-radius: 14px;
+      padding: 32px 36px;
+      width: 480px;
+      max-width: 90vw;
+      box-shadow: 0 30px 80px rgba(0,0,0,.6);
+    }
+    .modal-box h3 { color: #f87171; margin-bottom: 12px; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
+    .modal-box pre {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 14px;
+      font-size: .78rem;
+      color: #cbd5e1;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 220px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+    .modal-box .tips { font-size: .8rem; color: #94a3b8; margin-bottom: 20px; line-height: 1.7; }
+    .modal-box .tips b { color: #e2e8f0; }
+    .modal-close {
+      width: 100%; padding: 11px; border: none; border-radius: 8px;
+      background: #334155; color: #f1f5f9; font-size: .95rem;
+      cursor: pointer; transition: background .2s;
+    }
+    .modal-close:hover { background: #475569; }
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid #0f172a; border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .info-row { display: flex; justify-content: space-between; font-size: .8rem; color: #64748b; margin-bottom: 8px; }
+    .info-row span:last-child { color: #94a3b8; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">📺 Signage Player</div>
+  <div class="subtitle">Native display client — first-time setup</div>
+
+  <!-- Step 1: Server URL -->
+  <div id="step1" class="step active">
+    <label for="serverUrl">Server URL</label>
+    <input type="url" id="serverUrl" placeholder="https://signage.example.com" autocomplete="off">
+    <p class="hint">The address of your digital signage server, including http/https.</p>
+    <button type="button" class="secondary" id="btnImportConfig">Browse for downloaded setup file…</button>
+    <input type="file" id="fileImportConfig" accept="application/json,.json" style="display:none" />
+    <div class="error" id="step1Error"></div>
+    <button class="primary" id="btnConnect">Connect to Server</button>
+  </div>
+
+  <!-- Step 2: Friendly name -->
+  <div id="step2" class="step">
+    <label for="enrollmentCode">Enrollment Code</label>
+    <input type="text" id="enrollmentCode" placeholder="A1B2C3D4E5F6G7H8" autocomplete="off"
+           autocapitalize="characters" spellcheck="false"
+           style="font-family:monospace; letter-spacing:.05em; text-transform:uppercase;">
+    <p class="hint">Provided by your administrator. Identifies which tenant this display joins.</p>
+
+    <label for="friendlyName">Display Name</label>
+    <input type="text" id="friendlyName" placeholder="Lobby Screen" autocomplete="off">
+    <p class="hint">This name will appear in the server's pending registrations list.</p>
+
+    <label for="updateMode">Client Updates</label>
+    <select id="updateMode">
+      <option value="auto">Automatic (install when available)</option>
+      <option value="prompt" selected>Prompt before installing</option>
+      <option value="manual">Manual only (admin commands)</option>
+    </select>
+    <p class="hint">Automatic mode installs a newer Windows player from the server without asking.</p>
+
+    <div id="step2Info" style="margin-bottom:20px;"></div>
+    <div class="error" id="step2Error"></div>
+    <button class="primary" id="btnRegister">Request Registration</button>
+  </div>
+
+  <!-- Step 3: Waiting -->
+  <div id="step3" class="step">
+    <div style="text-align:center; padding: 20px 0;">
+      <div style="font-size:3rem; margin-bottom:16px;">⏳</div>
+      <div style="font-weight:700; font-size:1.1rem; margin-bottom:10px;">Awaiting Approval</div>
+      <div style="color:#94a3b8; font-size:.9rem; margin-bottom:30px;">
+        An administrator needs to approve this display in the server's <strong>Displays</strong> section.
+        This page will advance automatically once approved.
+      </div>
+      <div id="deviceIdDisplay" style="font-family:monospace; font-size:.8rem; color:#475569; margin-bottom:24px;"></div>
+    </div>
+    <button class="primary" id="btnStartOver" style="background:#334155; color:#94a3b8;">Start Over</button>
+  </div>
+</div>
+
+<!-- Error diagnostic modal -->
+<div class="modal-overlay" id="errorModal">
+  <div class="modal-box">
+    <h3>⚠ Connection Error</h3>
+    <pre id="errorModalText"></pre>
+    <div class="tips">
+      <b>Things to check:</b><br>
+      • URL must start with <b>http://</b> or <b>https://</b><br>
+      • Default server port is <b>5000</b> — e.g. <code>http://localhost:5000</code><br>
+      • Make sure the AISignX server is running (<code>python app.py</code>)<br>
+      • If connecting from another PC, replace <b>localhost</b> with the server's IP address<br>
+      • Check that your firewall allows connections on port 5000
+    </div>
+    <button class="modal-close" id="errorModalClose">Close</button>
+  </div>
+</div>
+
+<script>
+// Workaround for Electron input bugs: always focus input on click/keydown
+document.querySelectorAll('input').forEach(input => {
+  input.addEventListener('mousedown', e => { input.focus(); });
+  input.addEventListener('keydown', e => { input.focus(); });
+});
+// Prevent global keydown from interfering with input fields
+window.addEventListener('keydown', function(e) {
+  const tag = document.activeElement.tagName;
+  if ((tag === 'INPUT' || tag === 'TEXTAREA') && !e.ctrlKey && !e.metaKey) {
+    // Let input fields handle all keys
+    return;
+  }
+  // Otherwise, allow default
+}, true);
+const steps = { 1: 'step1', 2: 'step2', 3: 'step3' };
+function showStep(n) {
+  Object.values(steps).forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById(steps[n]).classList.add('active');
+}
+
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+function showErrorModal(error, context) {
+  const lines = [];
+  if (context) lines.push('Step: ' + context);
+  lines.push('');
+  lines.push(error || 'Unknown error');
+  document.getElementById('errorModalText').textContent = lines.join('\n');
+  document.getElementById('errorModal').classList.add('open');
+}
+
+document.getElementById('errorModalClose').addEventListener('click', () => {
+  document.getElementById('errorModal').classList.remove('open');
+});
+// Close on backdrop click
+document.getElementById('errorModal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('errorModal'))
+    document.getElementById('errorModal').classList.remove('open');
+});
+
+let serverUrl = '';
+
+async function handleImportedConfigResult(r) {
+  if (!r || r.canceled) return;
+  if (!r.ok) {
+    showErrorModal(r.error || 'Import failed', 'Import setup file');
+    return;
+  }
+  if (r.mode === 'player') {
+    document.getElementById('step1').innerHTML =
+      '<p style="text-align:center;padding:28px 0;color:#94a3b8">Starting player…</p>';
+    return;
+  }
+  const obj = r.config || {};
+  serverUrl = String(obj.server_url || '').trim().replace(/\/$/, '');
+  document.getElementById('serverUrl').value = serverUrl;
+  if (r.enrollment) {
+    document.getElementById('enrollmentCode').value = r.enrollment.replace(/[\s-]/g, '').toUpperCase();
+  }
+  if (obj.display_name) document.getElementById('friendlyName').value = String(obj.display_name);
+  const um = document.getElementById('updateMode');
+  if (obj.update_mode && um.querySelector('option[value="' + obj.update_mode + '"]')) {
+    um.value = obj.update_mode;
+  }
+  await populateStep2Info();
+  showStep(2);
+}
+
+async function populateStep2Info() {
+  const sysInfo = await window.signage.getSystemInfo();
+  const deviceId = await window.signage.getDeviceId();
+  const fn = document.getElementById('friendlyName');
+  if (!fn.value.trim()) fn.value = sysInfo.hostname || '';
+  document.getElementById('step2Info').innerHTML = `
+    <div class="info-row"><span>Device ID</span><span>${deviceId.substring(0, 16)}…</span></div>
+    <div class="info-row"><span>OS</span><span>${sysInfo.platform} ${sysInfo.release}</span></div>
+    <div class="info-row"><span>App Version</span><span>${sysInfo.version}</span></div>`;
+}
+
+// Step 1 — connect
+document.getElementById('btnConnect').addEventListener('click', async () => {
+  const btn = document.getElementById('btnConnect');
+  const raw = document.getElementById('serverUrl').value.trim();
+  if (!raw) { showErrorModal('No URL entered.\n\nPlease type your server address, for example:\n  http://localhost:5000', 'Validating URL'); return; }
+  if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
+    showErrorModal(
+      'URL must start with http:// or https://\n\nYou entered:\n  ' + raw + '\n\nTry:\n  http://' + raw,
+      'Validating URL'
+    );
+    return;
+  }
+  showError('step1Error', '');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Connecting…';
+  console.log('Connecting to:', raw);
+  let res;
+  try {
+    res = await window.signage.saveServerUrl(raw);
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Connect to Server';
+    showErrorModal('Unexpected error calling saveServerUrl:\n\n' + e.message, 'Connecting to ' + raw);
+    return;
+  }
+  console.log('saveServerUrl result:', JSON.stringify(res));
+  btn.disabled = false;
+  btn.textContent = 'Connect to Server';
+  if (!res.ok) {
+    showErrorModal(
+      (res.error || 'Could not reach server.') + '\n\nURL tried:\n  ' + raw,
+      'Connecting to server'
+    );
+    return;
+  }
+  serverUrl = raw.replace(/\/$/, '');
+  await populateStep2Info();
+  showStep(2);
+});
+
+document.getElementById('btnImportConfig').addEventListener('click', async () => {
+  if (window.signage.browseClientConfig) {
+    const btnImp = document.getElementById('btnImportConfig');
+    const btnConn = document.getElementById('btnConnect');
+    btnImp.disabled = true;
+    btnConn.disabled = true;
+    try {
+      await handleImportedConfigResult(await window.signage.browseClientConfig());
+    } catch (err) {
+      showErrorModal(String(err.message || err), 'Import setup file');
+    } finally {
+      btnImp.disabled = false;
+      btnConn.disabled = false;
+    }
+    return;
+  }
+  document.getElementById('fileImportConfig').click();
+});
+document.getElementById('fileImportConfig').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  const btnImp = document.getElementById('btnImportConfig');
+  const btnConn = document.getElementById('btnConnect');
+  let text;
+  try {
+    text = await f.text();
+  } catch (err) {
+    showErrorModal(String(err.message || err), 'Import config');
+    return;
+  }
+  btnImp.disabled = true;
+  btnConn.disabled = true;
+  let r;
+  try {
+    r = await window.signage.applyClientConfig(text);
+  } catch (err) {
+    btnImp.disabled = false;
+    btnConn.disabled = false;
+    showErrorModal(String(err.message || err), 'Import config');
+    return;
+  }
+  btnImp.disabled = false;
+  btnConn.disabled = false;
+  let obj = {};
+  try {
+    obj = JSON.parse(text);
+  } catch (_) {}
+  await handleImportedConfigResult({ ...r, config: obj });
+});
+
+// Step 2 — register
+document.getElementById('btnRegister').addEventListener('click', async () => {
+  const btn = document.getElementById('btnRegister');
+  const name = document.getElementById('friendlyName').value.trim();
+  const enrollmentCode = document.getElementById('enrollmentCode').value
+      .trim().replace(/[\s-]/g, '').toUpperCase();
+  if (!enrollmentCode) { showErrorModal('Please enter the enrollment code your administrator gave you.', 'Registration'); return; }
+  if (!name) { showErrorModal('Please enter a display name before continuing.', 'Registration'); return; }
+  showError('step2Error', '');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Sending request…';
+  let res;
+  try {
+    res = await window.signage.registerDevice({
+      serverUrl,
+      friendlyName: name,
+      enrollmentCode,
+      updateMode: document.getElementById('updateMode').value
+    });
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Request Registration';
+    showErrorModal('Unexpected error during registration:\n\n' + e.message, 'Registering device');
+    return;
+  }
+  console.log('registerDevice result:', JSON.stringify(res));
+  btn.disabled = false;
+  btn.textContent = 'Request Registration';
+  if (res.status === 'error') {
+    showErrorModal(
+      (res.error || 'Registration failed.') + '\n\nServer: ' + serverUrl + '\nDisplay name: ' + name,
+      'Registering device'
+    );
+    return;
+  }
+  if (res.status === 'approved') {
+    // Server approved immediately (e.g. auto-approve enabled)
+    // main.js already saved the token and will load the player — just show feedback
+    document.getElementById('step3').innerHTML = `
+      <div style="text-align:center;padding:20px 0">
+        <div style="font-size:3rem;margin-bottom:16px">✅</div>
+        <div style="font-weight:700;font-size:1.1rem;margin-bottom:10px">Approved — Launching player…</div>
+        <div style="color:#94a3b8;font-size:.9rem">Please wait.</div>
+      </div>`;
+    showStep(3);
+    return;
+  }
+  // status === 'pending' — waiting for admin approval
+  const deviceId = await window.signage.getDeviceId();
+  document.getElementById('deviceIdDisplay').textContent = 'Device ID: ' + deviceId;
+  showStep(3);
+});
+
+// Start over
+document.getElementById('btnStartOver').addEventListener('click', async () => {
+  await window.signage.clearConfig();
+});
+
+// Listen for approval / decline from main process
+window.signage.onApproved(() => {
+  document.querySelector('#step3 div').innerHTML = `
+    <div style="font-size:3rem; margin-bottom:16px;">✅</div>
+    <div style="font-weight:700; font-size:1.1rem; margin-bottom:10px;">Approved!</div>
+    <div style="color:#94a3b8; font-size:.9rem;">Launching player…</div>`;
+});
+window.signage.onDeclined(() => {
+  document.querySelector('#step3 div').innerHTML = `
+    <div style="font-size:3rem; margin-bottom:16px;">❌</div>
+    <div style="font-weight:700; font-size:1.1rem; margin-bottom:10px;">Registration Declined</div>
+    <div style="color:#94a3b8; font-size:.9rem; margin-bottom:24px;">Contact your administrator.</div>`;
+});
+</script>
+</body>
+</html>

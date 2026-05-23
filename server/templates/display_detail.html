@@ -1,0 +1,907 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ display.name }} - AISignX{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center">
+    <h1>{{ display.name }}</h1>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editDisplayModal">
+            Edit Display
+        </button>
+        <button type="button" class="btn btn-outline-info" id="btnReloadDisplay"
+                title="Tell the display to reload its content (recovers from stuck states)">
+            <i class="bi bi-arrow-clockwise"></i> Reload
+        </button>
+        <button type="button" class="btn btn-outline-warning" id="btnRebootDisplay"
+                title="Restart the player application on the display (Electron client only)">
+            <i class="bi bi-power"></i> Reboot App
+        </button>
+        <button type="button" class="btn btn-outline-success" id="btnUpdateDisplay"
+                title="Tell the display to check for and install client updates">
+            <i class="bi bi-cloud-download"></i> Update Client
+        </button>
+        <button type="button" class="btn btn-outline-warning" id="btnSnoozeAlerts"
+                title="Suppress offline alerts for a fixed window (planned maintenance, store closed, etc.)">
+            <i class="bi bi-bell-slash"></i> Snooze Alerts
+        </button>
+        <button type="button" class="btn btn-outline-dark" id="btnRotateApiKey"
+                title="Generate a new API key for this display. The old key stops working immediately.">
+            <i class="bi bi-key"></i> Rotate API Key
+        </button>
+        <button type="button"
+                class="btn btn-outline-danger"
+                data-bs-toggle="modal"
+                data-bs-target="#deleteDisplayModal"
+                title="Delete this display">
+            Delete
+        </button>
+    </div>
+</div>
+
+<div id="snoozeBanner" class="alert alert-info mt-3" style="display:none;">
+    <i class="bi bi-bell-slash"></i>
+    <strong>Alerts snoozed</strong>
+    until <span id="snoozeBannerUntil"></span>.
+    <span id="snoozeBannerReason" class="text-muted"></span>
+    <button id="snoozeBannerClear" class="btn btn-sm btn-outline-secondary ms-2">
+        Clear snooze
+    </button>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Display Information</h5>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tr>
+                        <th>ID:</th>
+                        <td>{{ display.id }}</td>
+                    </tr>
+                    <tr>
+                        <th>Name:</th>
+                        <td>{{ display.name }}</td>
+                    </tr>
+                    <tr>
+                        <th>Location:</th>
+                        <td>{{ display.location or 'N/A' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Device ID:</th>
+                        <td>{{ display.device_id }}</td>
+                    </tr>
+                    <tr>
+                        <th>Status:</th>
+                        <td>
+                            {% if display.is_online %}
+                            <span class="badge bg-success">Online</span>
+                            {% else %}
+                            <span class="badge bg-danger">Offline</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Last Ping:</th>
+                        <td>{{ display.last_ping|format_datetime if display.last_ping else 'Never' }}</td>
+                    </tr>
+                    <tr>
+                        <th>IP Address:</th>
+                        <td>{{ display.ip_address or 'N/A' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Aspect Mode:</th>
+                        <td>{{ display.aspect_mode|title or 'Default (Fit)' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Group:</th>
+                        <td>{{ display.group.name if display.group else 'None' }}</td>
+                    </tr>
+                    {% if sync_media_buttons_mismatch %}
+                    <tr>
+                        <th class="align-top text-warning">Sync vs. controls</th>
+                        <td>
+                            <div class="alert alert-warning py-2 px-3 small mb-0">
+                                Skip/next is still saved as <strong>on</strong>, but this group uses
+                                <strong>synchronized playback</strong>, so those controls are not used on the player.
+                                Open <strong>Edit Display</strong> and click <strong>Save</strong> to clear the outdated setting in the database.
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <th>Created:</th>
+                        <td>{{ display.created_at|format_datetime }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Current Content</h5>
+            </div>
+            <div class="card-body">
+                <p id="current-content-text">{{ display.current_content or 'No content is currently playing' }}</p>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header d-flex align-items-center">
+                <h5 class="mb-0"><i class="bi bi-cpu"></i> Reported Capabilities</h5>
+                <span class="ms-auto text-muted small">self-reported by the player on connect</span>
+            </div>
+            <div class="card-body">
+                {% if display.capabilities %}
+                <div class="row small">
+                    {% if display.capabilities.screen_w and display.capabilities.screen_h %}
+                    <div class="col-md-4 mb-2"><strong>Screen:</strong> {{ display.capabilities.screen_w }} × {{ display.capabilities.screen_h }}</div>
+                    {% endif %}
+                    {% if display.capabilities.max_video_height %}
+                    <div class="col-md-4 mb-2"><strong>Max video height:</strong> {{ display.capabilities.max_video_height }}p</div>
+                    {% endif %}
+                    {% if display.capabilities.max_image_dim %}
+                    <div class="col-md-4 mb-2"><strong>Max image dim:</strong> {{ display.capabilities.max_image_dim }}px</div>
+                    {% endif %}
+                    {% if display.capabilities.codecs %}
+                    <div class="col-md-12 mb-2"><strong>Codecs:</strong>
+                        {% for c in display.capabilities.codecs %}<span class="badge bg-secondary me-1">{{ c }}</span>{% endfor %}
+                    </div>
+                    {% endif %}
+                    {% if display.capabilities.browser %}
+                    <div class="col-md-12 mb-2"><strong>UA hint:</strong> <code class="small">{{ display.capabilities.browser }}</code></div>
+                    {% endif %}
+                </div>
+                {% else %}
+                <p class="text-muted small mb-0">No capabilities reported yet. The player sends them on first connect; if this stays empty the player may be running an old version that does not report capabilities.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>API Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">API Key</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" value="{{ display.api_key }}" id="apiKey" readonly>
+                        <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('apiKey')">Copy</button>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Player URL</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" value="{{ request.host_url.rstrip('/') }}/display/{{ display.api_key }}" id="playerUrl" readonly>
+                        <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('playerUrl')">Copy</button>
+                        <button class="btn btn-outline-secondary" type="button" id="btnDownloadClientConfig" title="JSON for Android / Windows kiosk import (USB)">
+                            <i class="bi bi-download"></i> Setup file
+                        </button>
+                        <a href="/display/{{ display.api_key }}" target="_blank" class="btn btn-outline-primary" title="Open player in new tab">
+                            <i class="bi bi-display"></i> Open
+                        </a>
+                    </div>
+                    <div class="form-text">Open this URL in any browser on the display device — no software installation required.</div>
+                    <div class="form-text text-muted small mt-1">
+                        <strong>Setup file</strong> — Android, Windows kiosk, or the browser
+                        <a href="{{ url_for('registration.request_access_page') }}" target="_blank">Request Access</a>
+                        page (use <em>Load setup file</em>) can import this JSON instead of typing the URL and token.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Display Modal -->
+<div class="modal fade" id="editDisplayModal" tabindex="-1" aria-labelledby="editDisplayModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editDisplayModalLabel">Edit Display</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editDisplayForm">
+                    <div class="mb-3">
+                        <label for="edit_name" class="form-label">Display Name</label>
+                        <input type="text" class="form-control" id="edit_name" name="name" value="{{ display.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_location" class="form-label">Location</label>
+                        <input type="text" class="form-control" id="edit_location" name="location" value="{{ display.location or '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_description" class="form-label">Description</label>
+                        <textarea class="form-control" id="edit_description" name="description">{{ display.description or '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_group_id" class="form-label">Group</label>
+                        <select class="form-select" id="edit_group_id" name="group_id">
+                            <option value="" data-sync-playback="false">None</option>
+                            {% for group in groups %}
+                            <option value="{{ group.id }}" data-sync-playback="{{ group.sync_playback|tojson }}"
+                                    {% if display.group_id == group.id %}selected{% endif %}>{{ group.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="edit_sync_playback_opt_out" name="sync_playback_opt_out" {% if display.sync_playback_opt_out %}checked{% endif %}>
+                            <label class="form-check-label" for="edit_sync_playback_opt_out">
+                                Opt out of synchronized playback
+                            </label>
+                        </div>
+                        <div class="form-text">
+                            Use this when the display should keep the same group schedule and playlist, but play independently instead of following the group sync clock.
+                        </div>
+                    </div>
+                    
+                    <h6 class="mt-4 mb-3">Display Settings</h6>
+                    <div class="mb-3">
+                        <label for="edit_aspect_mode" class="form-label">Aspect Mode</label>
+                        <select class="form-control" id="edit_aspect_mode" name="aspect_mode">
+                            <option value="fit" {% if display.aspect_mode == 'fit' %}selected{% endif %}>Fit (preserve aspect ratio)</option>
+                            <option value="fill" {% if display.aspect_mode == 'fill' %}selected{% endif %}>Fill (cover screen)</option>
+                            <option value="stretch" {% if display.aspect_mode == 'stretch' %}selected{% endif %}>Stretch (distort to fit)</option>
+                            <option value="center" {% if display.aspect_mode == 'center' %}selected{% endif %}>Center (no scaling)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="edit_show_media_buttons" name="show_media_buttons" {% if display.show_media_buttons and not group_syncs_playback %}checked{% endif %}>
+                            <label class="form-check-label {% if group_syncs_playback %}text-muted{% endif %}" for="edit_show_media_buttons">
+                                Show media skip buttons (previous / next) on the player
+                            </label>
+                        </div>
+                        <div id="edit_media_buttons_sync_notice" class="form-text" style="display:none;">
+                            This option is unavailable because the selected group has <strong>synchronized playback</strong> enabled.
+                            Skip and next controls would conflict with keeping every screen on the same item at the same time.
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_volume" class="form-label">
+                            Volume <span id="edit_volume_label" class="text-muted">({{ display.volume if display.volume is not none else 100 }}%)</span>
+                        </label>
+                        <input type="range" class="form-range" id="edit_volume" name="volume"
+                               min="0" max="100" step="1"
+                               value="{{ display.volume if display.volume is not none else 100 }}">
+                        <div class="form-text">
+                            Master playback volume for this display. 0 mutes the player
+                            entirely. Live changes apply to the running player without
+                            a reload.
+                        </div>
+                        <script>
+                            (function () {
+                                var v = document.getElementById('edit_volume');
+                                var l = document.getElementById('edit_volume_label');
+                                if (v && l) v.addEventListener('input', function () { l.textContent = '(' + v.value + '%)'; });
+                            })();
+                        </script>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="edit_auto_update_client" name="auto_update_client" {% if display.auto_update_client %}checked{% endif %}>
+                            <label class="form-check-label" for="edit_auto_update_client">
+                                Allow client app to auto-update and restart (no prompts; Android / Windows kiosk)
+                            </label>
+                        </div>
+                        <div class="form-text">
+                            When enabled, the player installs updates silently and relaunches. When off, each device uses its setup update mode.
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="edit_allow_input" name="allow_input" {% if display.allow_input %}checked{% endif %}>
+                            <label class="form-check-label" for="edit_allow_input">
+                                Allow keyboard &amp; mouse input on the player (uncheck to lock down)
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="edit_show_offline_banner" name="show_offline_banner" {% if display.show_offline_banner %}checked{% endif %}>
+                            <label class="form-check-label" for="edit_show_offline_banner">
+                                Show “Server offline” banner when the server is unreachable
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="edit_diagnostics_enabled" name="diagnostics_enabled" {% if display.diagnostics_enabled %}checked{% endif %}>
+                            <label class="form-check-label" for="edit_diagnostics_enabled">
+                                Record client diagnostic log (sync events, console, errors)
+                            </label>
+                        </div>
+                        <div class="form-text">
+                            Off by default. When enabled the player streams console output, sync calibrations, drift events
+                            and uncaught errors to the server for this display. Useful when troubleshooting; turn it off when done.
+                            View under <a href="#diagnosticsCard">Diagnostic log</a> below.
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_unlock_pin" class="form-label">
+                            Unlock PIN
+                            <small class="text-muted">(4-8 digits, blank = no lock)</small>
+                        </label>
+                        <div class="input-group">
+                            <input class="form-control"
+                                   type="password"
+                                   id="edit_unlock_pin"
+                                   name="unlock_pin"
+                                   inputmode="numeric"
+                                   pattern="\d{4,8}"
+                                   maxlength="8"
+                                   autocomplete="off"
+                                   value="{{ display.unlock_pin or '' }}">
+                            <button class="btn btn-outline-secondary" type="button" id="reveal_pin_btn"
+                                    title="Show / hide PIN">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary" type="button" id="generate_pin_btn"
+                                    title="Generate a new random 4-digit PIN">
+                                <i class="bi bi-arrow-clockwise"></i> New
+                            </button>
+                        </div>
+                        <div class="form-text">
+                            Long-press the kiosk for 1.5&nbsp;seconds to bring up the PIN keypad.
+                            Required only when "Allow keyboard &amp; mouse input" is unchecked.
+                            Setting this to blank disables the PIN lock entirely.
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveEditDisplay">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Display Modal -->
+<div class="modal fade" id="deleteDisplayModal" tabindex="-1" aria-labelledby="deleteDisplayModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteDisplayModalLabel">Delete Display</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        Are you sure you want to delete display <strong>{{ display.name }}</strong>? This action cannot be undone.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteDisplay">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if pop_enabled or recent_pop %}
+<div class="card mt-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> Recent Proof of Play</h5>
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('admin.admin_proof_of_play_page') }}?display_id={{ display.id }}">
+            View all
+        </a>
+    </div>
+    <div class="card-body p-0">
+        {% if recent_pop %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle small">
+                <thead class="table-light">
+                    <tr>
+                        <th>Started</th>
+                        <th>Item</th>
+                        <th>Type</th>
+                        <th class="text-end">Duration</th>
+                        <th>Done</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for ev in recent_pop %}
+                    <tr>
+                        <td class="text-nowrap">{{ ev.started_at.strftime('%Y-%m-%d %H:%M:%S') if ev.started_at else '' }}</td>
+                        <td>{{ ev.item_name or '' }}</td>
+                        <td><span class="badge bg-secondary">{{ ev.item_type or '' }}</span></td>
+                        <td class="text-end">{{ '%.1fs'|format(ev.duration_ms/1000) if ev.duration_ms else '' }}</td>
+                        <td>{% if ev.completed %}<i class="bi bi-check-circle text-success"></i>{% else %}<i class="bi bi-x-circle text-warning"></i>{% endif %}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-muted small p-3">
+            Proof of Play is enabled but no events have been recorded yet for this display.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Diagnostic log viewer ─────────────────────────────────────────────────── -->
+<div class="card mt-3" id="diagnosticsCard">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <h5 class="mb-0">
+      <i class="bi bi-bug"></i> Diagnostic log
+      <span id="diagStatus" class="badge bg-secondary ms-2">{% if display.diagnostics_enabled %}Recording{% else %}Off{% endif %}</span>
+    </h5>
+    <div class="btn-group btn-group-sm" role="group">
+      <select class="form-select form-select-sm" id="diagLevelFilter" style="max-width:180px;">
+        <option value="">All levels</option>
+        <option value="error">Errors only</option>
+        <option value="error,warn">Errors + warnings</option>
+        <option value="sync">Sync events</option>
+        <option value="net">Network events</option>
+        <option value="error,warn,sync,net">Errors, warn, sync, net</option>
+      </select>
+      <button type="button" class="btn btn-outline-secondary" id="diagPauseBtn" title="Pause/resume live tail">
+        <i class="bi bi-pause-fill"></i> Pause
+      </button>
+      <button type="button" class="btn btn-outline-secondary" id="diagRefreshBtn" title="Refresh now">
+        <i class="bi bi-arrow-clockwise"></i>
+      </button>
+      <button type="button" class="btn btn-outline-secondary" id="diagDownloadBtn" title="Download as JSON">
+        <i class="bi bi-download"></i>
+      </button>
+      <button type="button" class="btn btn-outline-danger" id="diagClearBtn" title="Clear stored log entries">
+        <i class="bi bi-trash"></i> Clear
+      </button>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div id="diagEmpty" class="text-muted small p-3">
+      No diagnostic entries yet.
+      {% if not display.diagnostics_enabled %}
+        Enable “Record client diagnostic log” in the display settings to start capturing.
+      {% else %}
+        Waiting for the player to flush its first batch (about 5 s after a player reload).
+      {% endif %}
+    </div>
+    <div class="table-responsive" id="diagTableWrap" style="max-height:520px; overflow:auto; display:none;">
+      <table class="table table-sm table-striped mb-0 align-top small" id="diagTable">
+        <thead class="table-light sticky-top">
+          <tr>
+            <th style="width:170px;">Time</th>
+            <th style="width:80px;">Level</th>
+            <th style="width:130px;">Source</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody id="diagTbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<style>
+  #diagTable td.diag-msg { white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+  #diagTable .badge-lvl { font-family: ui-monospace, monospace; text-transform: uppercase; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyToClipboard(elementId) {
+    const element = document.getElementById(elementId);
+    element.select();
+    document.execCommand('copy');
+    alert('Copied to clipboard: ' + element.value);
+}
+
+document.getElementById('btnDownloadClientConfig')?.addEventListener('click', async function () {
+    try {
+        const res = await fetch('/api/displays/{{ display.id }}/client-config?download=1', { credentials: 'same-origin' });
+        if (!res.ok) {
+            alert('Download failed: ' + res.status);
+            return;
+        }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'aisignx-display-{{ display.id }}.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+    } catch (e) {
+        alert('Download failed: ' + e);
+    }
+});
+
+document.getElementById('saveEditDisplay').addEventListener('click', function() {
+    const form = document.getElementById('editDisplayForm');
+    const mediaChk = form.elements.show_media_buttons;
+    // Validate PIN: empty OR 4-8 digits.
+    const pinRaw = (form.elements.unlock_pin.value || '').trim();
+    const pinDigits = pinRaw.replace(/\D/g, '');
+    if (pinRaw !== '' && (pinDigits.length < 4 || pinDigits.length > 8)) {
+        alert('Unlock PIN must be 4-8 digits, or left blank to disable the lock.');
+        return;
+    }
+    const formData = {
+        name: form.elements.name.value,
+        location: form.elements.location.value,
+        description: form.elements.description.value,
+        group_id: form.elements.group_id.value ? parseInt(form.elements.group_id.value, 10) : null,
+        aspect_mode: form.elements.aspect_mode.value,
+        show_media_buttons: mediaChk.disabled ? false : mediaChk.checked,
+        allow_input: form.elements.allow_input.checked,
+        show_offline_banner: form.elements.show_offline_banner.checked,
+        auto_update_client: document.getElementById('edit_auto_update_client').checked,
+        sync_playback_opt_out: document.getElementById('edit_sync_playback_opt_out').checked,
+        diagnostics_enabled: document.getElementById('edit_diagnostics_enabled').checked,
+        volume: parseInt(form.elements.volume.value, 10),
+        unlock_pin: pinDigits
+    };
+    fetch('/api/displays/{{ display.id }}', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            setTimeout(() => { window.location.reload(); }, 300);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred. Please try again.');
+    });
+});
+
+(function () {
+    var grp = document.getElementById('edit_group_id');
+    var chk = document.getElementById('edit_show_media_buttons');
+    var note = document.getElementById('edit_media_buttons_sync_notice');
+    var optOut = document.getElementById('edit_sync_playback_opt_out');
+    function selectedGroupSyncs() {
+        if (!grp || !grp.options[grp.selectedIndex]) return false;
+        return grp.options[grp.selectedIndex].getAttribute('data-sync-playback') === 'true';
+    }
+    function syncMediaButtonsLock() {
+        if (!chk) return;
+        var on = selectedGroupSyncs() && !(optOut && optOut.checked);
+        chk.disabled = on;
+        if (on) chk.checked = false;
+        if (note) note.style.display = on ? 'block' : 'none';
+    }
+    if (grp) grp.addEventListener('change', syncMediaButtonsLock);
+    if (optOut) optOut.addEventListener('change', syncMediaButtonsLock);
+    syncMediaButtonsLock();
+})();
+
+// PIN reveal + regenerate buttons
+(function () {
+    var inp = document.getElementById('edit_unlock_pin');
+    var rev = document.getElementById('reveal_pin_btn');
+    var gen = document.getElementById('generate_pin_btn');
+    if (rev) rev.addEventListener('click', function () {
+        inp.type = (inp.type === 'password') ? 'text' : 'password';
+    });
+    if (gen) gen.addEventListener('click', function () {
+        var pin = '';
+        for (var i = 0; i < 4; i++) pin += Math.floor(Math.random() * 10);
+        inp.value = pin;
+        inp.type = 'text';
+    });
+})();
+
+// Confirm delete from detail page
+document.getElementById('confirmDeleteDisplay').addEventListener('click', () => {
+    fetch('/api/displays/{{ display.id }}', { method: 'DELETE' })
+      .then(async res => {
+          const data = await res.json().catch(() => ({ status:'error', message:res.statusText }));
+          if (res.ok && data.status === 'success') {
+              window.location.href = "{{ url_for('displays.displays') }}";
+          } else {
+              alert('Failed to delete: ' + (data.message || res.statusText));
+          }
+      })
+      .catch(err => {
+          console.error(err);
+          alert('An error occurred while deleting.');
+      });
+});
+
+// Live-update current content without requiring a page refresh
+(function pollCurrentContent() {
+    const el = document.getElementById('current-content-text');
+    if (!el) return;
+    setInterval(async () => {
+        try {
+            const res = await fetch('/api/displays/{{ display.id }}');
+            const data = await res.json();
+            if (data.status === 'success') {
+                el.textContent = data.display.current_content || 'No content is currently playing';
+            }
+        } catch {}
+    }, 5000);
+})();
+
+// ── Display command buttons (Reload / Reboot / Update) ──────────────────────
+function sendDisplayCommand(action, confirmMsg) {
+    if (confirmMsg && !confirm(confirmMsg)) return;
+    fetch(`/api/displays/{{ display.id }}/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'success') {
+            if (data.delivered) {
+                alert(`Command "${action}" sent. The display should respond shortly.`);
+            } else {
+                alert('The display is not currently online — the command was discarded.\n\n' +
+                      'Wait for the display to reconnect, then try again.');
+            }
+        } else {
+            alert('Error: ' + (data.message || 'failed to send command'));
+        }
+    })
+    .catch(() => alert('Network error — could not contact server.'));
+}
+
+document.getElementById('btnReloadDisplay')?.addEventListener('click', () => {
+    sendDisplayCommand('reload', 'Reload this display\'s content now?');
+});
+document.getElementById('btnRebootDisplay')?.addEventListener('click', () => {
+    sendDisplayCommand('reboot',
+        'Reboot the player application on this display?\n\n' +
+        'This works only on the Electron desktop client. Web browser clients will just reload.');
+});
+document.getElementById('btnUpdateDisplay')?.addEventListener('click', () => {
+    sendDisplayCommand('update',
+        'Tell this display to check for and install client updates?\n\n' +
+        'This works only on the Electron desktop client. The display will\n' +
+        'download the latest installer, then quit and run it.');
+});
+
+// Deep-link support: an admin can share /display/<id>?cmd=reload (or
+// reboot/update) with field staff. Once the page loads (and the staffer
+// is logged in), the matching button is auto-clicked. The cmd query
+// arg is then stripped from the URL so a refresh doesn't re-fire.
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const cmd = (params.get('cmd') || '').toLowerCase();
+    const map = {reload: 'btnReloadDisplay', reboot: 'btnRebootDisplay', update: 'btnUpdateDisplay'};
+    if (map[cmd]) {
+        params.delete('cmd');
+        const newUrl = window.location.pathname + (params.toString() ? ('?' + params) : '');
+        history.replaceState({}, '', newUrl);
+        setTimeout(() => document.getElementById(map[cmd])?.click(), 200);
+    }
+})();
+
+// Snooze offline alerts for a fixed window. Operators are paged via
+// the alerts subsystem when a display goes offline; intentional
+// outages (store closed, screen unplugged for cleaning, etc.) should
+// not generate noise. Pass 0 to clear an existing snooze.
+document.getElementById('btnSnoozeAlerts')?.addEventListener('click', async () => {
+    const raw = prompt('Snooze offline alerts for how many hours?\n' +
+                       '(Enter 0 to clear an active snooze)', '4');
+    if (raw === null) return;
+    const hours = parseFloat(raw);
+    if (Number.isNaN(hours) || hours < 0) { alert('Enter a non-negative number.'); return; }
+    const reason = (hours > 0)
+        ? (prompt('Optional reason (shown in the audit log):', '') || '')
+        : '';
+    try {
+        const res = await fetch('/api/displays/{{ display.id }}/snooze-alerts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hours, reason }),
+        });
+        const j = await res.json();
+        if (!res.ok || j.status !== 'success') {
+            alert('Failed: ' + (j.message || res.statusText));
+            return;
+        }
+        if (j.snoozed_until) {
+            const until = new Date(j.snoozed_until * 1000);
+            alert('Alerts snoozed until ' + until.toLocaleString());
+        } else {
+            alert('Alert snooze cleared.');
+        }
+        refreshSnoozeBanner();
+    } catch (e) {
+        alert('Request failed: ' + e);
+    }
+});
+
+// Poll the lightweight issues endpoint to keep the snooze banner in
+// sync without hammering anything heavier. Server expires snoozes
+// automatically; the banner just reflects current state.
+const DISPLAY_ID = {{ display.id }};
+async function refreshSnoozeBanner() {
+    try {
+        const r = await fetch('/api/displays/issues');
+        if (!r.ok) return;
+        const j = await r.json();
+        if (j.status !== 'success') return;
+        const row = (j.displays || []).find(d => d.id === DISPLAY_ID);
+        const banner = document.getElementById('snoozeBanner');
+        if (!row || !row.alert_snoozed_until) {
+            banner.style.display = 'none';
+            return;
+        }
+        banner.style.display = 'block';
+        document.getElementById('snoozeBannerUntil').textContent =
+            new Date(row.alert_snoozed_until * 1000).toLocaleString();
+    } catch { /* swallow — banner just stays as it was */ }
+}
+document.getElementById('snoozeBannerClear')?.addEventListener('click', async () => {
+    if (!confirm('Clear the alert snooze for this display?')) return;
+    await fetch('/api/displays/' + DISPLAY_ID + '/snooze-alerts', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({hours: 0}),
+    });
+    refreshSnoozeBanner();
+});
+refreshSnoozeBanner();
+setInterval(refreshSnoozeBanner, 30000);
+
+/* ── Diagnostic log live tail ────────────────────────────────────────────── */
+(function diagViewer() {
+    const $empty    = document.getElementById('diagEmpty');
+    const $wrap     = document.getElementById('diagTableWrap');
+    const $tbody    = document.getElementById('diagTbody');
+    const $status   = document.getElementById('diagStatus');
+    const $level    = document.getElementById('diagLevelFilter');
+    const $pause    = document.getElementById('diagPauseBtn');
+    const $refresh  = document.getElementById('diagRefreshBtn');
+    const $clear    = document.getElementById('diagClearBtn');
+    const $download = document.getElementById('diagDownloadBtn');
+    if (!$tbody) return;
+
+    let lastId = 0;
+    let paused = false;
+    let pollTimer = null;
+    const LEVEL_CLASS = {
+        info:  'bg-secondary',
+        warn:  'bg-warning text-dark',
+        error: 'bg-danger',
+        sync:  'bg-info text-dark',
+        net:   'bg-primary',
+        play:  'bg-success',
+        debug: 'bg-light text-dark',
+    };
+
+    function esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function fmtTs(iso) {
+        if (!iso) return '';
+        try {
+            const d = new Date(iso);
+            return d.toLocaleString();
+        } catch (_) { return iso; }
+    }
+    function appendRows(entries, replace) {
+        if (replace) $tbody.innerHTML = '';
+        let added = 0;
+        for (const e of entries) {
+            const cls = LEVEL_CLASS[e.level] || 'bg-secondary';
+            const meta = e.meta ? `<div class="text-muted">${esc(JSON.stringify(e.meta))}</div>` : '';
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+                `<td class="text-nowrap small">${esc(fmtTs(e.received_at))}</td>` +
+                `<td><span class="badge badge-lvl ${cls}">${esc(e.level)}</span></td>` +
+                `<td class="small">${esc(e.source || '')}</td>` +
+                `<td class="diag-msg">${esc(e.message)}${meta}</td>`;
+            $tbody.appendChild(tr);
+            added++;
+        }
+        // Cap visible rows to 1000 so the table stays responsive.
+        while ($tbody.rows.length > 1000) {
+            $tbody.deleteRow(0);
+        }
+        if ($tbody.rows.length > 0) {
+            $empty.style.display = 'none';
+            $wrap.style.display = '';
+            // Auto-scroll to the latest row when not paused.
+            if (!paused) $wrap.scrollTop = $wrap.scrollHeight;
+        }
+        return added;
+    }
+    async function pollOnce(reset) {
+        if (paused && !reset) return;
+        const params = new URLSearchParams({ limit: '500' });
+        const lvl = ($level && $level.value) || '';
+        if (lvl) params.set('level', lvl);
+        if (!reset && lastId > 0) params.set('since', String(lastId));
+        try {
+            const r = await fetch('/api/displays/' + DISPLAY_ID + '/diagnostics?' + params.toString());
+            const j = await r.json();
+            if (j.status !== 'success') return;
+            if ($status) {
+                $status.textContent = j.enabled ? 'Recording' : 'Off';
+                $status.className = 'badge ms-2 ' + (j.enabled ? 'bg-success' : 'bg-secondary');
+            }
+            if (reset) lastId = 0;
+            if (j.entries.length) {
+                appendRows(j.entries, reset);
+                lastId = j.last_id || lastId;
+            } else if (reset) {
+                $tbody.innerHTML = '';
+                $empty.style.display = '';
+                $wrap.style.display  = 'none';
+            }
+        } catch (_) { /* ignore — network blips */ }
+    }
+    function start() {
+        clearInterval(pollTimer);
+        pollOnce(true);
+        pollTimer = setInterval(() => pollOnce(false), 4000);
+    }
+    $level && $level.addEventListener('change', () => { lastId = 0; pollOnce(true); });
+    $pause && $pause.addEventListener('click', () => {
+        paused = !paused;
+        $pause.innerHTML = paused
+            ? '<i class="bi bi-play-fill"></i> Resume'
+            : '<i class="bi bi-pause-fill"></i> Pause';
+    });
+    $refresh && $refresh.addEventListener('click', () => { lastId = 0; pollOnce(true); });
+    $download && $download.addEventListener('click', async () => {
+        try {
+            const r = await fetch('/api/displays/' + DISPLAY_ID + '/diagnostics?limit=1000');
+            const j = await r.json();
+            const blob = new Blob([JSON.stringify(j.entries || [], null, 2)],
+                                  { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'aisignx-diagnostics-{{ display.id }}.json';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        } catch (e) { alert('Download failed: ' + e); }
+    });
+    $clear && $clear.addEventListener('click', async () => {
+        if (!confirm('Delete all stored diagnostic entries for this display?')) return;
+        try {
+            const r = await fetch('/api/displays/' + DISPLAY_ID + '/diagnostics',
+                                  { method: 'DELETE' });
+            const j = await r.json();
+            if (j.status === 'success') {
+                lastId = 0;
+                $tbody.innerHTML = '';
+                $empty.style.display = '';
+                $wrap.style.display  = 'none';
+            } else {
+                alert('Clear failed: ' + (j.message || ''));
+            }
+        } catch (e) { alert('Clear failed: ' + e); }
+    });
+    start();
+})();
+
+document.getElementById('btnRotateApiKey')?.addEventListener('click', async () => {
+    if (!confirm('Rotate the API key for this display?\n\n' +
+                 'The old key will stop working immediately. You will need to ' +
+                 're-pair the player or update its token URL.')) return;
+    try {
+        const r = await fetch('/api/displays/' + DISPLAY_ID + '/rotate-key', {method: 'POST'});
+        const j = await r.json();
+        if (!r.ok || j.status !== 'success') {
+            alert('Rotation failed: ' + (j.message || r.statusText));
+            return;
+        }
+        // Show the new key once. Operators must copy it now; we never
+        // surface it in plain text again from the listing pages.
+        prompt('New API key (copy now — it will not be shown again):', j.api_key);
+    } catch (e) {
+        alert('Request failed: ' + e);
+    }
+});
+</script>
+{% endblock %}
