@@ -308,12 +308,15 @@ def list_server_directories(path_str: str | None = None, app=None) -> dict:
         entries = []
         if sys.platform == 'win32':
             for letter in string.ascii_uppercase:
-                drive = Path(f'{letter}:')
+                # NOTE: Path('C:') means "current dir on drive C:", which
+                # resolves to the CWD -- not the drive root. Always include
+                # the trailing separator so we get 'C:\' (the actual root).
+                root = f'{letter}:\\'
                 try:
-                    if drive.exists():
+                    if os.path.exists(root):
                         entries.append({
                             'name': f'{letter}:',
-                            'path': str(drive.resolve()),
+                            'path': root,
                         })
                 except OSError:
                     pass
