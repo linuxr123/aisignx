@@ -12,6 +12,7 @@
 #   (default)      Both if neither target flag is set
 #   --no-bump      Do not increment versions in source files
 #   --bump-only    Bump versions + update client_versions.json only (no compile)
+#   --release      Build a SIGNED release APK (needs android-client/keystore.properties)
 #   --help         Show usage
 
 set -euo pipefail
@@ -20,6 +21,7 @@ BUILD_ELECTRON=0
 BUILD_ANDROID=0
 DO_BUMP=1
 DO_BUILD=1
+DO_RELEASE=0
 SHOW_HELP=0
 
 while [[ $# -gt 0 ]]; do
@@ -28,6 +30,7 @@ while [[ $# -gt 0 ]]; do
         --android)   BUILD_ANDROID=1 ;;
         --no-bump)   DO_BUMP=0 ;;
         --bump-only) DO_BUILD=0 ;;
+        --release)   DO_RELEASE=1 ;;
         --help|-h)   SHOW_HELP=1 ;;
         *) fail "Unknown option: $1 (try --help)" ;;
     esac
@@ -49,12 +52,16 @@ Options:
 
   --no-bump      Skip version bump in package.json / build.gradle.kts
   --bump-only    Only bump versions and update client_versions.json
+  --release      Build a SIGNED release APK (needs android-client/keystore.properties).
+                 Use for fleets that must auto-update; the keystore MUST match the one
+                 the installed app was signed with, or Android rejects the update.
   --help         Show this help
 
 Examples:
   ./build_clients_linux.sh
   ./build_clients_linux.sh --electron --no-bump
   ./build_clients_linux.sh --android
+  ./build_clients_linux.sh --android --release
   ./build_clients_linux.sh --bump-only --electron
 
 EOF
@@ -305,17 +312,30 @@ else
 fi
 
 cd "$ANDROID_DIR"
-step "Running Gradle assembleDebug (debug APK - no signing needed)..."
-./gradlew assembleDebug --quiet
+if [[ "$DO_RELEASE" -eq 1 ]]; then
+    if [ ! -f "$ANDROID_DIR/keystore.properties" ]; then
+        fail "--release requires clients/android-client/keystore.properties (see keystore.properties.example). The keystore MUST match the installed app's key or Android rejects the update."
+    fi
+    step "Running Gradle assembleRelease (signed with keystore.properties)..."
+    ./gradlew assembleRelease --quiet
+    APK_DIR="$ANDROID_DIR/app/build/outputs/apk/release"
+else
+    step "Running Gradle assembleDebug (debug APK - debug keystore)..."
+    echo -e "${GRAY}  NOTE: debug APKs are signed with this machine's debug key. Devices first installed"
+    echo -e "  from a different build will REJECT this as an update. Use --release with a stable"
+    echo -e "  keystore for fleets that must auto-update.${NC}"
+    ./gradlew assembleDebug --quiet
+    APK_DIR="$ANDROID_DIR/app/build/outputs/apk/debug"
+fi
 ok "Android build complete."
 
 step "Copying APK to static/clients/..."
-APK=$(find "$ANDROID_DIR/app/build/outputs/apk/debug" -name "*.apk" | head -1)
+APK=$(find "$APK_DIR" -name "*.apk" ! -name "*unsigned*" | head -1)
 if [ -n "$APK" ]; then
     cp "$APK" "$OUTPUT_DIR/AISignX-Player.apk"
-    ok "Copied: AISignX-Player.apk"
+    ok "Copied: $(basename "$APK") -> AISignX-Player.apk"
 else
-    fail "APK not found in expected location: app/build/outputs/apk/debug/"
+    fail "APK not found in $APK_DIR (a release build may have produced only an unsigned APK; check signing config)."
 fi
 
 cd "$ROOT"

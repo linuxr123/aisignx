@@ -104,3 +104,46 @@ Notes:
 - APK updates must be signed with the same key as the installed app.
 - Device Owner setup usually fails if Google accounts or another owner are
   already configured; factory reset first if needed.
+
+### Releasing Device Owner (undo without a factory reset)
+
+Android has no Settings toggle to remove a Device Owner. AISignX exposes a
+supported "undo": the **Release Device Owner** button on the display detail
+page (or the `release_device_owner` command). The app calls
+`DevicePolicyManager.clearDeviceOwnerApp()`, drops screen pinning, and becomes
+an ordinary app you can uninstall or re-provision. (A factory reset also always
+clears it.) After releasing, silent auto-update stops working until the device
+is provisioned as Device Owner again.
+
+## Signing & the auto-update signature rule
+
+Android will **only install an update signed with the same key as the currently
+installed app** — there is no override, even for Device Owner. Consequences:
+
+- Pick **one** release keystore for the whole fleet and keep it safe forever.
+- A **debug** APK is signed with the build machine's local debug key. Devices
+  installed from a different machine's debug build (or from a release APK) will
+  reject it as an update (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`).
+- Devices whose signature doesn't match the new APK can only be updated by
+  **uninstall + reinstall** (they re-enroll).
+
+Build a signed release APK:
+
+1. Copy `keystore.properties.example` → `keystore.properties` and fill in your
+   keystore path + passwords (gitignored; never commit it).
+2. Build with the signed-release option:
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 -Android -Release
+```
+
+```bash
+# Linux / macOS
+./build_clients_linux.sh --android --release
+```
+
+The script copies the signed APK to `server/static/clients/AISignX-Player.apk`
+and bumps `client_versions.json`. Without `-Release`/`--release` the scripts
+build a debug APK (fine for first install / testing, not for OTA updates to a
+release-signed fleet).

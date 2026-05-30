@@ -43,6 +43,12 @@ when tagged releases begin.
   - Android: drops the lock task and backgrounds the app; restores + re-locks on `onResume` or after a 5-minute idle timer
   - New preload bridge `signage.unlockMinimize()` / `signage.onRelock()` and `window.AISignXRelock()` / `AISignXNative.unlockMinimize()` hooks
 
+### Android provisioning & signed builds
+- **Release Device Owner** command + display-detail button (`release_device_owner`) — calls `DevicePolicyManager.clearDeviceOwnerApp()` so an Android kiosk can be un-provisioned/uninstalled without a factory reset; added to the single, bulk, and group command allowlists
+- **Signed release APK build** — `build_clients_windows.ps1 -Release` / `build_clients_linux.sh --release` run `assembleRelease` using `clients/android-client/keystore.properties`; added `keystore.properties.example` and documented Android's same-key update rule
+- Build scripts now write `package.json` / `build.gradle.kts` / `client_versions.json` as UTF-8 **without a BOM** (the previous BOM broke electron-builder's JSON parser)
+- Docs: Android signing + Device Owner provisioning/undo (`clients/android-client/README.md`), command protocol `release_device_owner`
+
 ### Repository layout
 - Monorepo: `server/` (Flask app), `clients/` (Electron + Android)
 - Root build scripts → `server/static/clients/`

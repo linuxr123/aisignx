@@ -11,6 +11,9 @@
 #   (default)     Both Electron and Android if neither switch is set
 #   -NoBump       Do not increment versions in source files
 #   -BumpOnly     Bump versions + update client_versions.json only (no compile)
+#   -Release      Build a SIGNED release APK (requires android-client/keystore.properties).
+#                 Required for fleets that must auto-update: the APK must be signed with
+#                 the SAME keystore as the installed app or Android rejects the update.
 #   -Help         Show usage
 
 param(
@@ -18,7 +21,8 @@ param(
     [switch]$NoBump,
     [switch]$BumpOnly,
     [switch]$Electron,
-    [switch]$Android
+    [switch]$Android,
+    [switch]$Release
 )
 
 Set-StrictMode -Version Latest
@@ -69,13 +73,17 @@ Options:
 
   -NoBump        Skip version bump in package.json / build.gradle.kts
   -BumpOnly      Only bump versions and update client_versions.json (no compile)
+  -Release       Build a SIGNED release APK (needs android-client/keystore.properties).
+                 Use this for fleets that must auto-update; the keystore MUST match the
+                 one the installed app was signed with, or Android rejects the update.
   -Help          Show this help
 
 Examples:
-  .\build_clients_windows.ps1                      # bump + build all
-  .\build_clients_windows.ps1 -Electron -NoBump    # rebuild Windows installer only
-  .\build_clients_windows.ps1 -Android             # bump + build APK only
-  .\build_clients_windows.ps1 -BumpOnly -Electron  # bump Electron version + manifest only
+  .\build_clients_windows.ps1                       # bump + build all (debug APK)
+  .\build_clients_windows.ps1 -Electron -NoBump     # rebuild Windows installer only
+  .\build_clients_windows.ps1 -Android              # bump + build debug APK only
+  .\build_clients_windows.ps1 -Android -Release     # bump + build SIGNED release APK
+  .\build_clients_windows.ps1 -BumpOnly -Electron   # bump Electron version + manifest only
 
 "@
 }
@@ -350,9 +358,27 @@ if (-not $env:JAVA_HOME) {
 }
 Write-OK "JAVA_HOME: $env:JAVA_HOME"
 
+$keystorePropsPath = Join-Path $androidDir "keystore.properties"
+$useRelease = $Release.IsPresent
+if ($useRelease -and -not (Test-Path $keystorePropsPath)) {
+    Write-Fail "-Release requires clients\android-client\keystore.properties (see keystore.properties.example)."
+    Write-Host "  A release APK MUST be signed with the SAME keystore as the installed app, or" -ForegroundColor Yellow
+    Write-Host "  Android will reject the update (signature mismatch)." -ForegroundColor Yellow
+    Set-Location $root
+    exit 1
+}
+
 Set-Location $androidDir
-Write-Step "Running Gradle assembleDebug (debug APK - no signing needed)..."
-& $gradlew assembleDebug --quiet
+if ($useRelease) {
+    Write-Step "Running Gradle assembleRelease (signed with keystore.properties)..."
+    & $gradlew assembleRelease --quiet
+} else {
+    Write-Step "Running Gradle assembleDebug (debug APK - debug keystore)..."
+    Write-Host "  NOTE: debug APKs are signed with this machine's debug key. Devices first" -ForegroundColor DarkGray
+    Write-Host "  installed from a different build will REJECT this as an update. Use -Release" -ForegroundColor DarkGray
+    Write-Host "  with a stable keystore for fleets that must auto-update." -ForegroundColor DarkGray
+    & $gradlew assembleDebug --quiet
+}
 if ($LASTEXITCODE -ne 0) {
     Write-Fail "Android build failed. Check output above."
     Set-Location $root
@@ -361,12 +387,17 @@ if ($LASTEXITCODE -ne 0) {
 Write-OK "Android build complete."
 
 Write-Step "Copying APK to static/clients/..."
-$apk = Get-ChildItem "$androidDir\app\build\outputs\apk\debug" -Filter "*.apk" | Select-Object -First 1
+$apkDir = if ($useRelease) { "$androidDir\app\build\outputs\apk\release" }
+          else             { "$androidDir\app\build\outputs\apk\debug" }
+# Prefer a non-"unsigned" APK so we never publish an unsigned release artifact.
+$apk = Get-ChildItem $apkDir -Filter "*.apk" -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -notlike "*unsigned*" } |
+    Select-Object -First 1
 if ($apk) {
     Copy-Item $apk.FullName (Join-Path $outputDir "AISignX-Player.apk") -Force
-    Write-OK "Copied: AISignX-Player.apk"
+    Write-OK "Copied: $($apk.Name) -> AISignX-Player.apk"
 } else {
-    Write-Fail "APK not found in expected location."
+    Write-Fail "APK not found in $apkDir (release build may have produced only an unsigned APK; check signing config)."
     Set-Location $root
     exit 1
 }

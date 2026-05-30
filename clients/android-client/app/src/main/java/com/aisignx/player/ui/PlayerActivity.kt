@@ -364,7 +364,34 @@ class PlayerActivity : AppCompatActivity() {
                 val ok = Updater.runUpdate(this@PlayerActivity)
                 if (!ok) FileLog.w(TAG, "update did not start")
             }
+            "release_device_owner" -> withContext(Dispatchers.Main) { releaseDeviceOwner() }
             else     -> FileLog.w(TAG, "unknown command: $action")
+        }
+    }
+
+    /**
+     * Relinquish Device Owner so the kiosk can be un-provisioned without a
+     * factory reset. After this the app is an ordinary app: lock-task / screen
+     * pinning is released and the app can be uninstalled normally. This is the
+     * supported "undo" for `dpm set-device-owner` — Android does not expose a
+     * Settings toggle to remove a Device Owner.
+     */
+    private fun releaseDeviceOwner() {
+        try {
+            val dpm = getSystemService(android.content.Context.DEVICE_POLICY_SERVICE)
+                as android.app.admin.DevicePolicyManager
+            if (!dpm.isDeviceOwnerApp(packageName)) {
+                FileLog.i(TAG, "release_device_owner: not a device owner; nothing to do")
+                return
+            }
+            // Stop pinning first so we're not holding a lock task while we drop
+            // the privilege that lets us re-engage it.
+            try { stopLockTask() } catch (_: Throwable) {}
+            cancelLockTaskWatchdog()
+            dpm.clearDeviceOwnerApp(packageName)
+            FileLog.i(TAG, "release_device_owner: cleared device owner")
+        } catch (t: Throwable) {
+            FileLog.e(TAG, "release_device_owner failed", t)
         }
     }
 

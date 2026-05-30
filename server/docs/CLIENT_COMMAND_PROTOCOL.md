@@ -1,13 +1,13 @@
 # Display Command Protocol
 
-The server can push three actions to a connected display via the
+The server can push these actions to a connected display via the
 SSE `command` event. Both the per-display button on `/displays/<id>` /
 `/displays/`, the bulk toolbar on `/displays/`, and the group-level
 button on `/groups/` all funnel through this same protocol.
 
 ```
 event: command
-data:  {"action": "reload"|"reboot"|"update", ...optional payload}
+data:  {"action": "reload"|"reboot"|"update"|"release_device_owner", ...optional payload}
 ```
 
 ## Action contracts
@@ -17,6 +17,7 @@ data:  {"action": "reload"|"reboot"|"update", ...optional payload}
 | `reload`| Re-fetch the player URL (or hard-reload the page).                                                                  | Always supported. Browser kiosks just call `location.reload(true)`. |
 | `reboot`| Restart the client application/activity.                                                                            | Electron and Android native shells. Browser kiosks fall back to reload or ignore. |
 | `update`| Trigger the client's self-update routine, then restart the player.                                                  | Electron and Android native shells. Android silent install requires Device Owner. |
+| `release_device_owner`| Android: relinquish Device Owner (`DevicePolicyManager.clearDeviceOwnerApp`) and drop screen pinning, so the kiosk can be uninstalled or re-provisioned without a factory reset. | Android only; other clients ignore it. Silent auto-update stops working until the device is re-provisioned as Device Owner. |
 
 The server records the push as the `display.command`, `group.command`,
 or `displays.bulk_command` audit action together with the delivered

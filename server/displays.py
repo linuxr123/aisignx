@@ -509,7 +509,7 @@ def api_send_display_command(display_id):
     display = Display.query.get_or_404(display_id)
     data = request.json or {}
     action = (data.get('action') or '').strip().lower()
-    valid = {'reboot', 'update', 'reload'}
+    valid = {'reboot', 'update', 'reload', 'release_device_owner'}
     if action not in valid:
         return jsonify({'status': 'error',
                         'message': f'action must be one of: {", ".join(sorted(valid))}'}), 400
@@ -833,7 +833,7 @@ def api_bulk_display_command():
     """
     data = request.get_json(silent=True) or {}
     action = (data.get('action') or '').strip().lower()
-    valid = {'reboot', 'update', 'reload'}
+    valid = {'reboot', 'update', 'reload', 'release_device_owner'}
     if action not in valid:
         return jsonify({'status': 'error',
                         'message': f'action must be one of: {", ".join(sorted(valid))}'}), 400

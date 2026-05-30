@@ -21,6 +21,10 @@
                 title="Tell the display to check for and install client updates">
             <i class="bi bi-cloud-download"></i> Update Client
         </button>
+        <button type="button" class="btn btn-outline-danger" id="btnReleaseDeviceOwner"
+                title="Android only: relinquish Device Owner so the kiosk can be un-provisioned or uninstalled without a factory reset">
+            <i class="bi bi-shield-slash"></i> Release Device Owner
+        </button>
         <button type="button" class="btn btn-outline-warning" id="btnSnoozeAlerts"
                 title="Suppress offline alerts for a fixed window (planned maintenance, store closed, etc.)">
             <i class="bi bi-bell-slash"></i> Snooze Alerts
@@ -664,6 +668,14 @@ document.getElementById('btnUpdateDisplay')?.addEventListener('click', () => {
         'Tell this display to check for and install client updates?\n\n' +
         'This works only on the Electron desktop client. The display will\n' +
         'download the latest installer, then quit and run it.');
+});
+document.getElementById('btnReleaseDeviceOwner')?.addEventListener('click', () => {
+    sendDisplayCommand('release_device_owner',
+        'Release Device Owner on this Android device?\n\n' +
+        'The kiosk will drop screen pinning and give up Device Owner so it can be\n' +
+        'uninstalled or re-provisioned WITHOUT a factory reset. Silent auto-updates\n' +
+        'will stop working until the device is provisioned as Device Owner again.\n\n' +
+        'Android-only; ignored by other clients.');
 });
 
 // Deep-link support: an admin can share /display/<id>?cmd=reload (or

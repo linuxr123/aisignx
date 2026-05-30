@@ -416,7 +416,7 @@ def api_group_command(group_id):
     group = DisplayGroup.query.get_or_404(group_id)
     data = request.get_json(silent=True) or {}
     action = (data.get('action') or '').strip().lower()
-    valid = {'reboot', 'update', 'reload'}
+    valid = {'reboot', 'update', 'reload', 'release_device_owner'}
     if action not in valid:
         return jsonify({'status': 'error',
                         'message': f'action must be one of: {", ".join(sorted(valid))}'}), 400
