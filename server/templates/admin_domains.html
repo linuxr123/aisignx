@@ -268,11 +268,14 @@
                 <div class="form-text">If you manage AISignX on this same PC, server drives (C:, D:, …) are your local disks.</div>
                 <div id="editStorageBrowserPanel" class="card card-body py-2 mt-2 bg-light border d-none">
                     <div class="d-flex flex-wrap gap-1 mb-2" id="editStorageBrowserShortcuts"></div>
-                    <div class="d-flex align-items-center gap-2 mb-2">
+                    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="editStorageBrowserUpBtn" disabled>
                             <i class="bi bi-arrow-up"></i> Up
                         </button>
                         <span class="small font-monospace text-break flex-grow-1" id="editStorageBrowserBreadcrumb">—</span>
+                        <button type="button" class="btn btn-sm btn-outline-success" id="editStorageBrowserNewBtn" disabled>
+                            <i class="bi bi-folder-plus"></i> New folder
+                        </button>
                         <button type="button" class="btn btn-sm btn-primary" id="editStorageBrowserSelectBtn" disabled>
                             Use this folder
                         </button>
@@ -596,6 +599,7 @@
         const crumbEl = document.getElementById('editStorageBrowserBreadcrumb');
         const upBtn = document.getElementById('editStorageBrowserUpBtn');
         const selectBtn = document.getElementById('editStorageBrowserSelectBtn');
+        const newBtn = document.getElementById('editStorageBrowserNewBtn');
         const shortcutsEl = document.getElementById('editStorageBrowserShortcuts');
         listEl.innerHTML = '<div class="list-group-item text-muted">Loading…</div>';
         statusEl.textContent = '';
@@ -621,9 +625,17 @@
         upBtn.disabled = j.parent === null || j.parent === undefined;
         upBtn.dataset.parent = (j.parent === '' ? '' : (j.parent || ''));
         selectBtn.disabled = !j.path;
-        statusEl.textContent = j.writable === false
-            ? 'Warning: this folder may not be writable by the server.'
-            : (j.path ? 'Open a subfolder or click Use this folder.' : 'Choose a drive or shortcut, then a folder.');
+        if (newBtn) newBtn.disabled = !j.path;
+        if (j.fell_back) {
+            statusEl.textContent = 'That exact folder does not exist yet — showing the nearest existing folder. '
+                + 'Pick a drive/folder, or type a new path in the field and Save (the server creates it).';
+        } else if (j.writable === false) {
+            statusEl.textContent = 'Warning: this folder may not be writable by the server.';
+        } else {
+            statusEl.textContent = j.path
+                ? 'Open a subfolder, or click Use this folder to select it.'
+                : 'Choose a drive or shortcut, then a folder.';
+        }
 
         shortcutsEl.innerHTML = (j.shortcuts || []).map(s =>
             `<button type="button" class="btn btn-sm btn-outline-primary storage-browser-shortcut"
@@ -670,6 +682,31 @@
         if (storageBrowserCurrent) {
             document.getElementById('editStoragePath').value = storageBrowserCurrent;
             setStorageBrowserOpen(false);
+        }
+    });
+
+    document.getElementById('editStorageBrowserNewBtn')?.addEventListener('click', async () => {
+        if (!storageBrowserCurrent) return;
+        const name = prompt('New folder name inside:\n' + storageBrowserCurrent);
+        if (!name) return;
+        const statusEl = document.getElementById('editStorageBrowserStatus');
+        statusEl.textContent = 'Creating folder…';
+        let j;
+        try {
+            const r = await fetch('/api/system/path-browser/mkdir', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({parent: storageBrowserCurrent, name: name.trim()}),
+            });
+            j = await r.json();
+        } catch (err) {
+            statusEl.textContent = 'Request failed: ' + err;
+            return;
+        }
+        if (j.status === 'success') {
+            loadStorageBrowser(j.path);
+        } else {
+            statusEl.textContent = j.message || 'Could not create folder.';
         }
     });
 

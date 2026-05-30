@@ -374,7 +374,7 @@ Superadmin only. **Administration → Tenant Management** → **Edit** → **Sto
 |---|---|
 | Default | `<upload_root>/d<id>/` |
 | Purpose | Move **one** tenant to another folder (e.g. large tenant on a fast disk) |
-| Browse | **Browse server folders** — lists drives/directories on the **server** (not the admin PC’s file picker) |
+| Browse | **Browse server folders** — inline panel listing drives/directories on the **server** (not the admin PC’s file picker). Use **Drives / This PC** to switch drives, **New folder** to create a destination on an empty/new drive, **Up** to go to the parent. If the tenant’s current folder doesn’t exist yet, it shows the nearest existing folder. |
 | On save | **Save storage location** (separate from the main tenant **Save** button). Check **Move this tenant's files** to migrate. |
 | Clear path | Leave custom path blank → reverts to default folder; files are **not** moved back automatically |
 

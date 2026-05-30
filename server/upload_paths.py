@@ -299,6 +299,8 @@ def list_server_directories(path_str: str | None = None, app=None) -> dict:
         app = current_app
 
     shortcuts = [
+        {'label': 'Drives / This PC' if sys.platform == 'win32' else 'Filesystem root',
+         'path': ''},
         {'label': 'Server upload root', 'path': str(resolve_upload_root(app))},
         {'label': 'Application directory', 'path': str(_SERVER_ROOT)},
     ]
@@ -339,12 +341,28 @@ def list_server_directories(path_str: str | None = None, app=None) -> dict:
     except (OSError, ValueError) as exc:
         return {'errors': [f'Invalid path: {exc}']}
 
+    # The requested path may not exist yet (e.g. a tenant's default folder
+    # before any upload). Instead of erroring, walk up to the nearest
+    # existing ancestor so the user can still navigate and pick a location.
+    fell_back = False
     if not p.exists():
-        return {'errors': ['Path does not exist.']}
-    if not p.is_file() and not p.is_dir():
-        return {'errors': ['Path is not accessible.']}
+        ancestor = p
+        for cand in [p, *p.parents]:
+            if cand.exists():
+                ancestor = cand
+                break
+        else:
+            ancestor = None
+        if ancestor is None or not ancestor.exists():
+            # Nothing on this drive is reachable -- show the drive/root list.
+            return list_server_directories(None, app)
+        p = ancestor
+        fell_back = True
+
     if p.is_file():
         p = p.parent
+    elif not p.is_dir():
+        return {'errors': ['Path is not accessible.']}
 
     parent = _path_browser_parent(p)
     entries = []
@@ -374,7 +392,45 @@ def list_server_directories(path_str: str | None = None, app=None) -> dict:
         'entries': entries,
         'shortcuts': shortcuts,
         'writable': os.access(p, os.W_OK),
+        'fell_back': fell_back,
     }
+
+
+def create_server_directory(parent: str | None, name: str) -> dict:
+    """
+    Create a subfolder under ``parent`` on the server (superadmin path picker).
+    Returns {'path': <new absolute path>} or {'errors': [...]}.
+    """
+    raw_parent = (parent or '').strip()
+    raw_name = (name or '').strip()
+    if not raw_parent:
+        return {'errors': ['Choose a drive or folder first.']}
+    if not raw_name:
+        return {'errors': ['Folder name is required.']}
+    # Disallow path separators / traversal in the new folder name.
+    if any(sep in raw_name for sep in ('/', '\\', '\0')) or raw_name in ('.', '..'):
+        return {'errors': ['Folder name cannot contain slashes or "..".']}
+
+    try:
+        base = Path(raw_parent).expanduser()
+        if not base.is_absolute():
+            base = (_SERVER_ROOT / base).resolve()
+        else:
+            base = base.resolve()
+    except (OSError, ValueError) as exc:
+        return {'errors': [f'Invalid parent path: {exc}']}
+
+    if not base.is_dir():
+        return {'errors': ['Parent folder does not exist.']}
+
+    target = (base / raw_name)
+    try:
+        target.mkdir(parents=False, exist_ok=True)
+    except OSError as exc:
+        return {'errors': [f'Cannot create folder: {exc}']}
+    if not os.access(target, os.W_OK):
+        return {'errors': ['Folder created but is not writable by the server.']}
+    return {'path': str(target.resolve())}
 
 
 def configured_upload_root_display() -> dict:

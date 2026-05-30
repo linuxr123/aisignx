@@ -474,6 +474,27 @@ def api_system_path_browser():
     return jsonify({'status': 'success', **result})
 
 
+@admin_bp.route('/api/system/path-browser/mkdir', methods=['POST'])
+@login_required
+def api_system_path_browser_mkdir():
+    """Create a subfolder on the server for the storage path picker."""
+    if not _is_superadmin():
+        return jsonify({'status': 'error', 'message': 'forbidden'}), 403
+    import upload_paths
+    data = request.get_json(silent=True) or {}
+    result = upload_paths.create_server_directory(
+        data.get('parent'), data.get('name'))
+    if result.get('errors'):
+        return jsonify({
+            'status': 'error',
+            'message': result['errors'][0],
+            'errors': result['errors'],
+        }), 400
+    audit('system.path_create', target_type='disk', target_id=result['path'],
+          payload={'path': result['path']})
+    return jsonify({'status': 'success', 'path': result['path']})
+
+
 @admin_bp.route('/api/system/upload-storage/migrate', methods=['POST'])
 @login_required
 def api_upload_storage_migrate():
