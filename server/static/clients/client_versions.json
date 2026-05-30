@@ -1,8 +1,8 @@
 {
-    "version":  "1.0.0",
+    "version":  "1.0.21",
     "clients":  {
                     "windows":  {
-                                    "version":  "1.0.20",
+                                    "version":  "1.0.21",
                                     "filename":  "AISignX-Player-Setup.exe",
                                     "url":  "/static/clients/AISignX-Player-Setup.exe"
                                 },
@@ -17,7 +17,7 @@
                                       "url":  "/static/clients/AISignX-Player.deb"
                                   },
                     "android":  {
-                                    "version":  "1.4.12",
+                                    "version":  "1.4.13",
                                     "filename":  "AISignX-Player.apk",
                                     "url":  "/static/clients/AISignX-Player.apk"
                                 }

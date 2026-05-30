@@ -36,6 +36,14 @@ function Write-OK($msg)   { Write-Host "[OK] $msg" -ForegroundColor Green }
 function Write-Skip($msg) { Write-Host "[SKIP] $msg" -ForegroundColor DarkGray }
 function Write-Fail($msg) { Write-Host "[FAIL] $msg" -ForegroundColor Red }
 
+function Write-TextNoBom([string]$Path, [string]$Content) {
+    # Windows PowerShell 5.1 `Set-Content -Encoding UTF8` prepends a BOM, which
+    # breaks JSON parsers (electron-builder, Python json) and Gradle Kotlin DSL.
+    # Always write UTF-8 without a BOM.
+    $enc = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($Path, $Content, $enc)
+}
+
 function Bump-SemverPatch([string]$Version) {
     if ($Version -match '^(\d+)\.(\d+)\.(\d+)$') {
         return ('{0}.{1}.{2}' -f $Matches[1], $Matches[2], ([int]$Matches[3] + 1))
@@ -92,7 +100,7 @@ function Invoke-BumpElectronVersion {
     $old = Get-ElectronVersion $PkgPath
     $new = Bump-SemverPatch $old
     $raw = $raw -replace ('"version"\s*:\s*"' + [regex]::Escape($old) + '"'), ('"version": "' + $new + '"')
-    Set-Content -Path $PkgPath -Value $raw -NoNewline -Encoding UTF8
+    Write-TextNoBom $PkgPath $raw
     Write-OK "Electron package.json: $old -> $new"
     return $new
 }
@@ -108,7 +116,7 @@ function Invoke-BumpAndroidVersion {
     $old = $Matches[1]
     $new = Bump-SemverPatch $old
     $raw = $raw -replace ('versionName\s*=\s*"' + [regex]::Escape($old) + '"'), ('versionName = "' + $new + '"')
-    Set-Content -Path $GradlePath -Value $raw -NoNewline -Encoding UTF8
+    Write-TextNoBom $GradlePath $raw
     Write-OK "Android build.gradle.kts: $old (code $oldCode) -> $new (code $newCode)"
     return $new
 }
@@ -154,7 +162,7 @@ function Update-ClientVersionsManifest {
         }
     }
     if (-not $manifest.version -and $ElectronVersion) { $manifest.version = $ElectronVersion }
-    $manifest | ConvertTo-Json -Depth 5 | Set-Content $VersionsFile -Encoding UTF8
+    Write-TextNoBom $VersionsFile ($manifest | ConvertTo-Json -Depth 5)
 }
 
 if ($Help) { Show-BuildHelp; exit 0 }
