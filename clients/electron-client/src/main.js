@@ -2,7 +2,8 @@
 // Copyright (C) 2026 AISignX contributors
 
 const {
-  app, BrowserWindow, ipcMain, screen, powerSaveBlocker, dialog, shell, globalShortcut
+  app, BrowserWindow, ipcMain, screen, powerSaveBlocker, dialog, shell,
+  globalShortcut, powerMonitor
 } = require('electron');
 const path   = require('path');
 const fs     = require('fs');
@@ -59,6 +60,31 @@ function getDeviceId() {
   fs.writeFileSync(DEVICE_ID_PATH, id);
   return id;
 }
+
+// ── Offline cache enablement ──────────────────────────────────────────────────
+// The player relies on a Service Worker (/static/sw.js) to cache media so it
+// keeps playing when the server is unreachable. Chromium only registers
+// service workers in a "secure context" (https or localhost). Most signage
+// deployments run the server over plain HTTP on a LAN IP/hostname, where the
+// SW would silently never register — so nothing gets cached and videos fail
+// the moment the network drops. We mark the configured server origin as a
+// trusted secure origin so the SW (and the whole offline cache) works over
+// HTTP too. This MUST run before app `ready`, hence at module load.
+(function enableOfflineCacheForServer() {
+  try {
+    const cfg = loadConfig();
+    if (!cfg.serverUrl) return;
+    const origin = new URL(cfg.serverUrl).origin;
+    if (!origin.startsWith('http://')) return;   // https is already secure
+    app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', origin);
+    // Chromium ignores the flag above unless a --user-data-dir is present.
+    // Electron always has one; pass it explicitly to satisfy the check.
+    app.commandLine.appendSwitch('user-data-dir', app.getPath('userData'));
+    flog('[offline] treating', origin, 'as secure origin (service worker cache)');
+  } catch (e) {
+    flog('[offline] secure-origin switch failed:', String(e));
+  }
+})();
 
 // ── HTTP helper (works for http + https, no external deps) ───────────────────
 function doRequest(urlStr, options = {}, body = null) {
@@ -445,6 +471,11 @@ function ensureWindow() {
   if (psBlockerId === null)
     psBlockerId = powerSaveBlocker.start('prevent-display-sleep');
   mainWindow.on('closed', () => { mainWindow = null; });
+  // If we were minimized for an unlock and the user brings the window back
+  // (taskbar click, Alt-Tab), treat that as "exit unlock mode": re-kiosk and
+  // re-lock immediately.
+  mainWindow.on('restore', () => { if (_minimizedForUnlock) restoreKioskAndLock('user'); });
+  mainWindow.on('focus',   () => { if (_minimizedForUnlock) restoreKioskAndLock('user'); });
   attachOfflineRetryHandlers();
 }
 
@@ -521,6 +552,61 @@ function scheduleRetry() {
     flog('[offline] retrying', _lastPlayerUrl);
     mainWindow.loadURL(_lastPlayerUrl);
   }, RETRY_INTERVAL_MS);
+}
+
+// ── Unlock → minimize → idle restore ──────────────────────────────────────────
+// When the on-screen PIN unlocks the kiosk, the player asks us (via the
+// 'unlock-minimize' IPC) to drop out of kiosk mode and minimize so a technician
+// can reach the desktop. The window then STAYS minimized until either:
+//   * the OS has been idle for IDLE_RESTORE_SECONDS (5 min), or
+//   * the user restores the window themselves (taskbar / Alt-Tab),
+// at which point we re-assert kiosk fullscreen and tell the player to re-lock.
+const IDLE_RESTORE_SECONDS = 5 * 60;
+let _idlePollTimer    = null;
+let _minimizedForUnlock = false;
+
+function startUnlockMinimize() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  flog('[unlock] minimizing kiosk for desktop access');
+  _minimizedForUnlock = true;
+  try {
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.setKiosk(false);
+    mainWindow.setFullScreen(false);
+    mainWindow.minimize();
+  } catch (e) { flog('[unlock] minimize failed:', String(e)); }
+
+  if (_idlePollTimer) clearInterval(_idlePollTimer);
+  _idlePollTimer = setInterval(() => {
+    if (!_minimizedForUnlock) return;
+    let idle = 0;
+    try { idle = powerMonitor.getSystemIdleTime(); } catch (_) {}
+    if (idle >= IDLE_RESTORE_SECONDS) {
+      flog('[unlock] system idle', idle, 's -> restoring kiosk');
+      restoreKioskAndLock('idle');
+    }
+  }, 15_000);
+}
+
+function restoreKioskAndLock(reason) {
+  if (_idlePollTimer) { clearInterval(_idlePollTimer); _idlePollTimer = null; }
+  if (!_minimizedForUnlock) return;
+  // Flip the flag first so the restore()-triggered 'restore'/'focus' events
+  // below short-circuit instead of re-entering this function.
+  _minimizedForUnlock = false;
+  flog('[unlock] restoring kiosk + re-locking, reason=', reason);
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    mainWindow.restore();
+    mainWindow.setKiosk(true);
+    mainWindow.setFullScreen(true);
+    mainWindow.setAlwaysOnTop(true);
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.moveTop();
+    setTimeout(() => { try { mainWindow.setAlwaysOnTop(false); } catch (_) {} }, 1000);
+  } catch (e) { flog('[unlock] restore failed:', String(e)); }
+  try { mainWindow.webContents.send('relock-kiosk', { reason }); } catch (_) {}
 }
 
 // ── Registration polling ──────────────────────────────────────────────────────
@@ -631,6 +717,14 @@ ipcMain.handle('get-system-info',  ()  => ({
   version:  app.getVersion()
 }));
 ipcMain.handle('check-for-update', ()  => checkForUpdate(false));
+
+// Player asks the shell to minimize after a successful PIN unlock so a
+// technician can reach the desktop; the window auto-restores + re-locks on
+// idle or when the user brings it back. See startUnlockMinimize().
+ipcMain.handle('unlock-minimize', () => {
+  startUnlockMinimize();
+  return { ok: true };
+});
 
 // Handle admin-pushed commands relayed from the player page via SSE.
 // Supported actions: 'reboot', 'update', 'reload'.
@@ -805,5 +899,6 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   if (psBlockerId !== null) powerSaveBlocker.stop(psBlockerId);
   if (updateTimer)          clearInterval(updateTimer);
+  if (_idlePollTimer)       clearInterval(_idlePollTimer);
   try { globalShortcut.unregisterAll(); } catch (_) {}
 });

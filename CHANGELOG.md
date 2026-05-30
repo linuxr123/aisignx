@@ -35,6 +35,14 @@ when tagged releases begin.
 - `Domain.storage_root_path` column (auto-added at boot via bootstrap)
 - `storage.py` resolves media under global or per-tenant custom roots while DB paths stay `d{id}/…`
 
+### Client offline & kiosk unlock
+- **Offline media playback** — Electron now marks the configured HTTP server origin as a trusted secure origin so the player's service worker (and its media cache) registers on plain-HTTP LAN deployments; previously the SW silently never registered over HTTP, so nothing was cached and videos failed the moment the network dropped
+- **Video stall watchdog** (`display_player.js`, all clients) — a playing video that stops making progress (network/server dropped mid-stream, partial cache) now advances after ~6s instead of holding the slide for its full duration cap; fixes "video plays too long" and long gaps between media when offline
+- **PIN unlock minimizes the client** — entering the unlock PIN now minimizes the kiosk so a technician can reach the desktop. It stays minimized until the OS is idle for 5 minutes **or** the user brings it back, then it re-asserts kiosk fullscreen and re-locks automatically
+  - Electron: `unlock-minimize` IPC + `powerMonitor` idle polling; restores on idle or on window restore/focus
+  - Android: drops the lock task and backgrounds the app; restores + re-locks on `onResume` or after a 5-minute idle timer
+  - New preload bridge `signage.unlockMinimize()` / `signage.onRelock()` and `window.AISignXRelock()` / `AISignXNative.unlockMinimize()` hooks
+
 ### Repository layout
 - Monorepo: `server/` (Flask app), `clients/` (Electron + Android)
 - Root build scripts → `server/static/clients/`

@@ -141,6 +141,42 @@
     }
     window.AISignXPromptUnlock = promptForPin;
 
+    // ── Shell minimize bridge (Electron / Android) ───────────────────────────
+    // After a correct PIN we ask the native shell to minimize the kiosk so a
+    // technician can use the underlying desktop. The shell owns the "restore
+    // on idle / on user return" policy and signals us to re-lock via the
+    // relock callback below. forceRelock() drops the unlock grace immediately.
+    function requestShellMinimize() {
+        try {
+            if (window.signage && typeof window.signage.unlockMinimize === 'function') {
+                window.signage.unlockMinimize();
+                return true;
+            }
+            if (window.AISignXNative && typeof window.AISignXNative.unlockMinimize === 'function') {
+                window.AISignXNative.unlockMinimize();
+                return true;
+            }
+        } catch (_) {}
+        return false;
+    }
+    function forceRelock() {
+        _unlockedUntil = 0;
+        try { applyInputLock(); } catch (_) {}
+        if (activeSlide) {
+            try {
+                activeSlide.querySelectorAll('iframe').forEach(f => { f.tabIndex = -1; });
+            } catch (_) {}
+        }
+        if (_pinKeypadOpen) { try { closePinKeypad(); } catch (_) {} }
+    }
+    // Expose so the Android shell can call back into the page on restore.
+    window.AISignXRelock = forceRelock;
+    try {
+        if (window.signage && typeof window.signage.onRelock === 'function') {
+            window.signage.onRelock(() => forceRelock());
+        }
+    } catch (_) {}
+
     function _blockKey(e) {
         if (!isLocked()) return;
         if (_pinKeypadOpen) return;
@@ -488,6 +524,13 @@
     const MEDIA_BTN_IDLE_MS = 4000;   // hide after 4 s of no mouse movement
     let _mediaHideTimer = null;
     const VIDEO_STARTUP_TIMEOUT_MS = 8000;
+    // Mid-playback stall watchdog: if a playing video stops making progress
+    // (network/server dropped, partial cache, decode wedge) for this long, we
+    // give up on it and advance instead of freezing the playlist. Without this
+    // a video whose `ended` event never fires (because it stalled) would hold
+    // the slide for its full duration cap (up to the 24h ceiling) -> "playing
+    // too long" / long gaps between media when offline.
+    const VIDEO_STALL_TIMEOUT_MS = 6000;
 
     function showMediaButtons() {
         if (!SHOW_MEDIA_BUTTONS || !mediaBtns) return;
@@ -992,6 +1035,7 @@
     /** Stop audio/video in a slide before it leaves the screen. */
     function retireSlide(slide) {
         if (!slide) return;
+        if (typeof slide._stopVideoStallWatch === 'function') slide._stopVideoStallWatch();
         slide.querySelectorAll('video, audio').forEach(el => {
             try {
                 el.pause();
@@ -1060,6 +1104,7 @@
             };
             const failVideo = (reason) => {
                 clearVideoStartupTimer();
+                if (div._stopVideoStallWatch) div._stopVideoStallWatch();
                 console.warn('[player] Video failed/stalled, advancing:', reason, item.content_url);
                 diagLog('player', 'video', 'video failed or stalled', {
                     reason,
@@ -1119,6 +1164,52 @@
                         failVideo('startup timeout');
                     }
                 }, VIDEO_STARTUP_TIMEOUT_MS);
+            };
+
+            // Mid-playback stall watchdog. We track the last time currentTime
+            // actually moved; if it stops advancing while the slide is active
+            // and the video is neither paused nor ended, we advance. This is
+            // what protects against a video that started fine but then wedged
+            // because the network/server dropped mid-stream (common offline).
+            let stallTimer    = null;
+            let lastMediaTime = 0;
+            let lastProgressAt = Date.now();
+            const markProgress = () => {
+                lastMediaTime  = vid.currentTime || 0;
+                lastProgressAt = Date.now();
+            };
+            vid.addEventListener('timeupdate', markProgress);
+            vid.addEventListener('playing', markProgress);
+            div._startVideoStallWatch = () => {
+                if (stallTimer) clearInterval(stallTimer);
+                lastProgressAt = Date.now();
+                stallTimer = setInterval(() => {
+                    // Self-terminate once this slide is no longer on screen.
+                    if (activeSlide !== div || vid.isConnected === false) {
+                        clearInterval(stallTimer);
+                        stallTimer = null;
+                        return;
+                    }
+                    if (paused || vid.paused || vid.ended) {
+                        lastProgressAt = Date.now();
+                        return;
+                    }
+                    if (Math.abs((vid.currentTime || 0) - lastMediaTime) > 0.05) {
+                        markProgress();
+                        return;
+                    }
+                    if (Date.now() - lastProgressAt > VIDEO_STALL_TIMEOUT_MS) {
+                        clearInterval(stallTimer);
+                        stallTimer = null;
+                        failVideo('playback stall');
+                    }
+                }, 1000);
+            };
+            vid.addEventListener('ended', () => {
+                if (stallTimer) { clearInterval(stallTimer); stallTimer = null; }
+            });
+            div._stopVideoStallWatch = () => {
+                if (stallTimer) { clearInterval(stallTimer); stallTimer = null; }
             };
 
             // Clip support — seek to start point once metadata is ready
@@ -1435,6 +1526,9 @@
                 }
                 if (typeof newSlide._startVideoStartupTimer === 'function') {
                     newSlide._startVideoStartupTimer();
+                }
+                if (typeof newSlide._startVideoStallWatch === 'function') {
+                    newSlide._startVideoStallWatch();
                 }
 
                 // Tell any plugin iframe in this slide about current online state
@@ -2666,6 +2760,13 @@
             }
             // Brief on-screen confirmation
             flashUnlockedToast();
+            // Ask the native shell (Electron / Android) to minimize so a
+            // technician can reach the desktop. The shell keeps the kiosk
+            // minimized until the OS goes idle for a few minutes or the user
+            // brings the window back, then it re-asserts kiosk + tells us to
+            // re-lock (see the relock handler near startup). In a plain
+            // browser these bridges are absent and we just stay unlocked.
+            requestShellMinimize();
             // Auto re-lock when the grace window expires.
             setTimeout(() => {
                 if (Date.now() >= _unlockedUntil) {

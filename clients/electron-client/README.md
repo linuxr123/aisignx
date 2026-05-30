@@ -43,6 +43,19 @@ Outputs go to `clients/electron-client/dist/`. Copy the relevant installer into 
 
 The window starts in fullscreen kiosk from the first paint - there is no visible "windowed then fullscreen" transition.
 
+## PIN unlock & desktop access
+
+When the display has an unlock PIN configured (server-side, per display), a 1.5s long-press (or Enter on a remote) pops the on-screen keypad. Entering the correct PIN **minimizes the kiosk** so a technician can use the desktop underneath. The kiosk stays minimized until either:
+
+- the operating system has been idle for 5 minutes (`powerMonitor.getSystemIdleTime`), or
+- the user brings the window back (taskbar / Alt-Tab),
+
+at which point the player re-asserts fullscreen kiosk and re-locks automatically.
+
+## Offline playback
+
+The player caches its page, plugins, and media (images/videos) in a service worker so content keeps playing when the server is unreachable. Chromium only enables service workers in a secure context, so on plain-HTTP LAN deployments the client automatically marks the configured server origin as a trusted secure origin (`--unsafely-treat-insecure-origin-as-secure`). HTTPS deployments work without this. Videos that stall mid-stream are skipped after a few seconds instead of freezing the playlist.
+
 The server URL and token are stored in the OS user-data directory:
 - Windows: `%APPDATA%\aisignx-player\`
 - Linux: `~/.config/aisignx-player/`

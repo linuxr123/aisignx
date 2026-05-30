@@ -197,13 +197,59 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // If we come back to the foreground after a PIN unlock-minimize —
+        // whether the user reopened us or the idle timer relaunched us — treat
+        // it as "exit unlock mode": cancel the idle timer, re-engage the kiosk
+        // lock task, and tell the player page to re-lock its PIN.
+        val wasUnlocked = _unlockMinimized
+        if (_unlockMinimized) {
+            _unlockMinimized = false
+            _idleRestoreJob?.cancel()
+            _idleRestoreJob = null
+        }
         engageLockTask()
         startLockTaskWatchdog()
+        if (wasUnlocked) {
+            b.webView.evaluateJavascript("window.AISignXRelock && window.AISignXRelock();", null)
+        }
     }
 
     override fun onPause() {
         cancelLockTaskWatchdog()
         super.onPause()
+    }
+
+    // ── PIN unlock → background → idle/manual restore ────────────────────────
+    @Volatile
+    private var _unlockMinimized = false
+    private var _idleRestoreJob: Job? = null
+    private val IDLE_RESTORE_MS = 5L * 60 * 1000
+
+    private fun beginUnlockMinimize() {
+        FileLog.i(TAG, "PIN unlock — backgrounding for desktop access")
+        _unlockMinimized = true
+        cancelLockTaskWatchdog()
+        try { stopLockTask() } catch (_: Throwable) {}
+        _idleRestoreJob?.cancel()
+        _idleRestoreJob = lifecycleScope.launch {
+            delay(IDLE_RESTORE_MS)
+            if (_unlockMinimized) {
+                withContext(Dispatchers.Main) { restoreFromUnlock("idle") }
+            }
+        }
+        try { moveTaskToBack(true) } catch (_: Throwable) {}
+    }
+
+    private fun restoreFromUnlock(reason: String) {
+        if (!_unlockMinimized) return
+        FileLog.i(TAG, "restoring kiosk after unlock ($reason)")
+        // Bring our activity back to the front; onResume() handles the actual
+        // re-lock + lock-task re-engagement and clears the minimized flag.
+        val intent = packageManager.getLaunchIntentForPackage(packageName)
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NEW_TASK)
+            try { startActivity(intent) } catch (_: Throwable) {}
+        }
     }
 
     private fun engageLockTask() {
@@ -546,6 +592,15 @@ class PlayerActivity : AppCompatActivity() {
                 displayServerAutoUpdate = enabled
                 scheduleUpdateChecks(runImmediately = enabled)
             }
+        }
+
+        // Called by display_player.js after a correct PIN. Drops out of the
+        // kiosk lock task and sends the app to the background so a technician
+        // can use the device. The app stays backgrounded until the idle timer
+        // fires or the user reopens it, at which point we re-lock (onResume).
+        @android.webkit.JavascriptInterface
+        fun unlockMinimize() {
+            runOnUiThread { beginUnlockMinimize() }
         }
     }
 }
