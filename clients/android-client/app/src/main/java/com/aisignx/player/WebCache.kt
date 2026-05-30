@@ -283,25 +283,25 @@ object WebCache {
 		val url = req.url.toString()
 		val rangeHeader = req.requestHeaders["Range"] ?: req.requestHeaders["range"]
 		val cacheFile   = mediaCacheFile(ctx, url)
+		val hasFullCache = cacheFile.exists() && cacheFile.length() > 0L
 
-		// Always try the network first. If reachable, let the WebView handle
-		// streaming directly (we return null), and kick off a background
-		// download into our cache so we have an offline copy for later.
-		// Quick TCP probe with a tight timeout so an offline kiosk fails
-		// over to the cache fast instead of waiting for TCP timeout.
-		val online = quickReachable(ctx, url)
-		if (online) {
-			if (!cacheFile.exists()) {
+		// Uncached media must always reach the server via native WebView
+		// networking. A flaky quickReachable() probe used to mark the server
+		// "offline" and return 503 here, which left <video> on a black frame
+		// mid-playback even when the server was up.
+		if (!hasFullCache) {
+			if (quickReachable(ctx, url)) {
 				ensureMediaPrefetch(url, cacheFile)
 			}
-			return null   // passthrough -> native WebView networking
+			return null
 		}
 
-		// Offline path: must have a cached file or we can't serve.
-		if (!cacheFile.exists() || cacheFile.length() <= 0L) {
-			FileLog.w(TAG, "serveMedia OFFLINE-MISS $url")
-			return errorResponse()
+		val online = quickReachable(ctx, url)
+		if (online) {
+			return null   // passthrough — prefer live streaming when reachable
 		}
+
+		// Offline path: serve the completed on-disk copy only.
 
 		val total = cacheFile.length()
 		val mimeSidecar = File(cacheFile.parentFile, cacheFile.name + ".mime")
@@ -364,6 +364,20 @@ object WebCache {
 	@Volatile private var lastReachableUrl  = ""
 	@Volatile private var lastReachableTs   = 0L
 	@Volatile private var lastReachableVal  = false
+
+	/** Called when SSE/ping confirms the server is up — avoids stale "offline" probes. */
+	fun markServerReachable(serverUrl: String) {
+		val key = try {
+			val u = java.net.URL(serverUrl.trimEnd('/') + "/")
+			u.protocol + "://" + u.host + ":" + (if (u.port == -1) {
+				if (u.protocol == "https") 443 else 80
+			} else u.port)
+		} catch (_: Throwable) { serverUrl }
+		lastReachableUrl = key
+		lastReachableVal = true
+		lastReachableTs  = System.currentTimeMillis()
+	}
+
 	private fun quickReachable(ctx: Context, url: String): Boolean {
 		val key = try {
 			val u = java.net.URL(url)
@@ -372,7 +386,11 @@ object WebCache {
 			} else u.port)
 		} catch (_: Throwable) { url }
 		val now = System.currentTimeMillis()
-		if (key == lastReachableUrl && now - lastReachableTs < 3_000L) {
+		// Cache probe result briefly. Use a longer TTL when the server was
+		// reachable so a single slow /healthz during video playback does not
+		// flip every Range request to "offline" for three seconds.
+		val ttl = if (lastReachableVal) 8_000L else 2_000L
+		if (key == lastReachableUrl && now - lastReachableTs < ttl) {
 			return lastReachableVal
 		}
 		val ok = try {

@@ -8,7 +8,7 @@
  *   everything else → network only (API writes, SSE, ping)
  */
 
-const CACHE_VER    = 'signage-v68';
+const CACHE_VER    = 'signage-v69';
 const STATIC_CACHE = `${CACHE_VER}-static`;
 // Media cache deliberately uses a STABLE name (no version prefix) so that
 // uploaded images/videos survive service-worker upgrades. Media files are

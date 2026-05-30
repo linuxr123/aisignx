@@ -173,7 +173,12 @@
     window.AISignXRelock = forceRelock;
     try {
         if (window.signage && typeof window.signage.onRelock === 'function') {
-            window.signage.onRelock(() => forceRelock());
+            window.signage.onRelock(() => {
+                forceRelock();
+                _pingFailStreak = 0;
+                ping();
+                resumePlayback();
+            });
         }
     } catch (_) {}
 
@@ -531,6 +536,27 @@
     // the slide for its full duration cap (up to the 24h ceiling) -> "playing
     // too long" / long gaps between media when offline.
     const VIDEO_STALL_TIMEOUT_MS = 6000;
+    // Native shells (Android WebView) buffer more aggressively — use a longer
+    // stall window so normal mid-playback buffering is not mistaken for failure.
+    const VIDEO_STALL_TIMEOUT_NATIVE_MS = 18_000;
+    const PING_FAILS_BEFORE_OFFLINE = 3;
+    const SSE_OFFLINE_GRACE_MS = 12_000;
+    let _pingFailStreak = 0;
+    let _sseOfflineTimer = null;
+
+    function isNativeShell() {
+        return (typeof window.AISignXNative !== 'undefined') ||
+            (typeof window.signage === 'object' &&
+             typeof window.signage.runCommand === 'function');
+    }
+
+    function resumePlayback() {
+        try {
+            document.querySelectorAll('video').forEach(v => {
+                if (v.paused) v.play().catch(() => {});
+            });
+        } catch (_) {}
+    }
 
     function showMediaButtons() {
         if (!SHOW_MEDIA_BUTTONS || !mediaBtns) return;
@@ -1036,6 +1062,10 @@
     function retireSlide(slide) {
         if (!slide) return;
         if (typeof slide._stopVideoStallWatch === 'function') slide._stopVideoStallWatch();
+        if (slide._videoPendingCapTimer) {
+            clearTimeout(slide._videoPendingCapTimer);
+            slide._videoPendingCapTimer = null;
+        }
         slide.querySelectorAll('video, audio').forEach(el => {
             try {
                 el.pause();
@@ -1180,6 +1210,9 @@
             };
             vid.addEventListener('timeupdate', markProgress);
             vid.addEventListener('playing', markProgress);
+            const stallTimeoutMs = isNativeShell()
+                ? VIDEO_STALL_TIMEOUT_NATIVE_MS
+                : VIDEO_STALL_TIMEOUT_MS;
             div._startVideoStallWatch = () => {
                 if (stallTimer) clearInterval(stallTimer);
                 lastProgressAt = Date.now();
@@ -1194,17 +1227,28 @@
                         lastProgressAt = Date.now();
                         return;
                     }
+                    // Still fetching bytes — not a stall.
+                    if (vid.networkState === 2 || vid.readyState < 2) {
+                        lastProgressAt = Date.now();
+                        return;
+                    }
                     if (Math.abs((vid.currentTime || 0) - lastMediaTime) > 0.05) {
                         markProgress();
                         return;
                     }
-                    if (Date.now() - lastProgressAt > VIDEO_STALL_TIMEOUT_MS) {
+                    if (Date.now() - lastProgressAt > stallTimeoutMs) {
                         clearInterval(stallTimer);
                         stallTimer = null;
                         failVideo('playback stall');
                     }
                 }, 1000);
             };
+            // Safety: never leave the black video-pending overlay up forever.
+            div._videoPendingCapTimer = setTimeout(() => {
+                if (activeSlide === div && div.classList.contains('video-pending')) {
+                    markVideoReady();
+                }
+            }, 20_000);
             vid.addEventListener('ended', () => {
                 if (stallTimer) { clearInterval(stallTimer); stallTimer = null; }
             });
@@ -2044,14 +2088,25 @@
             sseSource = null;
             // Do NOT clear any active emergency on SSE drop — offline lock rule:
             // emergency stays on screen until an explicit emergency_clear event arrives.
-            setNetworkState('server-offline');
+            // Brief SSE blips are common; wait before declaring the server offline.
+            if (_sseOfflineTimer) clearTimeout(_sseOfflineTimer);
+            _sseOfflineTimer = setTimeout(() => {
+                _sseOfflineTimer = null;
+                setNetworkState('server-offline');
+            }, SSE_OFFLINE_GRACE_MS);
             ping();
             setTimeout(connectSSE, sseRetryDelay);
             sseRetryDelay = Math.min(sseRetryDelay * 2, SSE_MAX);
         };
 
         sseSource.onopen = () => {
+            if (_sseOfflineTimer) {
+                clearTimeout(_sseOfflineTimer);
+                _sseOfflineTimer = null;
+            }
             sseRetryDelay = SSE_BASE;
+            _pingFailStreak = 0;
+            setNetworkState('online');
             // SSE reopened -> we have server reachability again. Network
             // outages plus wake-from-suspend are when local clocks
             // diverge the most, so refresh the offset with multiple
@@ -2266,8 +2321,11 @@
                 return;
             }
             // Ping succeeded — server is online
+            _pingFailStreak = 0;
             setNetworkState('online');
         } catch {
+            _pingFailStreak++;
+            if (_pingFailStreak < PING_FAILS_BEFORE_OFFLINE) return;
             if (typeof window.AISignXNative !== 'undefined') {
                 setNetworkState('server-offline');
                 return;
@@ -2485,6 +2543,17 @@
         connectSSE();
         startPingLoop();
         ping(); // immediate ping to mark online
+        // Electron minimize / task switch pauses media without unloading the page.
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') return;
+            _pingFailStreak = 0;
+            if (_sseOfflineTimer) {
+                clearTimeout(_sseOfflineTimer);
+                _sseOfflineTimer = null;
+            }
+            ping();
+            resumePlayback();
+        });
         // Always-on background recalibration, regardless of group sync.
         // The 60s cadence keeps the clock plugin within ~50-100ms across
         // a fleet even when OS clocks drift independently.

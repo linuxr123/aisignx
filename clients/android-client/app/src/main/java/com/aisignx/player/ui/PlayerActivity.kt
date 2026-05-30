@@ -150,6 +150,7 @@ class PlayerActivity : AppCompatActivity() {
                 _playerPageLoaded = true
                 cancelOfflineRetry()
                 _showingOffline = false
+                WebCache.markServerReachable(Config.serverUrl)
                 val version = try {
                     packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.0"
                 } catch (_: Throwable) { "1.0.0" }
@@ -191,12 +192,18 @@ class PlayerActivity : AppCompatActivity() {
     override fun onDestroy() {
         cancelLockTaskWatchdog()
         _updateCheckJob?.cancel()
+        _sseOfflineJob?.cancel()
         super.onDestroy()
         SseClient.stop()
     }
 
     override fun onResume() {
         super.onResume()
+        // WebView video/audio stops without these after unpin / task-switch.
+        try {
+            b.webView.onResume()
+            b.webView.resumeTimers()
+        } catch (_: Throwable) {}
         // If we come back to the foreground after a PIN unlock-minimize —
         // whether the user reopened us or the idle timer relaunched us — treat
         // it as "exit unlock mode": cancel the idle timer, re-engage the kiosk
@@ -212,10 +219,26 @@ class PlayerActivity : AppCompatActivity() {
         if (wasUnlocked) {
             b.webView.evaluateJavascript("window.AISignXRelock && window.AISignXRelock();", null)
         }
+        if (_playerPageLoaded && !_showingOffline) {
+            b.webView.evaluateJavascript(
+                "window.signageReportConnectivity && window.signageReportConnectivity('online');",
+                null
+            )
+            // Kick any video that wedged while we were backgrounded.
+            b.webView.evaluateJavascript(
+                "(function(){try{document.querySelectorAll('video').forEach(function(v){if(v.paused)v.play().catch(function(){});});}catch(e){}})();",
+                null
+            )
+        }
     }
 
     override fun onPause() {
         cancelLockTaskWatchdog()
+        _sseOfflineJob?.cancel()
+        try {
+            b.webView.onPause()
+            b.webView.pauseTimers()
+        } catch (_: Throwable) {}
         super.onPause()
     }
 
@@ -337,16 +360,37 @@ class PlayerActivity : AppCompatActivity() {
             var prev = false
             SseClient.connected.collect { now ->
                 if (!now && prev) {
-                    withContext(Dispatchers.Main) {
-                        b.webView.evaluateJavascript(
-                            "window.signageReportConnectivity && window.signageReportConnectivity('server-offline');",
-                            null
-                        )
+                    // SSE drops briefly during normal operation (Wi-Fi blips,
+                    // server restarts). Do not flash "server offline" until
+                    // the stream has been down for several seconds.
+                    _sseOfflineJob?.cancel()
+                    _sseOfflineJob = lifecycleScope.launch {
+                        delay(SSE_OFFLINE_GRACE_MS)
+                        if (!SseClient.connected.value) {
+                            withContext(Dispatchers.Main) {
+                                b.webView.evaluateJavascript(
+                                    "window.signageReportConnectivity && window.signageReportConnectivity('server-offline');",
+                                    null
+                                )
+                            }
+                        }
                     }
                 }
-                if (now && !prev && _showingOffline) {
-                    FileLog.i(TAG, "SSE reconnected — reloading player")
-                    withContext(Dispatchers.Main) { loadPlayer() }
+                if (now && !prev) {
+                    _sseOfflineJob?.cancel()
+                    _sseOfflineJob = null
+                    withContext(Dispatchers.Main) {
+                        if (_showingOffline) {
+                            FileLog.i(TAG, "SSE reconnected — reloading player")
+                            loadPlayer()
+                        } else if (_playerPageLoaded) {
+                            WebCache.markServerReachable(Config.serverUrl)
+                            b.webView.evaluateJavascript(
+                                "window.signageReportConnectivity && window.signageReportConnectivity('online');",
+                                null
+                            )
+                        }
+                    }
                 }
                 prev = now
             }
@@ -478,7 +522,7 @@ class PlayerActivity : AppCompatActivity() {
                 showOfflinePage()
                 scheduleOfflineRetry()
             }
-        }, 12_000L)
+        }, 25_000L)
     }
 
     // ── Offline cold-start handling ──────────────────────────────────────────
@@ -490,6 +534,7 @@ class PlayerActivity : AppCompatActivity() {
     private var _lastPlayerUrl: String? = null
     private var _showingOffline: Boolean = false
     private var _retryJob: Job? = null
+    private var _sseOfflineJob: Job? = null
     private val RETRY_INTERVAL_MS = 10_000L
 
     private fun showOfflinePage() {
@@ -578,6 +623,8 @@ class PlayerActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "AISignX/Player"
+        /** Wait this long after an SSE drop before telling the page the server is offline. */
+        private const val SSE_OFFLINE_GRACE_MS = 12_000L
     }
 
     private inner class NativePlayerBridge {

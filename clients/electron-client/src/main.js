@@ -494,6 +494,12 @@ function loadPlayerUrl(serverUrl, token) {
   // Track the most-recently-requested player URL so the retry timer can
   // reload it without re-reading config every cycle.
   _lastPlayerUrl = url;
+  _playerPageReady = false;
+  _mainFrameFailCount = 0;
+  if (_offlineSwapTimer) {
+    clearTimeout(_offlineSwapTimer);
+    _offlineSwapTimer = null;
+  }
   mainWindow.loadURL(url);
 }
 
@@ -506,7 +512,16 @@ function loadPlayerUrl(serverUrl, token) {
 let _lastPlayerUrl     = null;
 let _retryTimer        = null;
 let _showingOffline    = false;
+let _playerPageReady   = false;
+let _mainFrameFailCount = 0;
+let _offlineSwapTimer  = null;
 const RETRY_INTERVAL_MS = 10_000;
+
+function playerUrlMatches(validatedURL) {
+  if (!_lastPlayerUrl || !validatedURL) return false;
+  const base = _lastPlayerUrl.split('?')[0];
+  return validatedURL === _lastPlayerUrl || validatedURL.startsWith(base);
+}
 
 function attachOfflineRetryHandlers() {
   if (!mainWindow || mainWindow._offlineHandlersAttached) return;
@@ -517,15 +532,27 @@ function attachOfflineRetryHandlers() {
       if (!isMainFrame) return;
       // -3 = ABORTED (we triggered another navigation). Ignore.
       if (errorCode === -3) return;
-      // Only retry when the failed URL is the player URL we just tried.
-      if (!_lastPlayerUrl || validatedURL !== _lastPlayerUrl) return;
+      if (!playerUrlMatches(validatedURL)) return;
       flog('[offline] did-fail-load', errorCode, errorDescription, validatedURL);
-      _showingOffline = true;
-      // Show the friendly waiting screen; pass the URL via hash so it can be
-      // displayed.
-      const offlineHtml = path.join(__dirname, 'offline.html');
-      mainWindow.loadFile(offlineHtml, { hash: encodeURIComponent(_lastPlayerUrl) });
-      scheduleRetry();
+
+      // If the player was already running, a single main-frame blip should
+      // not tear down the whole page (blank screen). Retry the player URL a
+      // few times before swapping to offline.html.
+      if (_playerPageReady) {
+        _mainFrameFailCount++;
+        if (_mainFrameFailCount <= 3) {
+          flog('[offline] soft retry', _mainFrameFailCount, 'while playing');
+          if (_offlineSwapTimer) clearTimeout(_offlineSwapTimer);
+          _offlineSwapTimer = setTimeout(() => {
+            _offlineSwapTimer = null;
+            if (!mainWindow || mainWindow.isDestroyed() || !_lastPlayerUrl) return;
+            mainWindow.loadURL(_lastPlayerUrl);
+          }, 2_000);
+          return;
+        }
+      }
+
+      showElectronOfflinePage();
     });
 
   mainWindow.webContents.on('did-finish-load', () => {
@@ -536,12 +563,27 @@ function attachOfflineRetryHandlers() {
     }
     if (_lastPlayerUrl && currentUrl.startsWith(_lastPlayerUrl.split('?')[0])) {
       _showingOffline = false;
+      _playerPageReady = true;
+      _mainFrameFailCount = 0;
+      if (_offlineSwapTimer) {
+        clearTimeout(_offlineSwapTimer);
+        _offlineSwapTimer = null;
+      }
       if (_retryTimer) {
         clearTimeout(_retryTimer);
         _retryTimer = null;
       }
     }
   });
+}
+
+function showElectronOfflinePage() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  _showingOffline = true;
+  _playerPageReady = false;
+  const offlineHtml = path.join(__dirname, 'offline.html');
+  mainWindow.loadFile(offlineHtml, { hash: encodeURIComponent(_lastPlayerUrl || '') });
+  scheduleRetry();
 }
 
 function scheduleRetry() {
@@ -606,7 +648,17 @@ function restoreKioskAndLock(reason) {
     mainWindow.moveTop();
     setTimeout(() => { try { mainWindow.setAlwaysOnTop(false); } catch (_) {} }, 1000);
   } catch (e) { flog('[unlock] restore failed:', String(e)); }
-  try { mainWindow.webContents.send('relock-kiosk', { reason }); } catch (_) {}
+  try {
+    mainWindow.webContents.send('relock-kiosk', { reason });
+    // Player may have been backgrounded while minimized — nudge it online
+    // and resume any paused videos without a full reload.
+    mainWindow.webContents.executeJavaScript(
+      "(function(){try{if(window.signageReportConnectivity)window.signageReportConnectivity('online');" +
+      "document.querySelectorAll('video').forEach(function(v){if(v.paused)v.play().catch(function(){});});" +
+      "}catch(e){}})();",
+      true
+    ).catch(() => {});
+  } catch (_) {}
 }
 
 // ── Registration polling ──────────────────────────────────────────────────────
