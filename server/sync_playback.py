@@ -48,6 +48,11 @@ from media_duration import item_dict_duration_ms
 
 _ANCHOR_KEY_FMT = 'sync_anchor.{gid}.{version}'
 
+# When a new playlist version gets its first anchor, start the shared cycle
+# slightly in the future so every display in the group can prefetch media
+# before slide 0 begins (reduces visible desync after schedule changes).
+SYNC_ANCHOR_GRACE_MS = 10_000
+
 
 def group_sync_playback_active(display) -> bool:
     """True when this display's assigned group has wall-clock sync enabled.
@@ -111,10 +116,11 @@ def get_or_create_anchor(group_id: int, playlist_version: str,
         except (TypeError, ValueError):
             logger.warning(f'sync: bad cached anchor {cached!r} for {key}, regenerating')
     now = now_ms if now_ms is not None else _server_now_ms()
-    _settings.set(key, str(int(now)), _allow_unknown=True)
+    anchor = int(now) + SYNC_ANCHOR_GRACE_MS
+    _settings.set(key, str(anchor), _allow_unknown=True)
     logger.info(f'sync: anchor created for group={group_id} version={playlist_version} '
-                f'at {now}ms')
-    return int(now)
+                f'at {anchor}ms (grace {SYNC_ANCHOR_GRACE_MS}ms)')
+    return anchor
 
 
 def build_sync_payload(display, items: List[Dict[str, Any]],

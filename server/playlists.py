@@ -15,6 +15,15 @@ import storage
 
 playlists_bp = Blueprint('playlists', __name__)
 
+
+def _notify_connected_displays_reload():
+    """Tell running players to pick up playlist edits without waiting for SSE poll."""
+    try:
+        from display_player import notify_domain_playlist_reload
+        notify_domain_playlist_reload()
+    except Exception:
+        logger.exception('notify_connected_displays_reload failed')
+
 # Per-item playback tweaks accept a small whitelist of values. Anything
 # unknown silently falls back to the default so a malicious or stale
 # client cannot inject arbitrary CSS classes through the player.
@@ -260,6 +269,7 @@ def api_update_playlist(playlist_id):
         _apply_smart_fields(playlist, data)
 
         db.session.commit()
+        _notify_connected_displays_reload()
         logger.info(f"Successfully updated playlist ID: {playlist.id}")
         
         return jsonify({
@@ -385,6 +395,7 @@ def api_reorder_playlist(playlist_id):
                 item.position = item_data['position']
 
         db.session.commit()
+        _notify_connected_displays_reload()
 
         return jsonify({
             'status': 'success',
@@ -496,6 +507,7 @@ def api_update_playlist_item(playlist_id, item_id):
         item.mute_audio = bool(data.get('mute_audio'))
 
     db.session.commit()
+    _notify_connected_displays_reload()
 
     return jsonify({
         'status': 'success',
@@ -625,6 +637,7 @@ def api_add_playlist_item(playlist_id):
 
     db.session.add(item)
     db.session.commit()
+    _notify_connected_displays_reload()
 
     return jsonify({
         'status': 'success',
@@ -681,6 +694,7 @@ def api_bulk_add_playlist_items(playlist_id):
         db.session.add(item)
         created.append(item)
     db.session.commit()
+    _notify_connected_displays_reload()
     return jsonify({
         'status': 'success',
         'added': [i.to_dict() for i in created],
@@ -743,6 +757,7 @@ def api_bulk_update_playlist_items(playlist_id):
             else:
                 item.mute_audio = bool(v)
     db.session.commit()
+    _notify_connected_displays_reload()
     return jsonify({'status': 'success',
                     'updated': [i.to_dict() for i in items]})
 
@@ -774,6 +789,7 @@ def api_bulk_delete_playlist_items(playlist_id):
     for idx, it in enumerate(remaining, start=1):
         it.position = idx
     db.session.commit()
+    _notify_connected_displays_reload()
     return jsonify({'status': 'success', 'deleted': deleted,
                     'remaining': len(remaining)})
 
@@ -792,6 +808,7 @@ def api_delete_playlist_item(playlist_id, item_id):
     for item in items_to_update:
         item.position -= 1
     db.session.commit()
+    _notify_connected_displays_reload()
     return jsonify({
         'status': 'success',
         'message': 'Item deleted from playlist'

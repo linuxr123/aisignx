@@ -18,6 +18,9 @@ const LOG_PATH       = path.join(app.getPath('userData'), 'aisignx-player.log');
 const POLL_INTERVAL_MS   = 5_000;
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;  // 15 min
 
+// Player JS reads window.AISIGNX_APP_VERSION on every ping (displays page).
+process.env.AISIGNX_APP_VERSION = app.getVersion();
+
 let mainWindow  = null;
 let psBlockerId = null;
 let updateTimer = null;

@@ -141,6 +141,48 @@
     }
     window.AISignXPromptUnlock = promptForPin;
 
+    /**
+     * Android TV / Shield remote keys are handled in PlayerActivity and
+     * forwarded here so WebView cannot pass them through to <video> seeking.
+     */
+    window.AISignXTvKey = function (action) {
+        const a = String(action || '');
+        if (a === 'menu') {
+            promptForPin();
+            return;
+        }
+        if (a === 'back') {
+            if (_pinKeypadOpen) closePinKeypad();
+            return;
+        }
+        if (a.startsWith('digit:')) {
+            const d = a.slice(6);
+            if (!UNLOCK_PIN || d.length !== 1 || d < '0' || d > '9') return;
+            if (!_pinKeypadOpen) showPinKeypad(null);
+            onPinDigit(d);
+            return;
+        }
+        if (a === 'center') {
+            if (_pinKeypadOpen) {
+                if (!activateFocusedPinButton()) onPinSubmit();
+            } else if (isLocked() && UNLOCK_PIN) {
+                promptForPin();
+            }
+            return;
+        }
+        if (isLocked() || _pinKeypadOpen) {
+            if (UNLOCK_PIN && !_pinKeypadOpen) promptForPin();
+            return;
+        }
+        if (a === 'next' || a === 'prev' || a === 'ffwd' || a === 'rewind' || a === 'playpause') {
+            if (a === 'next')      { manualNext();    showMediaButtons(); }
+            if (a === 'prev')      { goBack();        showMediaButtons(); }
+            if (a === 'ffwd')      { scrubVideo(+10); showMediaButtons(); }
+            if (a === 'rewind')    { scrubVideo(-10); showMediaButtons(); }
+            if (a === 'playpause') { togglePause(); }
+        }
+    };
+
     // ── Shell minimize bridge (Electron / Android) ───────────────────────────
     // After a correct PIN we ask the native shell to minimize the kiosk so a
     // technician can use the underlying desktop. The shell owns the "restore
@@ -182,20 +224,48 @@
         }
     } catch (_) {}
 
+    function _isMediaControlKey(e) {
+        const k = e.key;
+        return (
+            k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown' ||
+            k === ' ' || k === 'MediaPlayPause' || k === 'MediaTrackNext' ||
+            k === 'MediaTrackPrevious' || k === 'FastForward' || k === 'Rewind'
+        );
+    }
+
     function _blockKey(e) {
         if (!isLocked()) return;
-        if (_pinKeypadOpen) return;
+        if (_pinKeypadOpen) {
+            if (_isMediaControlKey(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            return;
+        }
         if (UNLOCK_PIN && e.type === 'keydown') {
             const openPin = (
                 e.key === 'Enter' || e.key === 'Select' || e.key === '*' ||
                 e.key === 'Multiply' || e.code === 'NumpadEnter' ||
-                e.key === 'BrowserSearch'
+                e.key === 'BrowserSearch' || e.key === 'Info' ||
+                (e.key >= '0' && e.key <= '9')
             );
             if (openPin) {
                 e.preventDefault();
-                if (!_pinKeypadOpen) promptForPin();
+                e.stopPropagation();
+                if (e.key >= '0' && e.key <= '9') {
+                    showPinKeypad(null);
+                    onPinDigit(e.key);
+                } else if (!_pinKeypadOpen) {
+                    promptForPin();
+                }
                 return;
             }
+        }
+        if (_isMediaControlKey(e)) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (UNLOCK_PIN && !_pinKeypadOpen) promptForPin();
+            return;
         }
         e.preventDefault();
     }
@@ -600,9 +670,93 @@
             if (row && typeof row.clockOffsetMs === 'number' && Number.isFinite(row.clockOffsetMs)) {
                 serverClockOffsetMs = row.clockOffsetMs;
             }
-            return row.data || null;
+            const data = row.data || null;
+            if (data && playlistHasExpiredUrls(data)) return null;
+            return data;
         } catch {
             return null;
+        }
+    }
+
+    /** True when a signed /uploads/ URL is past its ``e=`` expiry. */
+    function signedUrlExpired(url) {
+        try {
+            const u = new URL(url, window.location.origin);
+            const e = parseInt(u.searchParams.get('e'), 10);
+            if (!Number.isFinite(e)) return false;
+            return (Date.now() / 1000) > (e - 30);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function playlistHasExpiredUrls(data) {
+        return (data.items || []).some((it) =>
+            (it.type === 'image' || it.type === 'video') &&
+            it.content_url && signedUrlExpired(it.content_url));
+    }
+
+    /** Merge fresh signed URLs from the server without changing the slide index. */
+    function mergeFreshPlaylistUrls(pl) {
+        if (!pl || !pl.items || !items.length) return false;
+        let changed = false;
+        const byId = new Map(pl.items.map((it) => [it.id, it]));
+        for (let i = 0; i < items.length; i++) {
+            const fresh = byId.get(items[i].id);
+            if (fresh && fresh.content_url && fresh.content_url !== items[i].content_url) {
+                items[i].content_url = fresh.content_url;
+                changed = true;
+            }
+        }
+        if (changed && playlist) {
+            playlist.items = items;
+            savePlaylistCache(playlist);
+        }
+        return changed;
+    }
+
+    function refreshActiveSlideMedia() {
+        const item = items[currentIdx];
+        if (!item || !activeSlide) return;
+        if (item.type === 'image') {
+            const img = activeSlide.querySelector('img');
+            if (img && item.content_url) {
+                img.dataset.retry = '';
+                img.dataset.urlRefresh = '';
+                img.removeAttribute('src');
+                img.src = item.content_url;
+            }
+        } else if (item.type === 'video') {
+            const vid = activeSlide.querySelector('video');
+            if (vid && item.content_url) {
+                vid.removeAttribute('src');
+                vid.src = item.content_url;
+                vid.load();
+                if (!paused) vid.play().catch(() => {});
+            }
+        }
+    }
+
+    async function refreshPlaylistUrls() {
+        try {
+            const qs = clientQuery();
+            const r = await fetch(`/api/display/${TOKEN}/playlist${qs ? '?' + qs : ''}`);
+            if (!r.ok) return false;
+            const json = await r.json();
+            if (json.status !== 'success' || !json.playlist) return false;
+            if (json.playlist.version && json.playlist.version !== lastPlaylistVersion) {
+                if (json.playlist.sync && json.playlist.sync.enabled) {
+                    await calibrateServerClock(3);
+                }
+                applyPlaylist(json.playlist);
+                return true;
+            }
+            const changed = mergeFreshPlaylistUrls(json.playlist);
+            if (changed) refreshActiveSlideMedia();
+            return changed;
+        } catch (e) {
+            console.warn('[player] refreshPlaylistUrls failed:', e);
+            return false;
         }
     }
 
@@ -660,7 +814,7 @@
         });
     }
 
-    function warmPlaylistCaches(data, fromCache = false) {
+    function warmPlaylistCaches(data, fromCache = false, urgent = false) {
         if (!data || !data.items || !data.items.length) return;
         const payload = collectPrefetchUrls(data);
         payload.pagePath = window.location.pathname;
@@ -668,7 +822,8 @@
         if (window._prefetchTimer) clearTimeout(window._prefetchTimer);
         // Synced walls: warm media sooner so every panel is more likely to
         // have bytes on disk before a network drop.
-        const delay = fromCache ? 0 : (data.sync && data.sync.enabled ? 2_000 : 5_000);
+        const delay = (fromCache || urgent) ? 0
+            : (data.sync && data.sync.enabled ? 2_000 : 5_000);
         window._prefetchTimer = setTimeout(() => {
             window._prefetchTimer = null;
             deliverPrefetchPayload(payload);
@@ -736,6 +891,7 @@
     let playlist     = null;   // current playlist object
     let items        = [];     // flat item array
     let currentIdx   = 0;
+    let lastPlaylistVersion = null;
     let slideTimer   = null;
     let activeSlide  = null;
     let pingTimer    = null;
@@ -774,7 +930,12 @@
         const total = syncBlock.cycle_total_ms;
         const table = syncBlock.item_durations_ms || [];
         if (!total || total <= 0 || !table.length) return null;
-        const elapsed = ((localToServerNowMs() - syncBlock.anchor_unix_ms) % total + total) % total;
+        const nowMs = localToServerNowMs();
+        const anchor = syncBlock.anchor_unix_ms;
+        if (nowMs < anchor) {
+            return { idx: 0, msUntilNext: anchor - nowMs };
+        }
+        const elapsed = ((nowMs - anchor) % total + total) % total;
         let acc = 0;
         for (let i = 0; i < table.length; i++) {
             const slotEnd = acc + table[i];
@@ -1111,15 +1272,42 @@
             img.draggable = false;
             // If the image fails to load (e.g. offline + not cached), skip this slide
             img.addEventListener('error', () => {
+                const idx = (slideIdx != null) ? slideIdx : currentIdx;
+                const failSlide = () => {
+                    console.warn('[player] Image failed to load, advancing:',
+                        (items[idx] && items[idx].content_url) || item.content_url);
+                    if (activeSlide === div) setTimeout(advance, 500);
+                };
+                if (!img.dataset.urlRefresh) {
+                    img.dataset.urlRefresh = '1';
+                    refreshPlaylistUrls().then((ok) => {
+                        const it = items[idx];
+                        if (ok && it && it.content_url) {
+                            img.dataset.retry = '';
+                            img.removeAttribute('src');
+                            img.src = it.content_url;
+                            return;
+                        }
+                        if (!img.dataset.retry) {
+                            img.dataset.retry = '1';
+                            const src = it && it.content_url ? it.content_url : item.content_url;
+                            img.removeAttribute('src');
+                            img.src = src;
+                            return;
+                        }
+                        failSlide();
+                    });
+                    return;
+                }
                 if (!img.dataset.retry) {
                     img.dataset.retry = '1';
-                    const src = item.content_url;
+                    const src = items[idx] && items[idx].content_url
+                        ? items[idx].content_url : item.content_url;
                     img.removeAttribute('src');
                     img.src = src;
                     return;
                 }
-                console.warn('[player] Image failed to load, advancing:', item.content_url);
-                if (activeSlide === div) setTimeout(advance, 500);
+                failSlide();
             });
             div.appendChild(img);
 
@@ -1149,6 +1337,12 @@
             vid.setAttribute('disablepictureinpicture', '');
             vid.setAttribute('playsinline', '');
             vid.setAttribute('webkit-playsinline', '');
+            vid.tabIndex = -1;
+            vid.addEventListener('keydown', (e) => {
+                if (!isLocked() && !_pinKeypadOpen) return;
+                e.preventDefault();
+                e.stopPropagation();
+            }, true);
             vid.poster = BLACK_VIDEO_POSTER;
             vid.style.backgroundColor = '#000';
             vid.autoplay = true;
@@ -1184,6 +1378,20 @@
 
             // If the video fails to load (e.g. offline + not cached), skip this slide
             vid.addEventListener('error', () => {
+                if (!vid.dataset.urlRefresh) {
+                    vid.dataset.urlRefresh = '1';
+                    refreshPlaylistUrls().then((ok) => {
+                        const it = items[(slideIdx != null) ? slideIdx : currentIdx];
+                        if (ok && it && it.content_url && activeSlide === div) {
+                            vid.src = it.content_url;
+                            vid.load();
+                            if (!paused) vid.play().catch(() => {});
+                            return;
+                        }
+                        failVideo('error event');
+                    });
+                    return;
+                }
                 failVideo('error event');
             });
             div._startVideoStartupTimer = () => {
@@ -1807,8 +2015,9 @@
         if (btnRewind) btnRewind.addEventListener('click', (e) => { e.stopPropagation(); scrubVideo(-10); showMediaButtons(); });
         if (btnFfwd)   btnFfwd.addEventListener('click',   (e) => { e.stopPropagation(); scrubVideo(+10); showMediaButtons(); });
 
-        // Keyboard shortcuts
+        // Keyboard shortcuts (only when kiosk input is unlocked)
         document.addEventListener('keydown', (e) => {
+            if (isLocked() || _pinKeypadOpen) return;
             if (e.key === 'ArrowRight'  || e.key === 'MediaTrackNext')     { manualNext();    showMediaButtons(); }
             if (e.key === 'ArrowLeft'   || e.key === 'MediaTrackPrevious') { goBack();        showMediaButtons(); }
             if (e.key === ' '           || e.key === 'MediaPlayPause')     { togglePause();                       }
@@ -1825,11 +2034,19 @@
             showOverlay('No content scheduled.', false);
             return;
         }
+        const versionChanged = !!(data.version && data.version !== lastPlaylistVersion);
+        if (data.version) lastPlaylistVersion = data.version;
+
+        if (playlistHasExpiredUrls(data)) {
+            fetchPlaylist();
+            return;
+        }
+
         if (!fromCache) savePlaylistCache(data);
         showOfflineBanner(fromCache, fromCache ? _networkState : 'online');
 
         clearPreloadedSlide();
-        warmPlaylistCaches(data, fromCache);
+        warmPlaylistCaches(data, fromCache, versionChanged);
 
         const wasEmpty = !items.length;
         playlist = data;
@@ -1858,16 +2075,20 @@
             showSlide(currentIdx);
             preloadNext();
         } else {
-            // Already playing -- normally just clamp and let the current
-            // slide finish. For SYNCED playlists we force-jump if our
-            // current index doesn't match the group's expected index;
-            // this catches displays joining mid-cycle and recovers from
-            // playlist-version changes that re-anchor everyone.
+            // Already playing: on playlist/schedule change always repaint so
+            // new media URLs load (old slide DOM may still show prior files).
             const tgt = syncedTarget();
-            if (tgt && tgt.idx !== currentIdx) {
-                console.log(`[sync] re-aligning: ${currentIdx} -> ${tgt.idx}`);
+            const needJump = versionChanged ||
+                (tgt && tgt.idx !== currentIdx);
+            if (needJump) {
+                if (tgt) {
+                    console.log(`[sync] re-aligning: ${currentIdx} -> ${tgt.idx}` +
+                        (versionChanged ? ' (playlist changed)' : ''));
+                    currentIdx = tgt.idx;
+                } else {
+                    currentIdx = currentIdx % items.length;
+                }
                 clearTimeout(slideTimer);
-                currentIdx = tgt.idx;
                 hideOverlay();
                 showSlide(currentIdx);
             } else {
@@ -2299,8 +2520,20 @@
         } catch {}
     });
 
+    async function ensureReportedAppVersion() {
+        if (window.AISIGNX_APP_VERSION) return;
+        if (typeof window.signage === 'object' &&
+            typeof window.signage.getAppVersion === 'function') {
+            try {
+                const v = await window.signage.getAppVersion();
+                if (v) window.AISIGNX_APP_VERSION = String(v);
+            } catch (_) {}
+        }
+    }
+
     async function ping() {
         if (blocked) return;
+        await ensureReportedAppVersion();
         const item = items[currentIdx];
         const current_content = item
             ? (item.plugin ? `Plugin: ${item.plugin.name}` : (item.name || item.content_url || ''))
@@ -2541,6 +2774,7 @@
         }
 
         connectSSE();
+        await ensureReportedAppVersion();
         startPingLoop();
         ping(); // immediate ping to mark online
         // Electron minimize / task switch pauses media without unloading the page.
@@ -2559,6 +2793,9 @@
         // a fleet even when OS clocks drift independently.
         startClockRecalibration();
         reportCapabilities();
+        // Signed /uploads/ URLs expire; refresh in the background so long
+        // runs do not end up on broken-image placeholders.
+        setInterval(() => { refreshPlaylistUrls(); }, 45 * 60 * 1000);
     })();
 
     /* -----------------------------------------------------------------------
@@ -2714,10 +2951,14 @@
         grid.style.cssText = [
             'display:grid','grid-template-columns:repeat(3,1fr)','gap:0.6rem'
         ].join(';');
+        const isTvShell = (window.AISIGNX_NATIVE_CLIENT === 'android');
         const btnStyle = [
-            'padding:1.1rem 0','background:#334155','color:#fff','border:0',
-            'border-radius:8px','font-size:1.4rem','cursor:pointer',
-            'touch-action:manipulation'
+            'padding:' + (isTvShell ? '1.35rem 0' : '1.1rem 0'),
+            'background:#334155','color:#fff','border:0',
+            'border-radius:8px','font-size:' + (isTvShell ? '1.55rem' : '1.4rem'),
+            'cursor:pointer','touch-action:manipulation',
+            'min-width:' + (isTvShell ? '4.5rem' : 'auto'),
+            'min-height:' + (isTvShell ? '3.25rem' : 'auto')
         ].join(';');
         const focusStyle = 'outline:3px solid #38bdf8;outline-offset:2px';
         function makeBtn(label, onClick) {
@@ -2745,6 +2986,12 @@
         card.appendChild(titleRow);
         card.appendChild(display);
         card.appendChild(err);
+        if (isTvShell) {
+            const hint = document.createElement('div');
+            hint.style.cssText = 'font-size:0.85rem;color:#94a3b8;text-align:center;line-height:1.4;';
+            hint.textContent = 'Remote: arrows move, OK selects, 0–9 enter PIN, Menu opens keypad';
+            card.appendChild(hint);
+        }
         card.appendChild(grid);
         kp.appendChild(card);
 

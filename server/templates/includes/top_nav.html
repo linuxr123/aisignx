@@ -1,0 +1,270 @@
+{# Primary app navigation — top bar with dropdowns (included from base.html) #}
+{% set signage_endpoints = [
+    'displays.displays', 'displays.display_detail', 'displays.edit_display',
+    'groups.groups',
+    'media.media',
+    'playlists.playlists', 'playlists.playlist_detail',
+    'schedules.schedules',
+    'admin.admin_schedule_conflicts_page'
+] %}
+{% set signage_active = request.endpoint in signage_endpoints and request.endpoint != 'main.dashboard' %}
+{% set admin_endpoints = [
+    'admin.users', 'audit.audit_page', 'admin.admin_proof_of_play_page',
+    'registration.admin_enrollment_page', 'admin.admin_plugin_policy_page',
+    'downloads_page', 'admin.admin_roles_page',
+    'settings_admin.admin_settings_page', 'settings_admin.admin_tenant_alerts_page'
+] %}
+{% set admin_active = request.endpoint in admin_endpoints %}
+{% set system_endpoints = [
+    'domains.admin_domains_page', 'settings_admin.admin_settings_page',
+    'admin.admin_backups_page', 'plugins.plugins_page',
+    'admin.admin_audit_retention_page', 'admin.admin_system_health_page',
+    'admin.admin_alerts_page', 'admin.admin_selftest_page'
+] %}
+{% set system_active = request.endpoint in system_endpoints %}
+
+{% set ds = domain_switcher() %}
+{% if ds.visible %}
+<li class="nav-item me-lg-2 order-lg-first">
+    <label for="domainSwitcher" class="visually-hidden">Active tenant</label>
+    <select id="domainSwitcher" class="form-select form-select-sm navbar-tenant-select"
+            title="Active tenant" aria-label="Active tenant">
+        {% set available_ids = ds.available|map(attribute='id')|list %}
+        {% for d in ds.available %}
+        <option value="{{ d.id }}" {% if d.id == ds.current_id %}selected{% endif %}>{{ d.name }}</option>
+        {% endfor %}
+        {% if ds.current_id and ds.current_id not in available_ids %}
+        <option value="{{ ds.current_id }}" selected>{{ ds.current_name }} (read-only)</option>
+        {% endif %}
+    </select>
+</li>
+<script>
+(function() {
+    const sel = document.getElementById('domainSwitcher');
+    if (!sel) return;
+    sel.addEventListener('change', async () => {
+        const target = parseInt(sel.value, 10);
+        const r = await fetch('/api/session/domain', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({domain_id: target}),
+        });
+        const j = await r.json();
+        if (j.status === 'success') {
+            const SAFE_ROOTS = [
+                '/dashboard', '/displays', '/groups',
+                '/media', '/playlists', '/schedules', '/plugins'
+            ];
+            const path = window.location.pathname;
+            let dest = '/dashboard';
+            for (const root of SAFE_ROOTS) {
+                if (path === root || path.startsWith(root + '/')) {
+                    dest = root;
+                    break;
+                }
+            }
+            window.location.assign(dest);
+        } else {
+            alert(j.message || 'Failed to switch tenant.');
+        }
+    });
+})();
+</script>
+{% endif %}
+
+<li class="nav-item">
+    <a class="nav-link {{ 'active' if request.endpoint == 'main.dashboard' else '' }}"
+       href="{{ url_for('main.dashboard') }}">
+        <i class="bi bi-speedometer2"></i> Dashboard
+    </a>
+</li>
+
+<li class="nav-item dropdown">
+    <a class="nav-link dropdown-toggle {{ 'active' if signage_active else '' }}"
+       href="#" id="navSignage" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="bi bi-collection-play"></i> Signage
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="navSignage">
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'displays.displays' else '' }}"
+               href="{{ url_for('displays.displays') }}">
+                <i class="bi bi-display me-2"></i> Displays
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'groups.groups' else '' }}"
+               href="{{ url_for('groups.groups') }}">
+                <i class="bi bi-collection me-2"></i> Display Groups
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'media.media' else '' }}"
+               href="{{ url_for('media.media') }}">
+                <i class="bi bi-images me-2"></i> Media
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint in ['playlists.playlists', 'playlists.playlist_detail'] else '' }}"
+               href="{{ url_for('playlists.playlists') }}">
+                <i class="bi bi-list-ul me-2"></i> Playlists
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'schedules.schedules' else '' }}"
+               href="{{ url_for('schedules.schedules') }}">
+                <i class="bi bi-calendar-week me-2"></i> Schedules
+            </a>
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'admin.admin_schedule_conflicts_page' else '' }}"
+               href="{{ url_for('admin.admin_schedule_conflicts_page') }}">
+                <i class="bi bi-calendar2-x me-2"></i> Schedule Conflicts
+            </a>
+        </li>
+    </ul>
+</li>
+
+{% if current_user.is_admin %}
+<li class="nav-item dropdown">
+    <a class="nav-link dropdown-toggle {{ 'active' if admin_active else '' }}"
+       href="#" id="navAdmin" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="bi bi-shield-check"></i>
+        {% if current_user.is_superadmin %}Admin{% else %}Tenant Admin{% endif %}
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="navAdmin">
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'admin.users' else '' }}"
+               href="{{ url_for('admin.users') }}">
+                <i class="bi bi-people-fill me-2"></i> Users
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'audit.audit_page' else '' }}"
+               href="{{ url_for('audit.audit_page') }}">
+                <i class="bi bi-journal-text me-2"></i> Audit Log
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'admin.admin_proof_of_play_page' else '' }}"
+               href="{{ url_for('admin.admin_proof_of_play_page') }}">
+                <i class="bi bi-clipboard-check me-2"></i> Proof of Play
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'displays.display_diagnostics_page' else '' }}"
+               href="{{ url_for('displays.display_diagnostics_page') }}">
+                <i class="bi bi-bug me-2"></i> Display Diagnostics
+            </a>
+        </li>
+        {% if current_user.is_superadmin %}
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'admin.admin_roles_page' else '' }}"
+               href="{{ url_for('admin.admin_roles_page') }}">
+                <i class="bi bi-shield-lock-fill me-2"></i> Roles &amp; Permissions
+            </a>
+        </li>
+        {% endif %}
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'registration.admin_enrollment_page' else '' }}"
+               href="{{ url_for('registration.admin_enrollment_page') }}">
+                <i class="bi bi-key-fill me-2"></i> Device Enrollment
+            </a>
+        </li>
+        {% if not current_user.is_superadmin %}
+        <li><hr class="dropdown-divider"></li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'settings_admin.admin_settings_page' else '' }}"
+               href="{{ url_for('settings_admin.admin_settings_page') }}">
+                <i class="bi bi-gear me-2"></i> Tenant Settings
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'settings_admin.admin_tenant_alerts_page' else '' }}"
+               href="{{ url_for('settings_admin.admin_tenant_alerts_page') }}">
+                <i class="bi bi-bell me-2"></i> Tenant Alerts
+            </a>
+        </li>
+        {% endif %}
+        <li><hr class="dropdown-divider"></li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'admin.admin_plugin_policy_page' else '' }}"
+               href="{{ url_for('admin.admin_plugin_policy_page') }}">
+                <i class="bi bi-puzzle me-2"></i> Plugin Policy
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'downloads_page' else '' }}"
+               href="{{ url_for('downloads_page') }}">
+                <i class="bi bi-download me-2"></i> Downloads
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="{{ url_for('registration.request_access_page') }}" target="_blank" rel="noopener">
+                <i class="bi bi-link-45deg me-2"></i> Browser Access Link
+                <i class="bi bi-box-arrow-up-right ms-1" style="font-size:.7rem;"></i>
+            </a>
+        </li>
+    </ul>
+</li>
+{% endif %}
+
+{% if current_user.is_superadmin %}
+<li class="nav-item dropdown">
+    <a class="nav-link dropdown-toggle {{ 'active' if system_active else '' }}"
+       href="#" id="navSystem" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="bi bi-gear-wide-connected"></i> System
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="navSystem">
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'domains.admin_domains_page' else '' }}"
+               href="{{ url_for('domains.admin_domains_page') }}">
+                <i class="bi bi-building-gear me-2"></i> Tenants
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'settings_admin.admin_settings_page' else '' }}"
+               href="{{ url_for('settings_admin.admin_settings_page') }}">
+                <i class="bi bi-gear-fill me-2"></i> System Settings
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'admin.admin_backups_page' else '' }}"
+               href="{{ url_for('admin.admin_backups_page') }}">
+                <i class="bi bi-hdd-stack-fill me-2"></i> Backup &amp; Restore
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'plugins.plugins_page' else '' }}"
+               href="{{ url_for('plugins.plugins_page') }}">
+                <i class="bi bi-puzzle-fill me-2"></i> Install Plugins
+            </a>
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'admin.admin_audit_retention_page' else '' }}"
+               href="{{ url_for('admin.admin_audit_retention_page') }}">
+                <i class="bi bi-archive me-2"></i> Audit Retention
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'admin.admin_system_health_page' else '' }}"
+               href="{{ url_for('admin.admin_system_health_page') }}">
+                <i class="bi bi-activity me-2"></i> System Health
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'admin.admin_alerts_page' else '' }}"
+               href="{{ url_for('admin.admin_alerts_page') }}">
+                <i class="bi bi-bell-fill me-2"></i> System Alerts
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item {{ 'active' if request.endpoint == 'admin.admin_selftest_page' else '' }}"
+               href="{{ url_for('admin.admin_selftest_page') }}">
+                <i class="bi bi-clipboard2-check me-2"></i> Self-Tests
+            </a>
+        </li>
+    </ul>
+</li>
+{% endif %}

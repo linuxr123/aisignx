@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.graphics.Color
 import android.util.Log
 import android.view.KeyEvent
@@ -190,6 +192,7 @@ class PlayerActivity : AppCompatActivity() {
     private var _lockTaskJob: Job? = null
 
     override fun onDestroy() {
+        dpadCenterLongRunnable?.let { tvKeyHandler.removeCallbacks(it) }
         cancelLockTaskWatchdog()
         _updateCheckJob?.cancel()
         _sseOfflineJob?.cancel()
@@ -576,28 +579,130 @@ class PlayerActivity : AppCompatActivity() {
         })
     }
 
-    // Block back for kiosk mode. Remote keys are delivered to the WebView so
-    // the in-page PIN keypad can use D-pad focus; MENU still opens the keypad.
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK) return true
-        event?.let { ev ->
-            if (b.webView.dispatchKeyEvent(ev)) return true
+    // TV remotes (Shield, Bravia, etc.): intercept media/DPAD keys before the
+    // WebView passes them to <video> for seeking. Route through AISignXTvKey in
+    // display_player.js for PIN entry and gated playlist control.
+    private val tvKeyHandler = Handler(Looper.getMainLooper())
+    private var dpadCenterDown = false
+    private var dpadCenterLongFired = false
+    private var dpadCenterLongRunnable: Runnable? = null
+    private val DPAD_LONG_PRESS_MS = 1_500L
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (handleTvRemoteKey(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun handleTvRemoteKey(event: KeyEvent): Boolean {
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                when (event.action) {
+                    KeyEvent.ACTION_DOWN -> {
+                        if (event.repeatCount > 0) return true
+                        dpadCenterDown = true
+                        dpadCenterLongFired = false
+                        dpadCenterLongRunnable?.let { tvKeyHandler.removeCallbacks(it) }
+                        dpadCenterLongRunnable = Runnable {
+                            if (dpadCenterDown) {
+                                dpadCenterLongFired = true
+                                promptPinKeypad()
+                            }
+                        }
+                        tvKeyHandler.postDelayed(dpadCenterLongRunnable!!, DPAD_LONG_PRESS_MS)
+                        return true
+                    }
+                    KeyEvent.ACTION_UP -> {
+                        dpadCenterDown = false
+                        dpadCenterLongRunnable?.let { tvKeyHandler.removeCallbacks(it) }
+                        dpadCenterLongRunnable = null
+                        if (!dpadCenterLongFired) injectTvKey("center")
+                        dpadCenterLongFired = false
+                        return true
+                    }
+                }
+            }
+            KeyEvent.KEYCODE_BACK -> {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                    injectTvKey("back")
+                }
+                return true
+            }
         }
-        if (keyCode == KeyEvent.KEYCODE_MENU && event?.repeatCount == 0) {
-            promptPinKeypad()
-            return true
+        if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) {
+            return isConsumedTvKey(event.keyCode)
         }
-        return super.onKeyDown(keyCode, event)
+        val action = tvKeyAction(event.keyCode) ?: return false
+        injectTvKey(action)
+        return true
+    }
+
+    /** Keys we always consume so WebView/video cannot seek while locked. */
+    private fun isConsumedTvKey(keyCode: Int): Boolean = when (keyCode) {
+        KeyEvent.KEYCODE_DPAD_CENTER,
+        KeyEvent.KEYCODE_ENTER,
+        KeyEvent.KEYCODE_NUMPAD_ENTER,
+        KeyEvent.KEYCODE_BACK,
+        KeyEvent.KEYCODE_MENU,
+        KeyEvent.KEYCODE_INFO,
+        KeyEvent.KEYCODE_TV,
+        KeyEvent.KEYCODE_SETTINGS,
+        KeyEvent.KEYCODE_DPAD_LEFT,
+        KeyEvent.KEYCODE_DPAD_RIGHT,
+        KeyEvent.KEYCODE_DPAD_UP,
+        KeyEvent.KEYCODE_DPAD_DOWN,
+        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+        KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+        KeyEvent.KEYCODE_MEDIA_REWIND,
+        KeyEvent.KEYCODE_MEDIA_NEXT,
+        KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+        KeyEvent.KEYCODE_CHANNEL_UP,
+        KeyEvent.KEYCODE_CHANNEL_DOWN,
+        KeyEvent.KEYCODE_PAGE_UP,
+        KeyEvent.KEYCODE_PAGE_DOWN -> true
+        else -> keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9
+    }
+
+    private fun tvKeyAction(keyCode: Int): String? = when (keyCode) {
+        KeyEvent.KEYCODE_MENU,
+        KeyEvent.KEYCODE_INFO,
+        KeyEvent.KEYCODE_TV,
+        KeyEvent.KEYCODE_SETTINGS -> "menu"
+        KeyEvent.KEYCODE_DPAD_LEFT,
+        KeyEvent.KEYCODE_MEDIA_REWIND,
+        KeyEvent.KEYCODE_MEDIA_PREVIOUS -> "prev"
+        KeyEvent.KEYCODE_DPAD_RIGHT,
+        KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+        KeyEvent.KEYCODE_MEDIA_NEXT -> "next"
+        KeyEvent.KEYCODE_DPAD_UP,
+        KeyEvent.KEYCODE_CHANNEL_UP,
+        KeyEvent.KEYCODE_PAGE_UP -> "ffwd"
+        KeyEvent.KEYCODE_DPAD_DOWN,
+        KeyEvent.KEYCODE_CHANNEL_DOWN,
+        KeyEvent.KEYCODE_PAGE_DOWN -> "rewind"
+        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> "playpause"
+        else -> {
+            if (keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) {
+                "digit:${keyCode - KeyEvent.KEYCODE_0}"
+            } else null
+        }
+    }
+
+    private fun injectTvKey(action: String) {
+        val js = "try{if(window.AISignXTvKey)window.AISignXTvKey(" +
+            JSONObject.quote(action) + ");}catch(e){}"
+        b.webView.evaluateJavascript(js, null)
     }
 
     private fun promptPinKeypad() {
         b.webView.evaluateJavascript(
-            "window.promptSignagePin && window.promptSignagePin();",
+            "try{if(window.AISignXPromptUnlock)window.AISignXPromptUnlock();}catch(e){}",
             null
         )
     }
 
-    override fun onBackPressed() { /* kiosk â€” do nothing */ }
+    override fun onBackPressed() { /* kiosk — do nothing */ }
 
     private fun hideSystemUi() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

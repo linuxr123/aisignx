@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 AISignX contributors
 import os
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
+from werkzeug.exceptions import RequestEntityTooLarge
 from flask_migrate import Migrate
 from flask_login import LoginManager
 
@@ -278,13 +279,32 @@ def service_worker():
     resp.headers['Service-Worker-Allowed'] = '/'
     return resp
 
+@app.errorhandler(RequestEntityTooLarge)
+def request_too_large(error):
+    """Return JSON for API uploads so the Media UI can show a clear message."""
+    limit = app.config.get('MAX_CONTENT_LENGTH')
+    if limit:
+        mb = max(1, int(limit / (1024 * 1024)))
+        msg = f'Upload too large (server limit is about {mb} MB).'
+    else:
+        msg = 'Upload too large.'
+    if request.path.startswith('/api/'):
+        return jsonify({'status': 'error', 'message': msg}), 413
+    return msg, 413
+
+
 @app.errorhandler(404)
 def not_found_error(error):
+    if request.path.startswith('/api/'):
+        return jsonify({'status': 'error', 'message': 'not found'}), 404
     return render_template('errors/404.html'), 404
 
 @app.errorhandler(500)
 def internal_error(error):
     db.session.rollback()
+    if request.path.startswith('/api/'):
+        return jsonify({'status': 'error',
+                        'message': 'internal server error'}), 500
     return render_template('errors/500.html'), 500
 
 def init_db():

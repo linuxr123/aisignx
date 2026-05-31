@@ -63,7 +63,7 @@ from tenant_filter import current_domain_id, bypass_tenant_filter
 # Allowed extension whitelists per kind. Keep tight; route handlers can
 # pre-validate before calling save_upload, but defense in depth.
 ALLOWED_EXTENSIONS = {
-    'image':     {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'},
+    'image':     {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.svg'},
     'video':     {'.mp4', '.webm', '.ogg', '.mov'},
     'thumbnail': {'.png', '.jpg', '.jpeg', '.webp'},
     'misc':      None,    # any
@@ -358,6 +358,9 @@ import time as _time
 # image transfer won't 403 mid-stream, short enough that a leaked URL
 # isn't a long-term problem.
 SIGNED_URL_TTL_DEFAULT = 3600
+# Display players may run one playlist for days; use a long TTL so signed
+# /uploads/ links embedded in the playlist payload do not 403 mid-cycle.
+SIGNED_URL_TTL_PLAYER = 7 * 24 * 3600
 
 
 def _signing_key() -> bytes:

@@ -250,7 +250,19 @@
         </div>
       </div>
 
-      <div id="folderBreadcrumb" class="small text-muted mb-2"></div>
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <div id="folderBreadcrumb" class="small text-muted"></div>
+        <div id="folderScopeControls" class="d-flex align-items-center gap-2">
+          <div class="form-check form-switch mb-0" id="folderIncludeSubfoldersWrap">
+            <input class="form-check-input" type="checkbox" id="folderIncludeSubfolders" role="switch">
+            <label class="form-check-label small" for="folderIncludeSubfolders">Include subfolders</label>
+          </div>
+          <button type="button" class="btn btn-sm btn-link px-0" id="folderShowAllMedia">Show all media</button>
+          <button type="button" class="btn btn-sm btn-outline-primary d-none" id="folderBackToFolderView">
+            <i class="bi bi-folder2-open me-1"></i>Folder view
+          </button>
+        </div>
+      </div>
 
       <div class="table-responsive">
     <table class="table table-sm table-hover align-middle media-table-modern" id="mediaTable">
@@ -407,7 +419,7 @@
   <div class="modal-dialog">
     <form id="uploadForm" class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="uploadLabel">Upload Media (Image/Video)</h5>
+        <h5 class="modal-title" id="uploadLabel">Upload Media (Image/Video/Zip)</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
@@ -418,13 +430,13 @@
                style="cursor:pointer; background:#f8f9fa; transition:background .15s, border-color .15s;">
             <div style="font-size:2rem; line-height:1;">⬆️</div>
             <div class="fw-semibold mt-2">Drag &amp; drop files here</div>
-            <div class="text-muted small">or click to browse — images and videos, multiple files OK</div>
+            <div class="text-muted small">or click to browse — images, videos, or a .zip archive (multiple files OK)</div>
             <div id="uploadFileSummary" class="small mt-2 text-primary"></div>
           </div>
           <input type="file" name="file" id="uploadFileInput"
-                 accept=".jpg,.jpeg,.png,.gif,.mp4,.webm,.ogg" multiple
+                 accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.mp4,.webm,.ogg,.mov,.zip" multiple
                  style="display:none;">
-          <div class="form-text">Each file is uploaded individually so quota and dedupe are checked per file.</div>
+          <div class="form-text">Images and videos upload one-by-one. A <code>.zip</code> extracts into the selected folder; zip paths become sub-folders. <strong>Bulk name prefix</strong> applies to zip imports (<code>prefix-0001</code>, …). After import, search that prefix or open the folder shown in the summary.</div>
         </div>
         <div class="mb-3">
           <label class="form-label">Name (single-file upload)</label>
@@ -764,6 +776,16 @@ function copyText(txt) {
   }
 }
 
+function mediaMatchesFolderScope(rowFolder, folderScope, includeSubfolders) {
+  if (!folderScope) return true;
+  if (folderScope === '__root__') return rowFolder === '';
+  if (includeSubfolders) {
+    return rowFolder === folderScope ||
+      (rowFolder && rowFolder.startsWith(folderScope + '/'));
+  }
+  return rowFolder === folderScope;
+}
+
 function filterTable() {
   const term = (document.getElementById('filterInput').value || '').toLowerCase();
   const type = document.getElementById('typeFilterInput')?.value || '';
@@ -772,6 +794,7 @@ function filterTable() {
   const duration = document.getElementById('durationFilterInput')?.value || '';
   const rows = document.querySelectorAll('#mediaTable tbody tr');
   const folderScope = (window.Folders && typeof window.Folders.current === 'function') ? window.Folders.current() : '';
+  const includeSubfolders = !!(window.Folders && window.Folders.includeSubfolders && window.Folders.includeSubfolders());
   let shown = 0;
   rows.forEach(row => {
     const kind = row.dataset.rowKind || 'media';
@@ -800,14 +823,7 @@ function filterTable() {
       row.dataset.name || '',
       row.dataset.id || '',
     ].join(' ');
-    let ok = true;
-    if (!folderScope) {
-      ok = true;
-    } else if (folderScope === '__root__') {
-      ok = rowFolder === '';
-    } else {
-      ok = rowFolder === folderScope;
-    }
+    let ok = mediaMatchesFolderScope(rowFolder, folderScope, includeSubfolders);
     if (term && !hay.includes(term)) ok = false;
     if (type && row.dataset.type !== type) ok = false;
     if (tag && !tags.includes(tag)) ok = false;
@@ -977,7 +993,8 @@ function toast(msg, kind) {
     // viewing in the sidebar so new files land where they expect.
     const sel = document.getElementById('uploadFolderSelect');
     const hidden = document.getElementById('uploadFolder');
-    const cur = (typeof Folders !== 'undefined') ? Folders.current() : '';
+    const cur = (typeof Folders !== 'undefined' && Folders.uploadFolder)
+      ? Folders.uploadFolder() : '';
     if (sel) {
       const has = Array.from(sel.options).some(o => o.value === cur);
       sel.value = has ? cur : '';
@@ -992,7 +1009,8 @@ function toast(msg, kind) {
     if (hidden) hidden.value = e.target.value || '';
   });
   document.getElementById('uploadFolderNewBtn')?.addEventListener('click', async () => {
-    const cur = (typeof Folders !== 'undefined') ? Folders.current() : '';
+    const cur = (typeof Folders !== 'undefined' && Folders.uploadFolder)
+      ? Folders.uploadFolder() : '';
     const path = prompt('New folder path (use / to nest, e.g. campaigns/winter):',
                         cur ? cur + '/' : '');
     if (!path) return;
@@ -1017,6 +1035,105 @@ function toast(msg, kind) {
     }
   });
 
+  function isZipFile(f) {
+    return (f.name || '').toLowerCase().endsWith('.zip');
+  }
+
+  async function uploadOneMedia(f, opts) {
+    const fd = new FormData();
+    fd.append('file', f);
+    if (opts.name) fd.append('name', opts.name);
+    if (opts.duration) fd.append('duration', opts.duration);
+    if (opts.description) fd.append('description', opts.description);
+    if (opts.folder) fd.append('folder', opts.folder);
+    if (opts.allowDuplicate) fd.set('allow_duplicate', '1');
+
+    let res = await fetch('/api/media', { method: 'POST', body: fd });
+    let data = await res.json().catch(() => ({}));
+
+    if (res.status === 409 && data.status === 'duplicate') {
+      const ex = data.existing || {};
+      const keep = confirm(
+        `${f.name}: identical file already exists as "${ex.name}" (#${ex.id}).\n\n` +
+        `OK = upload as separate copy\nCancel = skip this file`);
+      if (keep) {
+        fd.set('allow_duplicate', '1');
+        res = await fetch('/api/media', { method: 'POST', body: fd });
+        data = await res.json().catch(() => ({}));
+        return { ok: data.status === 'success', dup: false };
+      }
+      return { ok: false, dup: true };
+    }
+    return { ok: data.status === 'success', dup: false };
+  }
+
+  async function importZipArchive(f, opts) {
+    const fd = new FormData();
+    fd.append('file', f);
+    if (opts.duration) fd.append('duration', opts.duration);
+    if (opts.description) fd.append('description', opts.description);
+    if (opts.folder) fd.append('folder', opts.folder);
+    if (opts.namePrefix) fd.append('name_prefix', opts.namePrefix);
+    if (opts.allowDuplicate) fd.set('allow_duplicate', '1');
+
+    let res;
+    try {
+      res = await fetch('/api/media/import-zip', {
+        method: 'POST',
+        body: fd,
+        credentials: 'same-origin',
+      });
+    } catch (err) {
+      return { ok: false, dup: 0, zipStats: null,
+               message: 'Network error: ' + err };
+    }
+
+    const rawText = await res.text();
+    let data = {};
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch (e) {
+      return { ok: false, dup: 0, zipStats: null,
+               message: `Server error (HTTP ${res.status}). ${rawText.slice(0, 200)}` };
+    }
+
+    if (data.status === 'success') {
+      return { ok: true, dup: data.duplicates || 0, zipStats: data };
+    }
+    if (data.status === 'no_media') {
+      return { ok: false, dup: data.duplicates || 0, zipStats: data,
+               message: data.message || 'No files were imported from the zip' };
+    }
+    const msg = data.message ||
+      (res.status === 404 ? 'Zip import API not found — restart the server.' : null) ||
+      (res.status === 401 ? 'Not logged in — refresh the page and sign in again.' : null) ||
+      (res.status === 413 ? 'Zip file exceeds server upload size limit.' : null) ||
+      `Import failed (HTTP ${res.status})`;
+    return { ok: false, dup: 0, zipStats: data.status === 'no_media' ? data : null, message: msg };
+  }
+
+  function formatZipResult(data) {
+    const lines = [];
+    if ((data.imported || 0) > 0) {
+      lines.push(`Imported ${data.imported} file(s).`);
+    }
+    if (data.name_prefix) {
+      lines.push(`Names: ${data.name_prefix}-0001, ${data.name_prefix}-0002, …`);
+    }
+    const dest = data.base_folder
+      ? `Folder: ${data.base_folder}`
+      : 'Folder: (root)';
+    lines.push(dest);
+    const subs = (data.item_folders || []).filter(p => p && p !== (data.base_folder || ''));
+    if (subs.length) {
+      lines.push('Also in sub-folders: ' + subs.slice(0, 5).join(', ') +
+        (subs.length > 5 ? '…' : ''));
+    }
+    if (data.duplicates) lines.push(`${data.duplicates} duplicate(s) skipped.`);
+    if (data.skipped) lines.push(`${data.skipped} unsupported/hidden file(s) skipped.`);
+    return lines.join('\n');
+  }
+
   document.getElementById('uploadForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const form  = e.target;
@@ -1037,55 +1154,77 @@ function toast(msg, kind) {
     const status      = document.getElementById('uploadStatus');
     progressBox.style.display = '';
 
-    // Pre-compute padded prefix names so the order stays deterministic
-    // even if a confirm() prompt slows one upload down.
-    const padWidth = Math.max(4, String(files.length).length);
+    const zips = files.filter(isZipFile);
+    const mediaFiles = files.filter(f => !isZipFile(f));
+    const totalSteps = zips.length + mediaFiles.length;
+
+    const padWidth = Math.max(4, String(mediaFiles.length).length);
     function prefixName(idx) {
       const seq = String(idx + 1).padStart(padWidth, '0');
       return `${namePrefix}-${seq}`;
     }
 
-    let ok = 0, dup = 0, fail = 0;
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      status.textContent = `Uploading ${i+1}/${files.length}: ${f.name}`;
-      bar.style.width = `${Math.round((i / files.length) * 100)}%`;
+    const sharedOpts = {
+      duration: sharedDuration,
+      description: sharedDescription,
+      folder: sharedFolder,
+      namePrefix: namePrefix,
+      allowDuplicate: false,
+    };
 
-      const fd = new FormData();
-      fd.append('file', f);
+    let ok = 0, dup = 0, fail = 0, zipImported = 0, zipSkipped = 0;
+    let step = 0;
+
+    for (const f of zips) {
+      status.textContent = `Extracting zip ${step + 1}/${totalSteps}: ${f.name}`;
+      bar.style.width = `${Math.round((step / totalSteps) * 100)}%`;
+      const r = await importZipArchive(f, sharedOpts);
+      step++;
+      if (r.zipStats && (r.zipStats.imported || 0) > 0) {
+        zipImported += r.zipStats.imported || 0;
+        zipSkipped += (r.zipStats.skipped || 0) + (r.zipStats.failed || 0);
+        dup += r.dup || 0;
+        ok++;
+        sessionStorage.setItem('mediaPostZip', JSON.stringify({
+          folder: r.zipStats.base_folder || sharedFolder || '',
+          search: namePrefix || '',
+        }));
+        alert(formatZipResult(r.zipStats));
+      } else {
+        fail++;
+        const msg = r.message || (r.zipStats && r.zipStats.message) || 'Zip import imported no files';
+        alert(`${f.name}\n\n${msg}`);
+        toast(msg, 'error');
+      }
+    }
+
+    for (let i = 0; i < mediaFiles.length; i++) {
+      const f = mediaFiles[i];
+      status.textContent = `Uploading ${step + 1}/${totalSteps}: ${f.name}`;
+      bar.style.width = `${Math.round((step / totalSteps) * 100)}%`;
+
+      let name;
       if (namePrefix) {
-        fd.append('name', prefixName(i));
-      } else if (files.length === 1 && sharedName) {
-        fd.append('name', sharedName);
-      }
-      if (sharedDuration) fd.append('duration', sharedDuration);
-      if (sharedDescription) fd.append('description', sharedDescription);
-      if (sharedFolder) fd.append('folder', sharedFolder);
-
-      let res = await fetch('/api/media', { method: 'POST', body: fd });
-      let data = await res.json().catch(() => ({}));
-
-      if (res.status === 409 && data.status === 'duplicate') {
-        const ex = data.existing || {};
-        const keep = confirm(
-          `${f.name}: identical file already exists as "${ex.name}" (#${ex.id}).\n\n` +
-          `OK = upload as separate copy\nCancel = skip this file`);
-        if (keep) {
-          fd.set('allow_duplicate', '1');
-          res = await fetch('/api/media', { method: 'POST', body: fd });
-          data = await res.json().catch(() => ({}));
-        } else {
-          dup++;
-          continue;
-        }
+        name = prefixName(i);
+      } else if (mediaFiles.length === 1 && sharedName) {
+        name = sharedName;
       }
 
-      if (data.status === 'success') ok++;
+      const r = await uploadOneMedia(f, { ...sharedOpts, name });
+      step++;
+      if (r.dup) dup++;
+      else if (r.ok) ok++;
       else fail++;
     }
+
     bar.style.width = '100%';
-    status.textContent = `Done — ${ok} uploaded, ${dup} skipped duplicate, ${fail} failed.`;
-    toast(`Uploaded ${ok}/${files.length}`, fail ? 'error' : 'success');
+    let summary = `Done — ${ok} uploaded`;
+    if (zipImported) summary += `, ${zipImported} from zip`;
+    if (zipSkipped) summary += `, ${zipSkipped} skipped in zip`;
+    summary += `, ${dup} duplicate skipped, ${fail} failed.`;
+    status.textContent = summary;
+    const totalOk = ok + zipImported;
+    toast(`Uploaded ${totalOk}/${files.length}`, fail ? 'error' : 'success');
     setTimeout(() => location.reload(), 800);
   });
 })();
@@ -1622,16 +1761,58 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ---------------------------------------------------------------------------
 // Folder sidebar — fully driven by /api/media/library-folders.
-//   - Click a folder to filter the table to that folder (recursive).
+//   - Click a folder to filter the table to that folder (direct items by default).
 //   - "New" button creates a folder by tagging the next upload at that path
 //     OR moves the currently-selected items into a new path (if any).
 //   - Hovering a folder reveals rename/delete actions.
 // Folder paths are slash-separated, root is the empty string ''.
 // ---------------------------------------------------------------------------
 const Folders = (function () {
-  let current = '';   // currently active folder filter ('' = all)
+  const LS_SUBFOLDERS = 'mediaIncludeSubfolders';
+  let current = '__root__';   // '' = all media, '__root__' = root only, else folder path
+  let lastFolderView = '__root__';  // restore target when leaving "All media"
+  let includeSubfolders = false;
   let tree    = [];   // [{path,name,depth,item_count,recursive_count}]
   let tableFolderRows = [];
+
+  try {
+    includeSubfolders = localStorage.getItem(LS_SUBFOLDERS) === '1';
+  } catch (e) { /* ignore */ }
+
+  function uploadFolderFromCurrent() {
+    const c = current;
+    if (!c || c === '__root__') return '';
+    return c;
+  }
+
+  function updateScopeControls() {
+    const sub = document.getElementById('folderIncludeSubfolders');
+    const subWrap = document.getElementById('folderIncludeSubfoldersWrap');
+    const showAllBtn = document.getElementById('folderShowAllMedia');
+    const backBtn = document.getElementById('folderBackToFolderView');
+    const isAll = current === '';
+    if (subWrap) subWrap.classList.toggle('d-none', isAll);
+    if (showAllBtn) showAllBtn.classList.toggle('d-none', isAll);
+    if (backBtn) {
+      backBtn.classList.toggle('d-none', !isAll);
+      const label = lastFolderView === '__root__'
+        ? 'Root folder'
+        : lastFolderView;
+      backBtn.title = 'Return to: ' + label;
+      backBtn.innerHTML = '<i class="bi bi-folder2-open me-1"></i>Folder view' +
+        (lastFolderView && lastFolderView !== '__root__'
+          ? ' <span class="text-muted">(' + escHtml(lastFolderView) + ')</span>'
+          : '');
+    }
+    if (sub) {
+      sub.checked = includeSubfolders;
+      sub.disabled = current === '__root__';
+    }
+  }
+
+  function backToFolderView() {
+    setCurrent(lastFolderView || '__root__');
+  }
 
   async function fetchTree() {
     try {
@@ -1714,25 +1895,23 @@ const Folders = (function () {
     if (!root) return;
     root.innerHTML = '';
 
-    // Always include an "All media" entry on top
+    // Default: root folder only (items with no Media.folder set).
+    const rootRow = tree.find(f => f.path === '');
+    const rootOnly = document.createElement('div');
+    rootOnly.className = 'folder-item' + (current === '__root__' ? ' active' : '');
+    rootOnly.innerHTML = '<i class="bi bi-house"></i><span>Root folder</span>' +
+                         '<span class="fcount">' + (rootRow ? rootRow.item_count : 0) + '</span>';
+    rootOnly.title = 'Default view — files not in a folder';
+    rootOnly.addEventListener('click', () => setCurrent('__root__'));
+    root.appendChild(rootOnly);
+
     const all = document.createElement('div');
     all.className = 'folder-item' + (current === '' ? ' active' : '');
     all.innerHTML = '<i class="bi bi-collection"></i><span>All media</span>' +
                     '<span class="fcount">' + totalCount() + '</span>';
+    all.title = 'Every file in this tenant, all folders';
     all.addEventListener('click', () => setCurrent(''));
     root.appendChild(all);
-
-    // "Root only" — show items that have no folder set (Media.folder == '').
-    // Distinct from "All media" which includes everything regardless of
-    // folder. Uses the synthetic root row from the server when available
-    // for an accurate count.
-    const rootRow = tree.find(f => f.path === '');
-    const rootOnly = document.createElement('div');
-    rootOnly.className = 'folder-item' + (current === '__root__' ? ' active' : '');
-    rootOnly.innerHTML = '<i class="bi bi-house"></i><span>Root only</span>' +
-                         '<span class="fcount">' + (rootRow ? rootRow.item_count : 0) + '</span>';
-    rootOnly.addEventListener('click', () => setCurrent('__root__'));
-    root.appendChild(rootOnly);
 
     // Skip the synthetic root row from server (path === '')
     tree.filter(f => f.path !== '').forEach(f => {
@@ -1749,7 +1928,12 @@ const Folders = (function () {
           '<button title="Delete" data-act="delete"><i class="bi bi-trash"></i></button>' +
         '</span>';
       el.querySelector('.fname').textContent = f.name;
-      el.querySelector('.fcount').textContent = f.recursive_count;
+      const direct = f.item_count || 0;
+      const total = f.recursive_count || 0;
+      el.querySelector('.fcount').textContent = direct;
+      el.querySelector('.fcount').title = total > direct
+        ? (direct + ' in folder, ' + total + ' including subfolders')
+        : (direct + ' item(s) in folder');
       el.addEventListener('click', (ev) => {
         if (ev.target.closest('button')) return;
         setCurrent(f.path);
@@ -1796,7 +1980,14 @@ const Folders = (function () {
   }
 
   function setCurrent(path) {
-    current = path || '';
+    if (path === undefined || path === null) path = '';
+    if (path === '' && current) {
+      lastFolderView = current;
+    } else if (path !== '') {
+      lastFolderView = path;
+    }
+    current = path;
+    updateScopeControls();
     render();
     const bc = document.getElementById('folderBreadcrumb');
     if (bc) {
@@ -1805,17 +1996,40 @@ const Folders = (function () {
     filterTable();
   }
 
+  function setIncludeSubfolders(on) {
+    includeSubfolders = !!on;
+    try {
+      localStorage.setItem(LS_SUBFOLDERS, includeSubfolders ? '1' : '0');
+    } catch (e) { /* ignore */ }
+    updateScopeControls();
+    filterTable();
+  }
+
   function breadcrumbHtml() {
-    if (!current) return '<span class="text-muted">All media</span>';
-    if (current === '__root__') return '<span class="text-muted">Root</span>';
+    if (!current) {
+      return '<span class="text-muted">All media</span>' +
+        ' · <a href="#" data-folder-bc="__root__"><i class="bi bi-arrow-return-left me-1"></i>Back to folder view</a>';
+    }
+    if (current === '__root__') {
+      const mode = includeSubfolders
+        ? ' <span class="badge bg-secondary-subtle text-secondary">incl. subfolders</span>'
+        : ' <span class="badge bg-secondary-subtle text-secondary">this folder only</span>';
+      return '<span class="text-muted">Root (no folder)</span>' + mode;
+    }
     const parts = current.split('/');
     let acc = '';
-    const links = ['<a href="#" data-folder-bc="">All media</a>'];
+    const links = [
+      '<a href="#" data-folder-bc="__root__">Root</a>',
+      '<a href="#" data-folder-bc="">All media</a>',
+    ];
     parts.forEach(part => {
       acc = acc ? acc + '/' + part : part;
       links.push('<a href="#" data-folder-bc="' + escAttr(acc) + '">' + escHtml(part) + '</a>');
     });
-    return links.join(' <span class="text-muted">/</span> ');
+    const mode = includeSubfolders
+      ? ' <span class="badge bg-secondary-subtle text-secondary">incl. subfolders</span>'
+      : ' <span class="badge bg-secondary-subtle text-secondary">this folder only</span>';
+    return links.join(' <span class="text-muted">/</span> ') + mode;
   }
 
   async function createFolder() {
@@ -1892,19 +2106,44 @@ const Folders = (function () {
   return {
     init: function () {
       document.getElementById('folderNewBtn')?.addEventListener('click', createFolder);
+      document.getElementById('folderIncludeSubfolders')?.addEventListener('change', (ev) => {
+        setIncludeSubfolders(ev.target.checked);
+      });
+      document.getElementById('folderShowAllMedia')?.addEventListener('click', () => setCurrent(''));
+      document.getElementById('folderBackToFolderView')?.addEventListener('click', backToFolderView);
+      updateScopeControls();
+      const bc = document.getElementById('folderBreadcrumb');
+      if (bc) bc.innerHTML = breadcrumbHtml();
+      filterTable();
       // Re-apply folder filter when name filter changes
       document.getElementById('filterInput')?.addEventListener('input', filterTable);
       document.getElementById('folderBreadcrumb')?.addEventListener('click', (ev) => {
         const link = ev.target.closest('[data-folder-bc]');
         if (!link) return;
         ev.preventDefault();
-        setCurrent(link.dataset.folderBc || '');
+        const dest = link.getAttribute('data-folder-bc');
+        setCurrent(dest === null ? '' : dest);
       });
+      try {
+        const raw = sessionStorage.getItem('mediaPostZip');
+        sessionStorage.removeItem('mediaPostZip');
+        if (raw) {
+          const hint = JSON.parse(raw);
+          if (hint.search) {
+            const inp = document.getElementById('filterInput');
+            if (inp) inp.value = hint.search;
+          }
+          if (hint.folder !== undefined) setCurrent(hint.folder || '');
+        }
+      } catch (e) { /* ignore */ }
       fetchTree();
     },
     moveItems,
     fetchTree,
     current: () => current,
+    uploadFolder: uploadFolderFromCurrent,
+    includeSubfolders: () => includeSubfolders,
+    setIncludeSubfolders,
   };
 })();
 window.Folders = Folders;
@@ -1915,7 +2154,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('bulkMoveBtn')?.addEventListener('click', async () => {
     const ids = (typeof selectedMediaIds === 'function') ? selectedMediaIds() : [];
     if (!ids.length) { toast('Select at least one item first', 'error'); return; }
-    const target = prompt('Move ' + ids.length + ' item(s) to folder (blank = root):', Folders.current());
+    const target = prompt('Move ' + ids.length + ' item(s) to folder (blank = root):',
+      (Folders.uploadFolder ? Folders.uploadFolder() : ''));
     if (target === null) return;
     const ok = await Folders.moveItems(ids, target.trim());
     if (ok) {

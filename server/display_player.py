@@ -170,6 +170,96 @@ def push_emergency_clear(broadcast):
     return queued
 
 
+def _resolved_playlist_version(playlist, schedule_id: int) -> str:
+    """Version string that changes when either the playlist or winning schedule changes."""
+    import hashlib
+    base = compute_playlist_version(playlist)
+    return hashlib.sha256(f'{base}:{int(schedule_id)}'.encode()).hexdigest()
+
+
+def push_playlist_reload(display) -> bool:
+    """Queue an immediate SSE reload with fresh playlist data for one display."""
+    if not display or not getattr(display, 'api_key', None):
+        return False
+    key = display.api_key
+    with _push_queues_lock:
+        if key not in _push_queues:
+            return False
+    try:
+        data = _resolve_playlist(display)
+    except Exception:
+        logger.exception('push_playlist_reload: resolve failed for %s', key)
+        return False
+    version = data['version'] if data else ''
+    event = 'event: reload\ndata: ' + json.dumps({
+        'version': version,
+        'playlist': data,
+    }) + '\n\n'
+    with _push_queues_lock:
+        if key in _push_queues:
+            _push_queues[key].append(event)
+            _touch_connection(key, version)
+            return True
+    return False
+
+
+def displays_affected_by_schedule(schedule) -> list:
+    """Displays that would use this schedule (direct, group, or inherited group)."""
+    from groups import resolve_effective_group_ids
+    if not schedule:
+        return []
+    if schedule.display_id:
+        d = Display.query.get(schedule.display_id)
+        return [d] if d else []
+    if not schedule.group_id:
+        return []
+    gid = int(schedule.group_id)
+    out = []
+    for disp in Display.query.filter(Display.group_id.isnot(None)).all():
+        try:
+            if gid in resolve_effective_group_ids(disp):
+                out.append(disp)
+        except Exception:
+            continue
+    return out
+
+
+def notify_schedule_playlist_reload(schedule) -> int:
+    """Push playlist reload to displays affected by a schedule change."""
+    if not schedule:
+        return 0
+    queued = 0
+    seen = set()
+    for disp in displays_affected_by_schedule(schedule):
+        if disp.id in seen:
+            continue
+        seen.add(disp.id)
+        if push_playlist_reload(disp):
+            queued += 1
+    if queued:
+        logger.info('schedule change: pushed playlist reload to %s display(s) '
+                    '(schedule=%s)', queued, schedule.id)
+    return queued
+
+
+def notify_domain_playlist_reload(domain_id=None) -> int:
+    """Push playlist reload to every connected display in a tenant."""
+    from tenant_filter import bypass_tenant_filter, current_domain_id
+    did = domain_id if domain_id is not None else current_domain_id()
+    if did is None:
+        return 0
+    queued = 0
+    with bypass_tenant_filter():
+        rows = Display.query.filter_by(domain_id=int(did)).all()
+    for disp in rows:
+        if push_playlist_reload(disp):
+            queued += 1
+    if queued:
+        logger.info('playlist change: pushed reload to %s connected display(s) '
+                    'in domain %s', queued, did)
+    return queued
+
+
 def push_command(api_key: str, action: str, payload: dict | None = None) -> bool:
     """Queue a one-off command (e.g. 'reboot', 'update') to a single display.
     Returns True if the display has an active SSE connection, False otherwise."""
@@ -470,7 +560,10 @@ def _resolve_playlist(display) -> dict | None:
                 # prefix and 404s on the new tenant-aware /uploads route.
                 import storage as _storage
                 item_d['content_url'] = (
-                    _storage.signed_url(m.file_path, external=False)
+                    _storage.signed_url(
+                        m.file_path, external=False,
+                        ttl_seconds=_storage.SIGNED_URL_TTL_PLAYER,
+                    )
                     if m.file_path and not m.file_path.startswith(('http://', 'https://'))
                     else m.file_path
                 )
@@ -513,7 +606,7 @@ def _resolve_playlist(display) -> dict | None:
         'schedule_name': chosen.name,
         'default_transition': pl_default_transition or 'cut',
         'random_pool': [s for s in (playlist.random_transitions or '').split(',') if s],
-        'version': compute_playlist_version(playlist),
+        'version': _resolved_playlist_version(playlist, chosen.id),
         'display_settings': {
             'aspect_mode': display.aspect_mode or 'fit',
             'resolution_x': display.resolution_x,
@@ -724,7 +817,7 @@ def player_events(token):
 
         try:
             while True:
-                time.sleep(2)  # Poll interval
+                time.sleep(1)  # Poll interval (push_playlist_reload handles urgent updates)
 
                 # Drain any immediately-pushed events (emergency, clear, etc.)
                 for queued_event in _drain_push_queue(token):

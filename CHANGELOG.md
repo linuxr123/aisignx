@@ -13,6 +13,23 @@ when tagged releases begin.
 
 ## [Unreleased]
 
+### Admin UI
+- **Top navigation bar** — replaced the fixed sidebar with a horizontal navbar and dropdowns (Signage, Admin, System, user menu); active tenant selector moved to the top bar
+- **Tenant-aware dashboard** — overview cards, online/offline summary, storage bar, pending enrollments, schedule conflicts, recent displays, audit snippets, and quick actions scoped to the active tenant
+- **Media library folders** — default view shows only files in the current folder (not recursive); optional **Include subfolders**, **Show all media**, and **Folder view** to return from all-media mode; sidebar counts show direct file counts per folder
+- **Modal forms** — Enter key submits primary action in Bootstrap modals (shared `modal-forms.js`); playlist create/edit/copy forms use proper submit buttons
+
+### Server & playback
+- **Zip media import** — upload `.zip` to extract images/videos into a chosen folder (with optional name prefix, subfolder preservation, and clearer errors for empty archives / size limits)
+- **Faster playlist rollout** — immediate SSE push when schedules or playlists change; playlist version includes schedule context; sync grace period and clock recalibration on reload
+- **Signed URL lifetime** — player media URLs use a longer TTL and periodic refresh so long-running displays do not show broken images after URL expiry
+- **Upload limits** — raised max upload size and JSON 413 responses for large zip imports (`config.example.py`, `app.py`)
+
+### Clients
+- **Electron app version** — `window.AISIGNX_APP_VERSION` exposed via preload so the displays page reports the real installer version instead of `browser` (Android already reported version on register; pings now stay in sync)
+- **Android TV / Shield** (`1.4.14`, `versionCode` 27) — native intercept of D-pad and media keys before WebView; PIN keypad via Menu, OK (short/long press), and number keys; media skip blocked while kiosk is locked; larger PIN buttons and on-screen remote hint
+- **Player JS** (`display_player.js`) — keyboard shortcuts respect lock state; `AISignXTvKey` bridge for Android remotes; `ensureReportedAppVersion()` for Electron pings
+
 ### Documentation & repository
 - Root documentation index at [`docs/README.md`](docs/README.md)
 - Restructured README: use cases, one-minute quick start, architecture diagram

@@ -36,7 +36,7 @@
     <div class="card-body">
         <p class="text-muted small mb-3">
             Logo and accent color apply to the admin UI for users in this tenant.
-            Changes use the sidebar <strong>Active tenant</strong> — reload after switching tenants.
+            Changes use the top bar <strong>Active tenant</strong> selector — reload after switching tenants.
         </p>
         <div class="row g-3 align-items-start">
             <div class="col-md-6">
@@ -520,7 +520,7 @@
             });
             const j = await r.json();
             if (j.status === 'success') {
-                alert('Brand color saved. Reload the page to see it in the sidebar.');
+                alert('Brand color saved. Reload the page to see it in the top bar.');
             } else {
                 alert(j.message || 'Save failed');
             }
@@ -537,7 +537,7 @@
             if (j.status === 'success') {
                 renderBrandLogo({branding_logo_path: j.logo_path});
                 document.getElementById('brandLogoFile').value = '';
-                alert('Logo uploaded. Reload the page to see it in the sidebar.');
+                alert('Logo uploaded. Reload the page to see it in the top bar.');
             } else {
                 alert(j.message || 'Upload failed');
             }

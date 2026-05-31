@@ -212,8 +212,8 @@
                 <h5 class="modal-title">Create Playlist</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            <form id="createPlaylistForm">
             <div class="modal-body">
-                <form id="createPlaylistForm">
                     <div class="mb-3">
                         <label for="playlist-name" class="form-label">Playlist Name</label>
                         <input type="text" class="form-control" id="playlist-name" required>
@@ -222,12 +222,12 @@
                         <label for="playlist-description" class="form-label">Description (optional)</label>
                         <textarea class="form-control" id="playlist-description" rows="3"></textarea>
                     </div>
-                </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="create-playlist-btn">Create</button>
+                <button type="submit" class="btn btn-primary" id="create-playlist-btn">Create</button>
             </div>
+            </form>
         </div>
     </div>
 </div>
@@ -240,8 +240,8 @@
                 <h5 class="modal-title">Edit Playlist</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            <form id="editPlaylistForm">
             <div class="modal-body">
-                <form id="editPlaylistForm">
                     <input type="hidden" id="edit-playlist-id">
                     <div class="mb-3">
                         <label for="edit-playlist-name" class="form-label">Playlist Name</label>
@@ -251,12 +251,12 @@
                         <label for="edit-playlist-description" class="form-label">Description (optional)</label>
                         <textarea class="form-control" id="edit-playlist-description" rows="3"></textarea>
                     </div>
-                </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="update-playlist-btn">Save Changes</button>
+                <button type="submit" class="btn btn-primary" id="update-playlist-btn">Save Changes</button>
             </div>
+            </form>
         </div>
     </div>
 </div>
@@ -289,21 +289,21 @@
                 <h5 class="modal-title">Copy Playlist</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            <form id="copyPlaylistForm">
             <div class="modal-body">
                 <p>Create a copy of "<span id="copy-playlist-source-name"></span>"</p>
-                <form id="copyPlaylistForm">
                     <input type="hidden" id="copy-playlist-id">
                     <div class="mb-3">
                         <label for="copy-playlist-name" class="form-label">New Playlist Name</label>
-                        <input type="text" class="form-control" id="copy-playlist-name" required>
+                        <input type="text" class="form-control" id="copy-playlist-name">
                         <small class="form-text text-muted">Leave blank to auto-generate name</small>
                     </div>
-                </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-info" id="confirm-copy-btn">Copy Playlist</button>
+                <button type="submit" class="btn btn-info" id="confirm-copy-btn">Copy Playlist</button>
             </div>
+            </form>
         </div>
     </div>
 </div>
@@ -434,8 +434,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .catch(err => { console.error(err); alert('Request failed.'); });
     });
 
-    // Create playlist
-    document.getElementById('create-playlist-btn').addEventListener('click', function() {
+    function createPlaylist() {
         const name = document.getElementById('playlist-name').value;
         const description = document.getElementById('playlist-description').value;
         
@@ -478,6 +477,11 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error:', error);
             alert('An error occurred while creating the playlist');
         });
+    }
+
+    document.getElementById('createPlaylistForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        createPlaylist();
     });
     
     // Edit playlist button click
@@ -496,8 +500,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Update playlist
-    document.getElementById('update-playlist-btn').addEventListener('click', function() {
+    function updatePlaylist() {
         const playlistId = document.getElementById('edit-playlist-id').value;
         const name = document.getElementById('edit-playlist-name').value;
         const description = document.getElementById('edit-playlist-description').value;
@@ -520,11 +523,8 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                // Close the modal
                 const modal = bootstrap.Modal.getInstance(document.getElementById('editPlaylistModal'));
                 modal.hide();
-                
-                // Reload the page to show the updated playlist
                 window.location.reload();
             } else {
                 alert('Error: ' + data.message);
@@ -534,6 +534,11 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error:', error);
             alert('An error occurred while updating the playlist');
         });
+    }
+
+    document.getElementById('editPlaylistForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        updatePlaylist();
     });
     
     // Delete playlist button click
@@ -590,11 +595,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Confirm copy playlist
-    document.getElementById('confirm-copy-btn').addEventListener('click', function() {
+    function copyPlaylist() {
         const playlistId = document.getElementById('copy-playlist-id').value;
         const newName = document.getElementById('copy-playlist-name').value;
-        
         const requestBody = newName ? { name: newName } : {};
         
         fetch(`/api/playlists/${playlistId}/copy`, {
@@ -607,14 +610,9 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                // Close the modal
                 const modal = bootstrap.Modal.getInstance(document.getElementById('copyPlaylistModal'));
                 modal.hide();
-                
-                // Show success message
                 alert(data.message);
-                
-                // Reload the page to show the copied playlist
                 window.location.reload();
             } else {
                 alert('Error: ' + data.message);
@@ -624,6 +622,11 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error:', error);
             alert('An error occurred while copying the playlist');
         });
+    }
+
+    document.getElementById('copyPlaylistForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        copyPlaylist();
     });
 
     // View toggle: rows vs. cards. Persist choice in localStorage so the

@@ -216,9 +216,9 @@
 <!-- Emergency tab -->
 <div class="tab-pane fade" id="tab-emergency">
 <p class="text-muted small mb-3">
-    Emergency templates and broadcasts use the <strong>Active tenant</strong> from the sidebar
+    Emergency templates and broadcasts use the <strong>Active tenant</strong> from the top bar
     {% if active_tenant_name %} (<span id="eb-tenant-label">{{ active_tenant_name }}</span>){% else %}
-    <span class="text-warning">— select a tenant in the sidebar first</span>{% endif %}.
+    <span class="text-warning">— select a tenant in the top bar first</span>{% endif %}.
     Switch tenant there, then reload this page if templates look wrong.
 </p>
 <div class="row g-3">
@@ -702,11 +702,11 @@ function esc(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Emergency broadcast — scoped to sidebar Active tenant (same as schedules)
+// Emergency broadcast — scoped to top bar Active tenant (same as schedules)
 let activeBroadcastId = null;
 const ACTIVE_DOMAIN_ID = {{ active_domain_id|tojson }};
 
-/** Active tenant: sidebar switcher wins over page-render value (stays in sync after switch). */
+/** Active tenant: top bar switcher wins over page-render value (stays in sync after switch). */
 function getActiveDomainId() {
     const sel = document.getElementById('domainSwitcher');
     if (sel && sel.value) {
@@ -744,7 +744,7 @@ function renderEbTargets(displays, groups) {
 async function loadEbTargets() {
     if (!getActiveDomainId()) {
         const sel = document.getElementById('eb-target');
-        if (sel) sel.innerHTML = '<option value="all">Select Active tenant in sidebar</option>';
+        if (sel) sel.innerHTML = '<option value="all">Select Active tenant in top bar</option>';
         return;
     }
     try {
@@ -792,7 +792,7 @@ async function loadEbHistory(){
     const body = document.getElementById('eb-history-body');
     if (!body) return;
     if (!getActiveDomainId()) {
-        body.innerHTML = '<p class="text-muted text-center py-3">Select <strong>Active tenant</strong> in the sidebar.</p>';
+        body.innerHTML = '<p class="text-muted text-center py-3">Select <strong>Active tenant</strong> in the top bar.</p>';
         return;
     }
     try {
@@ -837,7 +837,7 @@ async function loadTemplates(){
     const body = document.getElementById('eb-templates-body');
     if (!body) return;
     if (!getActiveDomainId()) {
-        body.innerHTML = '<p class="text-muted text-center py-3">Select <strong>Active tenant</strong> in the sidebar.</p>';
+        body.innerHTML = '<p class="text-muted text-center py-3">Select <strong>Active tenant</strong> in the top bar.</p>';
         return;
     }
     try {
@@ -891,7 +891,7 @@ function populateTemplateDropdown(){
 
 document.getElementById('newTemplateBtn')?.addEventListener('click', () => {
     if (!getActiveDomainId()) {
-        alert('Select Active tenant in the sidebar first.');
+        alert('Select Active tenant in the top bar first.');
         return;
     }
     document.getElementById('tmpl-id').value='';
@@ -934,7 +934,7 @@ document.querySelectorAll('input[name="tmpl-level"]').forEach(r=>r.addEventListe
 document.getElementById('saveTemplateBtn').addEventListener('click',function(){
     const activeDid = getActiveDomainId();
     if (!activeDid) {
-        alert('Select Active tenant in the sidebar, then open Schedules → Emergency again.');
+        alert('Select Active tenant in the top bar, then open Schedules → Emergency again.');
         return;
     }
     const id=document.getElementById('tmpl-id').value;

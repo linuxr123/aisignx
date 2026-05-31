@@ -1,94 +1,402 @@
 {% extends 'base.html' %}
 
-{% block title %}Dashboard - AISignX{% endblock %}
+{% block title %}Dashboard — {{ tenant_name or 'AISignX' }}{% endblock %}
+
+{% block head %}
+<style>
+    .dash-hero {
+        background: linear-gradient(135deg, var(--tenant-primary, #0d6efd) 0%, #1a1d21 100%);
+        color: #fff;
+        border-radius: 0.75rem;
+        padding: 1.5rem 1.75rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 0.5rem 1.25rem rgba(0, 0, 0, 0.12);
+    }
+    .dash-hero .tenant-meta {
+        opacity: 0.9;
+        font-size: 0.875rem;
+    }
+    .dash-stat {
+        border: 0;
+        border-radius: 0.75rem;
+        box-shadow: 0 0.125rem 0.35rem rgba(0, 0, 0, 0.06);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        height: 100%;
+    }
+    .dash-stat:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.35rem 0.75rem rgba(0, 0, 0, 0.1);
+    }
+    .dash-stat .stat-icon {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 0.65rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.35rem;
+    }
+    .dash-stat .stat-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        line-height: 1.1;
+    }
+    .dash-stat a.stretched-link {
+        z-index: 1;
+    }
+    .dash-online-ring {
+        width: 4.5rem;
+        height: 4.5rem;
+        border-radius: 50%;
+        background: conic-gradient(
+            #20c997 0deg {{ online_pct * 3.6 }}deg,
+            rgba(255,255,255,0.2) {{ online_pct * 3.6 }}deg 360deg
+        );
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 0.95rem;
+    }
+    .dash-online-ring span {
+        width: 3.25rem;
+        height: 3.25rem;
+        border-radius: 50%;
+        background: rgba(0,0,0,0.25);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .dash-section-title {
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #6c757d;
+        margin-bottom: 0.75rem;
+    }
+    .dash-quick .btn {
+        text-align: left;
+    }
+    .audit-row-action {
+        font-family: ui-monospace, monospace;
+        font-size: 0.8rem;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<h1>Dashboard</h1>
-<div class="row mt-4">
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Total Displays</h5>
-                <p class="card-text display-4">{{ display_count }}</p>
-                <p class="card-text text-success">{{ online_count }} Online</p>
-            </div>
+<div class="dash-hero d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div>
+        <h1 class="h3 mb-1">
+            <i class="bi bi-speedometer2 me-2"></i>
+            {% if tenant_name %}{{ tenant_name }}{% else %}Dashboard{% endif %}
+        </h1>
+        <div class="tenant-meta">
+            {% if tenant_id %}
+            <span class="me-3"><i class="bi bi-building me-1"></i> Active tenant workspace</span>
+            {% if tenant_slug %}<span class="me-3"><code class="text-white-50">{{ tenant_slug }}</code></span>{% endif %}
+            {% if tenant_timezone %}<span class="me-3"><i class="bi bi-clock me-1"></i> {{ tenant_timezone }}</span>{% endif %}
+            {% else %}
+            <span class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i> No active tenant — use the top bar to select one.</span>
+            {% endif %}
+            {% if switcher.visible and switcher.available|length > 1 %}
+            <span class="d-block d-md-inline mt-1 mt-md-0">
+                <i class="bi bi-arrow-left-right me-1"></i> {{ switcher.available|length }} tenants available
+            </span>
+            {% endif %}
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Media Files</h5>
-                <p class="card-text display-4">{{ media_count }}</p>
-            </div>
+    <div class="d-flex align-items-center gap-3">
+        {% if display_count > 0 %}
+        <div class="dash-online-ring" title="{{ online_count }} of {{ display_count }} displays online">
+            <span>{{ online_pct|int }}%</span>
         </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Playlists</h5>
-                <p class="card-text display-4">{{ playlist_count }}</p>
-            </div>
+        <div class="text-end small">
+            <div class="fw-semibold">{{ online_count }} online</div>
+            <div class="opacity-75">{{ offline_count }} offline</div>
         </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Schedules</h5>
-                <p class="card-text display-4">{{ schedule_count }}</p>
-            </div>
-        </div>
+        {% endif %}
     </div>
 </div>
 
-{% if pop_enabled %}
-<div class="row mt-3">
-    <div class="col-md-3">
-        <a href="{{ url_for('admin.admin_proof_of_play_page') }}" class="text-decoration-none text-reset">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title"><i class="bi bi-clipboard-check"></i> Plays (24h)</h5>
-                    <p class="card-text display-4">{{ pop_24h }}</p>
-                    <p class="card-text small text-muted mb-0">Proof-of-Play events recorded in the last 24 hours.</p>
-                </div>
-            </div>
-        </a>
+{% if emergency %}
+<div class="alert alert-danger d-flex align-items-start gap-2 mb-3" role="alert">
+    <i class="bi bi-exclamation-octagon-fill fs-4"></i>
+    <div class="flex-grow-1">
+        <strong>Emergency broadcast active:</strong> {{ emergency.title }}
+        {% if emergency.message %}<div class="small mt-1 mb-0">{{ emergency.message }}</div>{% endif %}
     </div>
+    <a href="{{ url_for('schedules.schedules') }}#tab-emergency" class="btn btn-sm btn-outline-danger">Manage</a>
 </div>
 {% endif %}
 
-<h2 class="mt-5">Recent Display Activity</h2>
-<div class="table-responsive">
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Location</th>
-                <th>Status</th>
-                <th>Last Ping</th>
-				<th>IP Address</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for display in recent_displays %}
-            <tr>
-                <td>{{ display.name }}</td>
-                <td>{{ display.location or 'N/A' }}</td>
-				<td>
-					{% if display.is_online %}
-					<span class="badge bg-success">Online</span>
-					{% else %}
-					<span class="badge bg-danger">Offline</span>
-					{% endif %}
-				</td>
-                <td>{{ display.last_ping|format_datetime if display.last_ping else 'Never' }}</td>
-				<td>{{ display.ip_address or 'N/A' }}</td>
-                <td>
-                    <a href="{{ url_for('displays.display_detail', display_id=display.id) }}" class="btn btn-sm btn-primary">View Details</a>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+{% if pending_count > 0 %}
+<div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <span><i class="bi bi-hourglass-split me-2"></i><strong>{{ pending_count }}</strong> device{{ 's' if pending_count != 1 else '' }} awaiting approval for this tenant.</span>
+    {% if is_admin %}
+    <a href="{{ url_for('registration.admin_enrollment_page') }}" class="btn btn-sm btn-warning">Review enrollment</a>
+    {% endif %}
 </div>
+{% endif %}
+
+{% if conflict_count > 0 %}
+<div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <span><i class="bi bi-calendar2-x me-2"></i><strong>{{ conflict_count }}</strong> schedule conflict{{ 's' if conflict_count != 1 else '' }} in the next 7 days.</span>
+    <a href="{{ url_for('admin.admin_schedule_conflicts_page') }}" class="btn btn-sm btn-outline-primary">View conflicts</a>
+</div>
+{% endif %}
+
+<p class="dash-section-title mb-2">Signage overview</p>
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="card dash-stat position-relative">
+            <div class="card-body d-flex gap-3">
+                <div class="stat-icon bg-primary bg-opacity-10 text-primary">
+                    <i class="bi bi-display"></i>
+                </div>
+                <div>
+                    <div class="text-muted small">Displays</div>
+                    <div class="stat-value">{{ display_count }}</div>
+                    <div class="small text-success">{{ online_count }} online</div>
+                </div>
+            </div>
+            <a href="{{ url_for('displays.displays') }}" class="stretched-link" aria-label="Displays"></a>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card dash-stat position-relative">
+            <div class="card-body d-flex gap-3">
+                <div class="stat-icon bg-secondary bg-opacity-10 text-secondary">
+                    <i class="bi bi-collection"></i>
+                </div>
+                <div>
+                    <div class="text-muted small">Groups</div>
+                    <div class="stat-value">{{ group_count }}</div>
+                </div>
+            </div>
+            <a href="{{ url_for('groups.groups') }}" class="stretched-link" aria-label="Display groups"></a>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card dash-stat position-relative">
+            <div class="card-body d-flex gap-3">
+                <div class="stat-icon bg-info bg-opacity-10 text-info">
+                    <i class="bi bi-images"></i>
+                </div>
+                <div>
+                    <div class="text-muted small">Media</div>
+                    <div class="stat-value">{{ media_count }}</div>
+                    {% if media_by_type %}
+                    <div class="small text-muted">
+                        {% for t, c in media_by_type.items() %}{{ t }}: {{ c }}{% if not loop.last %} · {% endif %}{% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            <a href="{{ url_for('media.media') }}" class="stretched-link" aria-label="Media"></a>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card dash-stat position-relative">
+            <div class="card-body d-flex gap-3">
+                <div class="stat-icon bg-success bg-opacity-10 text-success">
+                    <i class="bi bi-list-ul"></i>
+                </div>
+                <div>
+                    <div class="text-muted small">Playlists</div>
+                    <div class="stat-value">{{ playlist_count }}</div>
+                </div>
+            </div>
+            <a href="{{ url_for('playlists.playlists') }}" class="stretched-link" aria-label="Playlists"></a>
+        </div>
+    </div>
+</div>
+
+<p class="dash-section-title mb-2">Scheduling &amp; operations</p>
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card dash-stat position-relative">
+            <div class="card-body">
+                <div class="text-muted small">Schedules</div>
+                <div class="stat-value">{{ schedule_count }}</div>
+                <div class="small text-muted">{{ active_schedule_count }} active</div>
+            </div>
+            <a href="{{ url_for('schedules.schedules') }}" class="stretched-link"></a>
+        </div>
+    </div>
+    {% if is_admin %}
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card dash-stat position-relative">
+            <div class="card-body">
+                <div class="text-muted small">Pending devices</div>
+                <div class="stat-value {{ 'text-warning' if pending_count else '' }}">{{ pending_count }}</div>
+            </div>
+            <a href="{{ url_for('registration.admin_enrollment_page') }}" class="stretched-link"></a>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card dash-stat position-relative">
+            <div class="card-body">
+                <div class="text-muted small">Conflicts (7d)</div>
+                <div class="stat-value {{ 'text-danger' if conflict_count else '' }}">{{ conflict_count }}</div>
+            </div>
+            <a href="{{ url_for('admin.admin_schedule_conflicts_page') }}" class="stretched-link"></a>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card dash-stat">
+            <div class="card-body">
+                <div class="text-muted small">Team members</div>
+                <div class="stat-value">{{ member_count }}</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% if pop_enabled %}
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card dash-stat position-relative">
+            <div class="card-body">
+                <div class="text-muted small">Plays (24h)</div>
+                <div class="stat-value">{{ pop_24h }}</div>
+            </div>
+            <a href="{{ url_for('admin.admin_proof_of_play_page') }}" class="stretched-link"></a>
+        </div>
+    </div>
+    {% endif %}
+    {% if tenant_id and (storage_has_quota or storage_used_label != '0 B') %}
+    <div class="col-12 col-md">
+        <div class="card dash-stat h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="text-muted small"><i class="bi bi-hdd me-1"></i> Storage (this tenant)</span>
+                    <span class="small fw-semibold">{{ storage_used_label }}{% if storage_has_quota %} / {{ storage_quota_label }}{% endif %}</span>
+                </div>
+                {% if storage_pct is not none %}
+                <div class="progress" style="height: 8px;">
+                    <div class="progress-bar {{ 'bg-danger' if storage_pct >= 95 else ('bg-warning' if storage_pct >= 80 else 'bg-primary') }}"
+                         role="progressbar" style="width: {{ storage_pct }}%;"
+                         aria-valuenow="{{ storage_pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+                <div class="small text-muted mt-1">{{ storage_pct }}% of quota</div>
+                {% else %}
+                <div class="small text-muted">No quota configured</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center bg-white">
+                <span class="fw-semibold"><i class="bi bi-display me-2"></i>Display status</span>
+                <a href="{{ url_for('displays.displays') }}" class="btn btn-sm btn-outline-primary">All displays</a>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_displays %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                <th>Location</th>
+                                <th>Status</th>
+                                <th>Version</th>
+                                <th>Last ping</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for display in recent_displays %}
+                            <tr>
+                                <td class="fw-medium">{{ display.name }}</td>
+                                <td class="text-muted small">{{ display.location or '—' }}</td>
+                                <td>
+                                    {% if display.is_online %}
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle">Online</span>
+                                    {% else %}
+                                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Offline</span>
+                                    {% endif %}
+                                </td>
+                                <td class="small text-muted">{{ display.app_version or '—' }}</td>
+                                <td class="small text-muted">{{ display.last_ping|format_datetime if display.last_ping else 'Never' }}</td>
+                                <td class="text-end">
+                                    <a href="{{ url_for('displays.display_detail', display_id=display.id) }}"
+                                       class="btn btn-sm btn-outline-secondary">Open</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-5 mb-0">No displays in this tenant yet.
+                    <a href="{{ url_for('displays.displays') }}">Add a display</a>.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        {% if offline_displays %}
+        <div class="card mb-3">
+            <div class="card-header bg-white fw-semibold text-danger">
+                <i class="bi bi-wifi-off me-2"></i>Needs attention
+            </div>
+            <ul class="list-group list-group-flush">
+                {% for d in offline_displays %}
+                <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+                    <span>{{ d.name }}</span>
+                    <a href="{{ url_for('displays.display_detail', display_id=d.id) }}" class="btn btn-sm btn-link">View</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if is_admin and recent_audit %}
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center bg-white">
+                <span class="fw-semibold"><i class="bi bi-journal-text me-2"></i>Recent activity</span>
+                <a href="{{ url_for('audit.audit_page') }}" class="btn btn-sm btn-link">Audit log</a>
+            </div>
+            <ul class="list-group list-group-flush small">
+                {% for row in recent_audit %}
+                <li class="list-group-item py-2">
+                    <div class="audit-row-action text-truncate">{{ row.action }}</div>
+                    <div class="text-muted">
+                        {{ row.timestamp|format_datetime }}
+                        {% if row.target_type %} · {{ row.target_type }}{% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if is_admin %}
+        <div class="card dash-quick">
+            <div class="card-header bg-white fw-semibold">Quick actions</div>
+            <div class="card-body d-grid gap-2">
+                <a href="{{ url_for('media.media') }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-upload me-2"></i>Upload media</a>
+                <a href="{{ url_for('playlists.playlists') }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-plus-circle me-2"></i>Manage playlists</a>
+                <a href="{{ url_for('schedules.schedules') }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-calendar-plus me-2"></i>Edit schedules</a>
+                {% if is_superadmin %}
+                <a href="{{ url_for('settings_admin.admin_settings_page') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-gear me-2"></i>System settings</a>
+                {% else %}
+                <a href="{{ url_for('settings_admin.admin_settings_page') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-gear me-2"></i>Tenant settings</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<p class="text-muted small text-end mt-3 mb-0">
+    Snapshot for <strong>{{ tenant_name or 'active tenant' }}</strong>
+    · {{ generated_at|format_datetime }} UTC
+</p>
 {% endblock %}

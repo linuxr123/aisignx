@@ -3,6 +3,11 @@ import uuid
 import hashlib
 import json
 import threading
+import io
+import zipfile
+import tempfile
+import shutil
+from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlparse
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, abort, url_for, g, current_app
@@ -421,6 +426,437 @@ def api_upload_media():
         'message': 'Media uploaded successfully',
         'media': media.to_dict()
     })
+
+
+# Zip import limits (defense against zip bombs and runaway imports).
+# Photo archives are often 100–300 MB zipped with >500 MB uncompressed.
+_ZIP_MAX_UPLOAD_BYTES = 300 * 1024 * 1024
+_ZIP_MAX_UNCOMPRESSED_BYTES = 3 * 1024 * 1024 * 1024
+_ZIP_MAX_ENTRIES = 500
+
+# Extensions accepted by POST /api/media (keep UI accept= in sync).
+_ZIP_MEDIA_EXTS = {
+    '.jpg': 'image', '.jpeg': 'image', '.png': 'image', '.gif': 'image',
+    '.webp': 'image', '.bmp': 'image', '.tif': 'image', '.tiff': 'image',
+    '.mp4': 'video', '.webm': 'video', '.ogg': 'video', '.mov': 'video',
+}
+
+
+def _kind_from_upload_ext(ext: str):
+    return _ZIP_MEDIA_EXTS.get((ext or '').lower())
+
+
+def _join_media_folders(base: str, sub: str) -> str:
+    """Combine logical folder paths; raises ValueError on invalid result."""
+    base = _normalise_folder(base) if base else ''
+    sub = _normalise_folder(sub) if sub else ''
+    if not base:
+        return sub
+    if not sub:
+        return base
+    return _normalise_folder(f'{base}/{sub}')
+
+
+def _zip_count_importable(members, strip_prefix: str) -> int:
+    n = 0
+    for zi in members:
+        name = zi.filename.replace('\\', '/')
+        if name.startswith('__MACOSX/') or zi.is_dir() or name.endswith('/'):
+            continue
+        if strip_prefix and name.startswith(strip_prefix):
+            name = name[len(strip_prefix):]
+        name = name.lstrip('/')
+        if not name or name.startswith('.'):
+            continue
+        base = os.path.basename(name)
+        if base in ('.DS_Store', 'Thumbs.db', 'desktop.ini'):
+            continue
+        if _kind_from_upload_ext(os.path.splitext(name)[1].lower()):
+            n += 1
+    return n
+
+
+def _zip_single_top_prefix(names):
+    """If every file lives under one top-level directory, return 'dir/' to strip."""
+    file_names = [n.replace('\\', '/') for n in names
+                  if n and not n.endswith('/')]
+    if not file_names:
+        return ''
+    tops = {n.split('/', 1)[0] for n in file_names}
+    if len(tops) != 1:
+        return ''
+    top = next(iter(tops))
+    if all(n.startswith(top + '/') for n in file_names):
+        return top + '/'
+    return ''
+
+
+def _zip_logical_subdir(entry_name: str, strip_prefix: str) -> str:
+    """Directory portion of a zip entry, relative to strip_prefix, as logical folder."""
+    name = entry_name.replace('\\', '/')
+    if strip_prefix and name.startswith(strip_prefix):
+        name = name[len(strip_prefix):]
+    name = name.lstrip('/')
+    if '/' not in name:
+        return ''
+    return _normalise_folder(os.path.dirname(name))
+
+
+def _register_uploaded_file(stored, kind, *, name, folder, description,
+                            explicit_duration, allow_duplicate, source_label):
+    """Create Media row for bytes already saved via storage; mirrors POST /api/media."""
+    checksum = None
+    try:
+        h = hashlib.sha256()
+        with open(stored.abs_path, 'rb') as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b''):
+                h.update(chunk)
+        checksum = h.hexdigest()
+    except OSError as e:
+        logger.warning(f"checksum compute failed for {stored.rel_path}: {e}")
+
+    if checksum and not allow_duplicate:
+        existing = Media.query.filter_by(checksum_sha256=checksum).first()
+        if existing is not None:
+            storage.delete(stored.rel_path)
+            return 'duplicate', existing
+
+    thumb_abs, thumb_rel = storage.reserve_path('thumbnail', '.png')
+    thumb_status = 'ok'
+    thumb_when = datetime.utcnow()
+    try:
+        if kind == 'image':
+            create_image_thumbnail(stored.abs_path, thumb_abs)
+        else:
+            create_video_thumbnail(stored.abs_path, thumb_abs)
+    except Exception as e:
+        logger.error(f"Thumbnail generation failed: {e}")
+        thumb_rel = None
+        thumb_status = 'failed'
+        thumb_when = None
+
+    duration_val = 10
+    if explicit_duration is not None:
+        try:
+            duration_val = max(0, int(explicit_duration))
+        except (TypeError, ValueError):
+            duration_val = 10
+    media = Media(
+        name=name,
+        filename=os.path.basename(stored.rel_path),
+        file_path=stored.rel_path,
+        media_type=kind,
+        mime_type=stored.mime,
+        duration=duration_val,
+        description=description or '',
+        file_size=stored.size,
+        checksum_sha256=checksum,
+        thumbnail_path=thumb_rel,
+        thumbnail_status=thumb_status,
+        thumbnail_generated_at=thumb_when,
+    )
+    if kind == 'video':
+        _apply_video_metadata(media, stored.abs_path, explicit_duration=explicit_duration)
+    if folder is not None:
+        try:
+            media.folder = _normalise_folder(folder) if folder else ''
+        except ValueError:
+            media.folder = ''
+    db.session.add(media)
+    try:
+        db.session.commit()
+    except RuntimeError as e:
+        db.session.rollback()
+        storage.delete(stored.rel_path)
+        if thumb_rel:
+            storage.delete(thumb_rel)
+        raise e
+    audit('media.upload', target_type='media', target_id=str(media.id),
+          payload={'name': media.name, 'kind': kind, 'size': stored.size,
+                   'filename': source_label, 'source': 'zip_import'})
+    return 'ok', media
+
+
+@media_bp.route('/api/media/import-zip', methods=['POST'])
+@utils.api_auth_required(['media:write'])
+@require_permission('media.upload')
+def api_import_media_zip():
+    """Extract images/videos from a .zip into the tenant library.
+
+    Files land in the logical folder from the ``folder`` form field. Paths
+    inside the archive become sub-folders under that base (a single
+    top-level directory in the zip is stripped when all entries share it).
+    Empty folders from the archive are registered so they appear in the tree.
+    """
+    try:
+        return _api_import_media_zip_impl()
+    except Exception as e:
+        logger.exception('zip import failed')
+        db.session.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': f'Zip import failed: {e}',
+        }), 500
+
+
+def _api_import_media_zip_impl():
+    tok = getattr(g, 'api_token', None)
+    if tok and tok.media_id:
+        return jsonify({
+            'status': 'error',
+            'message': 'This token is restricted to a single media item and cannot create new media.'
+        }), 403
+
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file part'}), 400
+    zf_upload = request.files['file']
+    if not zf_upload.filename:
+        return jsonify({'status': 'error', 'message': 'No selected file'}), 400
+    if not zf_upload.filename.lower().endswith('.zip'):
+        return jsonify({'status': 'error', 'message': 'File must be a .zip archive'}), 400
+
+    raw = zf_upload.read()
+    max_zip = int(current_app.config.get('MAX_CONTENT_LENGTH') or _ZIP_MAX_UPLOAD_BYTES)
+    if len(raw) > max_zip:
+        return jsonify({
+            'status': 'error',
+            'message': f'Zip too large (max {max_zip // (1024 * 1024)} MB)',
+        }), 400
+    if not raw:
+        return jsonify({'status': 'error', 'message': 'Empty archive'}), 400
+
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(raw))
+    except zipfile.BadZipFile:
+        return jsonify({'status': 'error', 'message': 'Invalid zip archive'}), 400
+
+    members = [zi for zi in zf.infolist()
+               if zi.filename and not zi.filename.startswith('__MACOSX/')]
+    if not members:
+        return jsonify({'status': 'error', 'message': 'Zip archive is empty'}), 400
+    if len(members) > _ZIP_MAX_ENTRIES:
+        return jsonify({
+            'status': 'error',
+            'message': f'Too many entries (max {_ZIP_MAX_ENTRIES})',
+        }), 400
+
+    uncompressed = sum(zi.file_size for zi in members)
+    if uncompressed > _ZIP_MAX_UNCOMPRESSED_BYTES:
+        return jsonify({
+            'status': 'error',
+            'message': (f'Archive too large when uncompressed '
+                        f'({uncompressed // (1024 * 1024)} MB; '
+                        f'limit {_ZIP_MAX_UNCOMPRESSED_BYTES // (1024 * 1024)} MB)'),
+        }), 400
+
+    ok_pre, msg_pre = storage.check_quota(uncompressed)
+    if not ok_pre:
+        return jsonify({'status': 'error', 'message': msg_pre}), 413
+
+    try:
+        base_folder = _normalise_folder(request.form.get('folder', '') or '')
+    except ValueError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
+    allow_dup = (request.form.get('allow_duplicate', '').lower()
+                 in ('1', 'true', 'yes'))
+    shared_description = request.form.get('description', '') or ''
+    explicit_duration = request.form.get('duration')
+    name_prefix = (request.form.get('name_prefix') or '').strip()
+
+    file_names = [zi.filename.replace('\\', '/') for zi in members
+                  if not zi.is_dir() and not zi.filename.endswith('/')]
+    strip_prefix = _zip_single_top_prefix(file_names)
+    importable_total = _zip_count_importable(members, strip_prefix)
+    pad_width = max(4, len(str(importable_total or 1)))
+    name_seq = 0
+
+    # Collect logical folder paths implied by the archive (for empty dirs).
+    logical_dirs = set()
+    for zi in members:
+        name = zi.filename.replace('\\', '/')
+        if strip_prefix and name.startswith(strip_prefix):
+            name = name[len(strip_prefix):]
+        name = name.lstrip('/')
+        if not name or name.startswith('__MACOSX'):
+            continue
+        if zi.is_dir() or name.endswith('/'):
+            rel = name.rstrip('/')
+            if rel:
+                try:
+                    logical_dirs.add(_join_media_folders(base_folder, rel))
+                except ValueError:
+                    pass
+            continue
+        sub = os.path.dirname(name)
+        if sub:
+            try:
+                logical_dirs.add(_join_media_folders(base_folder, sub))
+            except ValueError:
+                pass
+            parts = sub.split('/')
+            for i in range(1, len(parts)):
+                try:
+                    logical_dirs.add(
+                        _join_media_folders(base_folder, '/'.join(parts[:i])))
+                except ValueError:
+                    pass
+
+    imported = 0
+    skipped = 0
+    duplicates = 0
+    failed = 0
+    errors = []
+    media_ids = []
+    item_folders = set()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        for zi in members:
+            name = zi.filename.replace('\\', '/')
+            if name.startswith('__MACOSX/'):
+                continue
+            if zi.is_dir() or name.endswith('/'):
+                continue
+            if strip_prefix and name.startswith(strip_prefix):
+                name = name[len(strip_prefix):]
+            name = name.lstrip('/')
+            if not name or name.startswith('.'):
+                skipped += 1
+                continue
+            base = os.path.basename(name)
+            if base in ('.DS_Store', 'Thumbs.db', 'desktop.ini'):
+                skipped += 1
+                continue
+
+            ext = os.path.splitext(name)[1].lower()
+            kind = _kind_from_upload_ext(ext)
+            if not kind:
+                skipped += 1
+                continue
+
+            rel_in_zip = name
+            if rel_in_zip.startswith('/') or '..' in Path(rel_in_zip).parts:
+                failed += 1
+                errors.append({'path': zi.filename, 'message': 'unsafe path'})
+                continue
+
+            try:
+                dest = (tmp / rel_in_zip).resolve()
+                dest.relative_to(tmp.resolve())
+            except ValueError:
+                failed += 1
+                errors.append({'path': zi.filename, 'message': 'unsafe path'})
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with zf.open(zi, 'r') as src, open(dest, 'wb') as out:
+                    shutil.copyfileobj(src, out)
+            except Exception as e:
+                failed += 1
+                errors.append({'path': zi.filename, 'message': str(e)})
+                continue
+
+            size = dest.stat().st_size
+            ok_q, msg_q = storage.check_quota(size)
+            if not ok_q:
+                failed += 1
+                errors.append({'path': zi.filename, 'message': msg_q})
+                continue
+
+            try:
+                data = dest.read_bytes()
+                stored = storage.save_bytes(data, kind, ext)
+            except (ValueError, RuntimeError) as e:
+                failed += 1
+                errors.append({'path': zi.filename, 'message': str(e)})
+                continue
+
+            if name_prefix:
+                name_seq += 1
+                display_name = f'{name_prefix}-{str(name_seq).zfill(pad_width)}'
+            else:
+                display_name = os.path.splitext(base)[0] or base
+            try:
+                item_folder = _join_media_folders(
+                    base_folder, os.path.dirname(name))
+            except ValueError as e:
+                storage.delete(stored.rel_path)
+                failed += 1
+                errors.append({'path': zi.filename, 'message': str(e)})
+                continue
+
+            try:
+                outcome, payload = _register_uploaded_file(
+                    stored, kind,
+                    name=display_name,
+                    folder=item_folder,
+                    description=shared_description,
+                    explicit_duration=explicit_duration,
+                    allow_duplicate=allow_dup,
+                    source_label=zi.filename,
+                )
+            except RuntimeError as e:
+                failed += 1
+                errors.append({'path': zi.filename, 'message': str(e)})
+                continue
+
+            if outcome == 'duplicate':
+                duplicates += 1
+                continue
+            imported += 1
+            media_ids.append(payload.id)
+            item_folders.add(item_folder or '')
+
+    # Register empty logical folders from the archive.
+    if logical_dirs:
+        empties = _load_empty_folders()
+        for d in logical_dirs:
+            empties.add(d)
+            parts = d.split('/')
+            for i in range(1, len(parts)):
+                empties.add('/'.join(parts[:i]))
+        _save_empty_folders(empties)
+
+    audit('media.zip_import', target_type='media', target_id=zf_upload.filename,
+          payload={
+              'base_folder': base_folder,
+              'imported': imported,
+              'skipped': skipped,
+              'duplicates': duplicates,
+              'failed': failed,
+              'archive': zf_upload.filename,
+              'name_prefix': name_prefix or None,
+          })
+
+    message = None
+    if imported == 0:
+        parts = []
+        if duplicates:
+            parts.append(f'{duplicates} duplicate(s) — already in library')
+        if skipped:
+            parts.append(f'{skipped} skipped (unsupported or hidden file)')
+        if failed:
+            parts.append(f'{failed} failed')
+        if not parts:
+            parts.append('no importable image/video files in archive')
+        message = 'Nothing imported: ' + '; '.join(parts) + '.'
+
+    return jsonify({
+        'status': 'success' if imported else 'no_media',
+        'message': message,
+        'imported': imported,
+        'skipped': skipped,
+        'duplicates': duplicates,
+        'failed': failed,
+        'base_folder': base_folder,
+        'name_prefix': name_prefix or None,
+        'folders': sorted(logical_dirs),
+        'item_folders': sorted(item_folders),
+        'errors': errors[:50],
+        'media_ids': media_ids,
+    })
+
 
 # Add webpage as media
 @media_bp.route('/api/media/webpage', methods=['POST'])

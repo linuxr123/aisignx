@@ -248,6 +248,11 @@ def edit_schedule(schedule_id):
         schedule.timezone = (request.form.get('timezone') or '').strip() or None
 
         db.session.commit()
+        try:
+            from display_player import notify_schedule_playlist_reload
+            notify_schedule_playlist_reload(schedule)
+        except Exception:
+            pass
         flash('Schedule updated successfully.', 'success')
         return redirect(url_for('schedules.schedules'))
 
@@ -321,6 +326,11 @@ def api_create_schedule():
           payload={'name': schedule.name, 'playlist_id': schedule.playlist_id,
                    'display_id': schedule.display_id, 'group_id': schedule.group_id,
                    'priority': schedule.priority})
+    try:
+        from display_player import notify_schedule_playlist_reload
+        notify_schedule_playlist_reload(schedule)
+    except Exception:
+        pass
 
     return jsonify({
         'status': 'success',
@@ -389,6 +399,11 @@ def api_update_schedule(schedule_id):
         schedule.timezone = (tz or '').strip() or None if isinstance(tz, str) else (tz or None)
 
     db.session.commit()
+    try:
+        from display_player import notify_schedule_playlist_reload
+        notify_schedule_playlist_reload(schedule)
+    except Exception:
+        pass
 
     return jsonify({
         'status': 'success',

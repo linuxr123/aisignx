@@ -1,4 +1,15 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const path = require('path');
+
+let appVersion = process.env.AISIGNX_APP_VERSION || '';
+if (!appVersion) {
+  try {
+    appVersion = require(path.join(__dirname, '..', 'package.json')).version || '';
+  } catch (_) {}
+}
+if (appVersion) {
+  contextBridge.exposeInMainWorld('AISIGNX_APP_VERSION', appVersion);
+}
 
 contextBridge.exposeInMainWorld('signage', {
   getConfig:       ()      => ipcRenderer.invoke('get-config'),
