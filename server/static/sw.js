@@ -8,7 +8,7 @@
  *   everything else → network only (API writes, SSE, ping)
  */
 
-const CACHE_VER    = 'signage-v70';
+const CACHE_VER    = 'signage-v74';
 const STATIC_CACHE = `${CACHE_VER}-static`;
 // Media cache deliberately uses a STABLE name (no version prefix) so that
 // uploaded images/videos survive service-worker upgrades. Media files are
@@ -23,7 +23,7 @@ const NETWORK_FIRST_STATIC = [
     '/static/js/display_player.js',
 ];
 
-const PREFETCH_MEDIA_CONCURRENCY = 3;
+const PREFETCH_MEDIA_CONCURRENCY = 6;
 
 // ── Install ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', () => self.skipWaiting());
@@ -116,6 +116,10 @@ self.addEventListener('fetch', event => {
 self.addEventListener('message', event => {
     const data = event.data || {};
 
+    if (data.type === 'client_version') {
+        return;
+    }
+
     if (data.type === 'prefetch_media') {
         const urls = data.urls || [];
         if (!urls.length) return;
@@ -126,17 +130,7 @@ self.addEventListener('message', event => {
     if (data.type === 'prefetch_plugins') {
         const urls = data.urls || [];
         if (!urls.length) return;
-        event.waitUntil((async () => {
-            const cache = await caches.open(STATIC_CACHE);
-            await Promise.all(urls.map(async (url) => {
-                try {
-                    const existing = await cache.match(url);
-                    if (existing) return;
-                    const resp = await fetch(url);
-                    if (resp.ok) await cache.put(url, resp.clone());
-                } catch (_) {}
-            }));
-        })());
+        event.waitUntil(warmPluginBundles(urls));
         return;
     }
 
@@ -201,6 +195,46 @@ async function prefetchMediaUrls(urls) {
     await Promise.all(Array.from({ length: workers }, () => worker()));
 }
 
+/** Fetch plugin HTML and warm same-origin /plugin_assets/ + /static/ refs. */
+async function warmPluginBundles(pluginUrls) {
+    const cache = await caches.open(STATIC_CACHE);
+    const origin = self.location.origin;
+    for (const pluginUrl of pluginUrls) {
+        try {
+            let htmlResp = await cache.match(pluginUrl);
+            if (!htmlResp) {
+                htmlResp = await fetch(pluginUrl);
+                if (htmlResp.ok) await cache.put(pluginUrl, htmlResp.clone());
+            }
+            if (!htmlResp || !htmlResp.ok) continue;
+            const html = await htmlResp.clone().text();
+            const urls = new Set([pluginUrl]);
+            const re = /(?:src|href)\s*=\s*["']([^"']+)["']/gi;
+            let m;
+            while ((m = re.exec(html)) !== null) {
+                let ref = (m[1] || '').trim();
+                if (!ref || ref.startsWith('data:') || ref.startsWith('javascript:')) continue;
+                let abs;
+                if (ref.startsWith('http://') || ref.startsWith('https://')) abs = ref;
+                else if (ref.startsWith('//')) abs = 'https:' + ref;
+                else if (ref.startsWith('/')) abs = origin + ref;
+                else continue;
+                if (abs.startsWith(origin) &&
+                    (abs.includes('/plugin_assets/') || abs.includes('/static/'))) {
+                    urls.add(abs);
+                }
+            }
+            await Promise.all([...urls].map(async (u) => {
+                try {
+                    if (await cache.match(u)) return;
+                    const resp = await fetch(u);
+                    if (resp.ok) await cache.put(u, resp.clone());
+                } catch (_) {}
+            }));
+        } catch (_) {}
+    }
+}
+
 /**
  * Serve uploaded media (images/videos) with Range request support.
  *
@@ -235,6 +269,26 @@ async function serveMedia(request) {
                 }).catch(() => {});
             });
             return response;
+        }
+        // App down behind live proxy (502/503) — use cache if we have it.
+        const cachedBad = await cachedMediaResponse(cache, request);
+        if (cachedBad) {
+            if (!range) return cachedBad;
+            const blob  = await cachedBad.blob();
+            const total = blob.size;
+            const m     = /bytes=(\d+)-(\d*)/.exec(range);
+            if (!m) return cachedBad;
+            const start = parseInt(m[1], 10);
+            const end   = m[2] ? parseInt(m[2], 10) : total - 1;
+            const slice = blob.slice(start, end + 1);
+            const headers = new Headers({
+                'Content-Type':   cachedBad.headers.get('Content-Type') || 'application/octet-stream',
+                'Content-Length': String(slice.size),
+                'Content-Range':  `bytes ${start}-${end}/${total}`,
+                'Accept-Ranges':  'bytes',
+                'Cache-Control':  'no-store',
+            });
+            return new Response(slice, { status: 206, statusText: 'Partial Content', headers });
         }
         return response;
     } catch (err) {

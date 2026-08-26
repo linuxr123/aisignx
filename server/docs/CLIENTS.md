@@ -1,7 +1,7 @@
 # AISignX Clients
 
 Three native clients are available: **Windows**, **Linux** (Electron), and **Android**.
-All use the same registration and player flow ù the server manages everything centrally.
+All use the same registration and player flow ÔøΩ the server manages everything centrally.
 
 ---
 
@@ -48,15 +48,15 @@ Both scripts:
 ## Electron Client (Windows + Linux)
 
 ### What it does
-- **Fullscreen kiosk window from launch** ù no title bar, no taskbar, no browser chrome, no visible windowed phase
+- **Fullscreen kiosk window from launch** ÔøΩ no title bar, no taskbar, no browser chrome, no visible windowed phase
 - **Per-user install** on Windows (no UAC prompt at install or update time)
-- **Silent auto-update** ù admin clicks one button and the display updates itself unattended
+- **Silent auto-update** ÔøΩ admin clicks one button and the display updates itself unattended
 - Prevents screen sleep via Electron `powerSaveBlocker`
 - Checks for updates 30 seconds after launch, then every 60 minutes
-- Listens for **server-pushed commands** (Reload / Reboot / Update Client) ù see [Display Push Commands](#display-push-commands)
+- Listens for **server-pushed commands** (Reload / Reboot / Update Client) ÔøΩ see [Display Push Commands](#display-push-commands)
 - Config stored in OS user-data directory (persists across updates)
 - File logger at `aisignx-player.log` for diagnosing issues without DevTools
-- **Diagnostic hotkeys** built in (see below) ù usable even on production builds
+- **Diagnostic hotkeys** built in (see below) ÔøΩ usable even on production builds
 
 ### Install pre-built packages
 
@@ -64,7 +64,7 @@ Download from the server **Downloads** page (`/downloads`).
 
 | Platform | Package |
 |---|---|
-| Windows 10/11 x64 | `AISignX-Player-Setup.exe` (NSIS one-click, per-user install ù no admin required) |
+| Windows 10/11 x64 | `AISignX-Player-Setup.exe` (NSIS one-click, per-user install ÔøΩ no admin required) |
 | Linux x64 | `AISignX-Player.AppImage` (portable, no install needed) |
 | Linux Debian/Ubuntu | `AISignX-Player.deb` |
 
@@ -89,7 +89,7 @@ Starting with Electron client v1.0.4+, the Windows installer is configured as **
 - ? **No UAC / admin prompt** at install or update time
 - ? Installs to `%LOCALAPPDATA%\Programs\aisignx-player\` (not Program Files)
 - ? Auto-update can run completely silently with no user interaction
-- ? Each Windows user needs their own install ù fine for kiosks where one account is always logged in
+- ? Each Windows user needs their own install ÔøΩ fine for kiosks where one account is always logged in
 
 If migrating from an older `perMachine: true` build, first uninstall the old version (Settings ? Apps ? AISignX Player ? Uninstall) before installing the new one. Once on the new build, all subsequent updates are seamless.
 
@@ -106,7 +106,7 @@ The Windows update process explicitly preserves AppData, so registration tokens 
 
 | File | Purpose |
 |---|---|
-| `%APPDATA%\aisignx-player\aisignx-player.log` | Main app log ù startup, commands, update progress |
+| `%APPDATA%\aisignx-player\aisignx-player.log` | Main app log ÔøΩ startup, commands, update progress |
 | `%APPDATA%\aisignx-player\aisignx-update-wrapper.log` | Step-by-step trace of the most recent silent update |
 | `%APPDATA%\aisignx-player\aisignx-update-wrapper.stderr.log` | PowerShell errors during update (if any) |
 
@@ -114,7 +114,7 @@ Open them with Notepad or `Get-Content` in PowerShell.
 
 ### Diagnostic hotkeys (Electron only)
 
-Production builds hide DevTools and window chrome ù these hotkeys are the only way to escape kiosk or diagnose problems on a deployed display. They register globally on the OS, so they fire even when other windows have focus.
+Production builds hide DevTools and window chrome ÔøΩ these hotkeys are the only way to escape kiosk or diagnose problems on a deployed display. They register globally on the OS, so they fire even when other windows have focus.
 
 | Hotkey | Action |
 |---|---|
@@ -150,11 +150,11 @@ Admins can push three one-off commands to a connected display from the **Display
 
 1. Admin clicks the button ? server queues a command on the display's SSE channel
 2. The player page receives the command instantly (typically <100 ms)
-3. Browser clients honor `reload` only ù `reboot` and `update` fall back to a page reload
+3. Browser clients honor `reload` only ÔøΩ `reboot` and `update` fall back to a page reload
 4. Electron clients act on all three via the `signage.runCommand()` IPC bridge
 5. Android clients act on all three natively; update uses Android `PackageInstaller`
 
-If the display is offline at click time, the admin sees a popup that says the display is not connected; the command is discarded (not queued ù they're one-shot, no replay).
+If the display is offline at click time, the admin sees a popup that says the display is not connected; the command is discarded (not queued ÔøΩ they're one-shot, no replay).
 
 ### Update Client flow (Electron / Windows)
 
@@ -294,11 +294,13 @@ The root build scripts support **selective targets** and **optional version bump
 
 | Flag (PowerShell) | Flag (bash) | Effect |
 |-------------------|-------------|--------|
-| `-Electron` | `--electron` | Build/copy Electron only |
-| `-Android` | `--android` | Build/copy Android only |
+| `-Electron` | `--electron` / `-Electron` | Build/copy Electron only |
+| `-Android` | `--android` / `-Android` | Build/copy Android only |
+| `-Target <name>` | `--target <name>` | `All`, `Electron`, or `Android` |
 | (none) | (none) | Both targets |
 | `-NoBump` | `--no-bump` | Build without incrementing source versions |
 | `-BumpOnly` | `--bump-only` | Bump + update manifest only (no compile) |
+| `-Release` | `--release` | Signed Android release APK (Android only) |
 | `-Help` | `--help` | Show usage |
 
 When bump is enabled (default), patch +1 is applied to:
@@ -345,8 +347,8 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for installer / update / connection
 
 Quick reference for an Electron client that won't launch or won't update:
 
-1. **Ctrl+Alt+Q** ù force-quit the player (escape kiosk if it's hung)
-2. **Win+R** ? `%LOCALAPPDATA%\Programs\aisignx-player\AISignX Player.exe` ù manual launch to test the binary
-3. **Win+R** ? `%APPDATA%\aisignx-player\` ù open the log folder
-4. Open `aisignx-player.log` in Notepad ù check the most recent entries for errors
-5. If an update failed, also open `aisignx-update-wrapper.log` ù it has timestamps for every step of the install
+1. **Ctrl+Alt+Q** ÔøΩ force-quit the player (escape kiosk if it's hung)
+2. **Win+R** ? `%LOCALAPPDATA%\Programs\aisignx-player\AISignX Player.exe` ÔøΩ manual launch to test the binary
+3. **Win+R** ? `%APPDATA%\aisignx-player\` ÔøΩ open the log folder
+4. Open `aisignx-player.log` in Notepad ÔøΩ check the most recent entries for errors
+5. If an update failed, also open `aisignx-update-wrapper.log` ÔøΩ it has timestamps for every step of the install

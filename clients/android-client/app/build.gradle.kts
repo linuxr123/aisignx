@@ -19,8 +19,8 @@ android {
         applicationId = "com.aisignx.player"
         minSdk = 26
         targetSdk = 34
-        versionCode = 29
-        versionName = "1.4.16"
+        versionCode = 41
+        versionName = "1.4.28"
     }
 
     buildFeatures {

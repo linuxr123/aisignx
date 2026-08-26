@@ -16,6 +16,7 @@ import androidx.lifecycle.lifecycleScope
 import com.aisignx.player.ApiClient
 import com.aisignx.player.Config
 import com.aisignx.player.R
+import com.aisignx.player.ServerUrl
 import com.aisignx.player.SignageApp
 import com.aisignx.player.databinding.ActivitySetupBinding
 import kotlinx.coroutines.Dispatchers
@@ -170,7 +171,10 @@ class SetupActivity : AppCompatActivity() {
                 if (!ok) {
                     Config.clear()
                     showStep(1)
-                    toast("Setup file loaded, but this Android device cannot reach: $server")
+                    toast(
+                        "Setup file loaded, but this device cannot reach $server. " +
+                            "Use the same Wi-Fi as the server and https:// with your LAN IP."
+                    )
                     return@withContext
                 }
                 Config.serverUrl = server
@@ -182,13 +186,10 @@ class SetupActivity : AppCompatActivity() {
     }
 
     private fun normalizeServerUrl(raw: String): Pair<Boolean, String> {
-        var url = raw.trim().trimEnd('/')
+        val url = ServerUrl.normalize(raw)
         if (url.isEmpty()) return false to "Please enter a server URL"
-        if (url.startsWith("http://", ignoreCase = true)) {
-            return false to "HTTP is not supported. Use https://"
-        }
         if (!url.startsWith("https://", ignoreCase = true)) {
-            url = "https://${url.trimStart('/')}"
+            return false to "HTTP is not supported. Use https:// with your LAN IP or hostname."
         }
         return true to url
     }

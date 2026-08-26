@@ -38,7 +38,7 @@ object WebCache {
 	private const val TAG = "AISignX/WebCache"
 	private const val CACHE_DIR_NAME = "web-cache"
 	private const val CACHE_SIZE_BYTES = 300L * 1024 * 1024   // 300 MB
-	private const val PREFETCH_CONCURRENCY = 3
+	private const val PREFETCH_CONCURRENCY = 6
 
 	private var client: OkHttpClient? = null
 	private var mediaDownloadClient: OkHttpClient? = null
@@ -48,7 +48,7 @@ object WebCache {
 	fun client(ctx: Context): OkHttpClient {
 		client?.let { return it }
 		val cacheDir = File(ctx.cacheDir, CACHE_DIR_NAME).apply { mkdirs() }
-		val c = OkHttpClient.Builder()
+		val c = LanHttps.apply(OkHttpClient.Builder())
 			.cache(Cache(cacheDir, CACHE_SIZE_BYTES))
 			// Aggressive timeouts -- when the server is unreachable we want
 			// to fall back to the cache fast, NOT block the WebView for 15
@@ -90,11 +90,10 @@ object WebCache {
 	@Synchronized
 	private fun mediaClient(): OkHttpClient {
 		mediaDownloadClient?.let { return it }
-		val c = OkHttpClient.Builder()
+		val c = LanHttps.apply(OkHttpClient.Builder())
 			.connectTimeout(15, TimeUnit.SECONDS)
 			.readTimeout(5, TimeUnit.MINUTES)
 			.callTimeout(0, TimeUnit.MILLISECONDS)
-			.hostnameVerifier { _, _ -> true }
 			.build()
 		mediaDownloadClient = c
 		return c
@@ -107,8 +106,8 @@ object WebCache {
 	 * intercept() never disagree.
 	 */
 	private fun shouldRewriteCacheHeaders(urlStr: String): Boolean {
-		val serverUrl = Config.serverUrl.trimEnd('/')
-		if (serverUrl.isEmpty() || !urlStr.startsWith(serverUrl)) return false
+		val serverUrl = Config.serverUrl
+		if (serverUrl.isEmpty() || !ServerUrl.sameHost(urlStr, serverUrl)) return false
 		val path = try { android.net.Uri.parse(urlStr).encodedPath } catch (_: Throwable) { null }
 			?: return false
 		if (path.endsWith("/events") || path.endsWith("/ping") || path.startsWith("/api/")) return false
@@ -138,8 +137,8 @@ object WebCache {
 		// Only intercept requests to OUR server. Third-party APIs called
 		// from inside plugins (weather, radar, etc.) need to keep their
 		// own caching/fallback semantics.
-		val serverUrl = Config.serverUrl.trimEnd('/')
-		if (serverUrl.isEmpty() || !urlStr.startsWith(serverUrl)) return null
+		val serverUrl = Config.serverUrl
+		if (serverUrl.isEmpty() || !ServerUrl.sameHost(urlStr, serverUrl)) return null
 
 		val path = url.encodedPath ?: return null
 
@@ -292,31 +291,44 @@ object WebCache {
 		val url = req.url.toString()
 		val rangeHeader = req.requestHeaders["Range"] ?: req.requestHeaders["range"]
 		val cacheFile   = mediaCacheFile(ctx, url)
+		tryFinalizePartialCache(cacheFile)
 		val hasFullCache = isMediaCacheComplete(ctx, url)
 
 		// Uncached media must always reach the server via native WebView
 		// networking. A flaky quickReachable() probe used to mark the server
 		// "offline" and return 503 here, which left <video> on a black frame
 		// mid-playback even when the server was up.
-		val online = quickReachable(ctx, url)
+		val online = !forceOfflineMedia && quickReachable(ctx, url)
 
 		if (!hasFullCache) {
 			if (online) {
 				ensureMediaPrefetch(url, cacheFile)
 				return null   // passthrough — WebView streams while prefetch runs
 			}
-			// Offline with no media-cache file — try OkHttp cache, then fail fast.
+			// Offline: OkHttp may still have a full body from an earlier prefetch/browse.
+			val okhttpCached = doRequest(ctx, url, onlyIfCached = true)
+			if (okhttpCached != null && okhttpCached.isSuccessful) {
+				FileLog.i(TAG, "serveMedia OFFLINE-OKHTTP $url")
+				return try {
+					okhttpCached.toWebResponse()
+				} catch (e: Throwable) {
+					okhttpCached.close()
+					FileLog.w(TAG, "serveMedia OFFLINE-OKHTTP read failed $url: ${e.message}")
+					errorResponse()
+				}
+			}
+			okhttpCached?.close()
 			if (!seedMediaCacheFromOkHttp(ctx, url, cacheFile)) {
 				FileLog.w(TAG, "serveMedia OFFLINE-MISS (not cached) $url")
 				return errorResponse()
 			}
 			FileLog.i(TAG, "serveMedia seeded offline from OkHttp cache $url")
-		} else if (online) {
-			ensureMediaPrefetch(url, cacheFile)
-			return null
 		}
 
-		// Offline: serve the completed on-disk copy (Range-aware).
+		// Serve the completed on-disk copy (Range-aware). Used when the server
+		// is down or when we have a full local file (avoid passthrough to a
+		// dead host while quickReachable TTL is still "online").
+		if (online) ensureMediaPrefetch(url, cacheFile)
 
 		val total = cacheFile.length()
 		val mimeSidecar = File(cacheFile.parentFile, cacheFile.name + ".mime")
@@ -379,18 +391,34 @@ object WebCache {
 	@Volatile private var lastReachableUrl  = ""
 	@Volatile private var lastReachableTs   = 0L
 	@Volatile private var lastReachableVal  = false
+	/** When true, never passthrough /uploads/ to the network (app is down, proxy may still accept TCP). */
+	@Volatile private var forceOfflineMedia = false
 
 	/** Called when SSE/ping confirms the server is up — avoids stale "offline" probes. */
 	fun markServerReachable(serverUrl: String) {
-		val key = try {
+		val key = serverReachabilityKey(serverUrl)
+		forceOfflineMedia = false
+		lastReachableUrl = key
+		lastReachableVal = true
+		lastReachableTs  = System.currentTimeMillis()
+	}
+
+	/** Called when ping/SSE fail — stop passthrough streaming to a dead server. */
+	fun markServerUnreachable(serverUrl: String) {
+		val key = serverReachabilityKey(serverUrl)
+		forceOfflineMedia = true
+		lastReachableUrl = key
+		lastReachableVal = false
+		lastReachableTs  = System.currentTimeMillis()
+	}
+
+	private fun serverReachabilityKey(serverUrl: String): String {
+		return try {
 			val u = java.net.URL(serverUrl.trimEnd('/') + "/")
 			u.protocol + "://" + u.host + ":" + (if (u.port == -1) {
 				if (u.protocol == "https") 443 else 80
 			} else u.port)
 		} catch (_: Throwable) { serverUrl }
-		lastReachableUrl = key
-		lastReachableVal = true
-		lastReachableTs  = System.currentTimeMillis()
 	}
 
 	private fun quickReachable(ctx: Context, url: String): Boolean {
@@ -404,24 +432,18 @@ object WebCache {
 		// Cache probe result briefly. Use a longer TTL when the server was
 		// reachable so a single slow /healthz during video playback does not
 		// flip every Range request to "offline" for three seconds.
-		val ttl = if (lastReachableVal) 8_000L else 2_000L
+		if (forceOfflineMedia) return false
+		val ttl = if (lastReachableVal) 15_000L else 3_000L
 		if (key == lastReachableUrl && now - lastReachableTs < ttl) {
 			return lastReachableVal
 		}
 		val ok = try {
 			val u = java.net.URL(url)
 			val base = "${u.protocol}://${u.host}" + if (u.port == -1) "" else ":${u.port}"
-			val req = Request.Builder().url("$base/healthz").get().build()
+			val req = Request.Builder().url("$base/api/version").get().build()
 			client(ctx).newCall(req).execute().use { resp -> resp.isSuccessful }
 		} catch (_: Throwable) {
-			try {
-				val u = java.net.URL(url)
-				val port = if (u.port == -1) (if (u.protocol == "https") 443 else 80) else u.port
-				val sock = java.net.Socket()
-				sock.connect(java.net.InetSocketAddress(u.host, port), 700)
-				sock.close()
-				true
-			} catch (_: Throwable) { false }
+			false
 		}
 		lastReachableUrl = key
 		lastReachableTs  = now
@@ -429,11 +451,20 @@ object WebCache {
 		return ok
 	}
 
+	/** Light reachability probe for native offline UI (uses /api/version). */
+	fun quickReachableForServer(ctx: Context, serverUrl: String): Boolean {
+		val base = serverUrl.trimEnd('/')
+		return quickReachable(ctx, "$base/api/version")
+	}
+
 	/** <filesDir>/media-cache/<sha1>.bin -- survives upgrades. */
 	private fun mediaCanonicalUrl(url: String): String {
 		return try {
 			val u = java.net.URL(url)
 			val path = u.path ?: return url
+			// /uploads/ UUIDs are immutable — key by path so http:5000 and
+			// https:443 on the same host share one on-disk copy.
+			if (path.startsWith("/uploads/")) return path
 			"${u.protocol}://${u.host}$path"
 		} catch (_: Throwable) {
 			url
@@ -452,10 +483,35 @@ object WebCache {
 	 * Warm media, plugin, and player-page caches from the playlist payload.
 	 * Called from the in-page player via AISignXNative.prefetchPlaylist().
 	 */
+	/** Commit a .part file when it is at least 95% of the expected Content-Length. */
+	private fun tryFinalizePartialCache(dest: File) {
+		val part = File(dest.parentFile, dest.name + ".part")
+		if (!part.exists() || part.length() <= 0L) return
+		val lenSide = File(dest.parentFile, dest.name + ".len")
+		if (!lenSide.exists()) return
+		val expected = try {
+			lenSide.readText(Charsets.UTF_8).trim().toLongOrNull()
+		} catch (_: Throwable) {
+			null
+		} ?: return
+		if (part.length() < (expected * 95L / 100L)) return
+		try {
+			if (dest.exists()) dest.delete()
+			if (!part.renameTo(dest)) {
+				part.copyTo(dest, overwrite = true)
+				part.delete()
+			}
+			FileLog.i(TAG, "media-prefetch finalized partial ${dest.length()}/$expected bytes")
+		} catch (e: Throwable) {
+			FileLog.w(TAG, "media-prefetch finalize failed: ${e.message}")
+		}
+	}
+
 	/** True when the full media file was committed (not a partial .part download). */
 	fun isMediaCacheComplete(ctx: Context, url: String): Boolean {
 		if (url.isBlank()) return false
 		val f = mediaCacheFile(ctx, url)
+		tryFinalizePartialCache(f)
 		if (!f.exists() || f.length() <= 0L) return false
 		val part = File(f.parentFile, f.name + ".part")
 		if (part.exists()) return false
@@ -560,7 +616,7 @@ object WebCache {
 			}
 			val html = resp.body?.string() ?: ""
 			resp.close()
-			val base = Config.serverUrl.trimEnd('/')
+			val base = Config.serverUrl
 			val urls = linkedSetOf(pluginUrl)
 			val re = Regex("""(?:src|href)\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
 			for (m in re.findAll(html)) {
@@ -569,10 +625,10 @@ object WebCache {
 				val abs = when {
 					ref.startsWith("http://") || ref.startsWith("https://") -> ref
 					ref.startsWith("//") -> "https:$ref"
-					ref.startsWith("/") -> base + ref
+					ref.startsWith("/") -> "$base$ref"
 					else -> continue
 				}
-				if (abs.startsWith(base) &&
+				if (ServerUrl.sameHost(abs, base) &&
 					(abs.contains("/plugin_assets/") || abs.contains("/static/"))) {
 					urls.add(abs)
 				}

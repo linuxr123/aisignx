@@ -7,18 +7,20 @@
 #   ./build_clients_linux.sh --bump-only
 #
 # Options:
-#   --electron     Build/copy Electron (Linux AppImage + deb; Windows .exe if wine)
-#   --android      Build/copy Android APK
-#   (default)      Both if neither target flag is set
-#   --no-bump      Do not increment versions in source files
-#   --bump-only    Bump versions + update client_versions.json only (no compile)
-#   --release      Build a SIGNED release APK (needs android-client/keystore.properties)
-#   --help         Show usage
+#   --electron | -Electron   Build/copy Electron only
+#   --android  | -Android    Build/copy Android APK only
+#   --target <All|Electron|Android>   Same as the flags above
+#   (default)                Both Electron and Android if no target flag is set
+#   --no-bump                Do not increment versions in source files
+#   --bump-only              Bump versions + client_versions.json only (no compile)
+#   --release                Signed Android release APK (needs keystore.properties)
+#   --help                   Show usage
 
 set -euo pipefail
 
 BUILD_ELECTRON=0
 BUILD_ANDROID=0
+TARGET_EXPLICIT=0
 DO_BUMP=1
 DO_BUILD=1
 DO_RELEASE=0
@@ -26,12 +28,42 @@ SHOW_HELP=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --electron)  BUILD_ELECTRON=1 ;;
-        --android)   BUILD_ANDROID=1 ;;
+        --electron|--Electron|-Electron|electron)
+            BUILD_ELECTRON=1
+            TARGET_EXPLICIT=1
+            ;;
+        --android|--Android|-Android|android)
+            BUILD_ANDROID=1
+            TARGET_EXPLICIT=1
+            ;;
+        --target|--Target|-Target)
+            shift
+            [[ $# -gt 0 ]] || fail "--target requires All, Electron, or Android"
+            case "${1,,}" in
+                all)      BUILD_ELECTRON=1; BUILD_ANDROID=1 ;;
+                electron) BUILD_ELECTRON=1 ;;
+                android)  BUILD_ANDROID=1 ;;
+                *) fail "Unknown --target: $1 (use All, Electron, or Android)" ;;
+            esac
+            TARGET_EXPLICIT=1
+            ;;
         --no-bump)   DO_BUMP=0 ;;
         --bump-only) DO_BUILD=0 ;;
         --release)   DO_RELEASE=1 ;;
         --help|-h)   SHOW_HELP=1 ;;
+        All|all)
+            BUILD_ELECTRON=1
+            BUILD_ANDROID=1
+            TARGET_EXPLICIT=1
+            ;;
+        Electron|electron)
+            BUILD_ELECTRON=1
+            TARGET_EXPLICIT=1
+            ;;
+        Android|android)
+            BUILD_ANDROID=1
+            TARGET_EXPLICIT=1
+            ;;
         *) fail "Unknown option: $1 (try --help)" ;;
     esac
     shift
@@ -45,32 +77,39 @@ AISignX client build script (Linux / macOS)
 Usage:
   ./build_clients_linux.sh [options]
 
-Options:
-  --electron     Build Electron (Linux + optional Windows via wine)
-  --android      Build Android debug APK
-  (no target)    Build both
+Targets (build one or both; if none specified, builds BOTH):
+  --electron, -Electron    Build Electron (Linux + optional Windows via wine)
+  --android,  -Android     Build Android APK (debug unless --release)
+  --target <name>          All | Electron | Android
 
-  --no-bump      Skip version bump in package.json / build.gradle.kts
-  --bump-only    Only bump versions and update client_versions.json
-  --release      Build a SIGNED release APK (needs android-client/keystore.properties).
-                 Use for fleets that must auto-update; the keystore MUST match the one
-                 the installed app was signed with, or Android rejects the update.
-  --help         Show this help
+Shared options:
+  --no-bump                Skip version bump in package.json / build.gradle.kts
+  --bump-only              Only bump versions and update client_versions.json
+  --help                   Show this help
+
+Android-only:
+  --release                Signed release APK (needs android-client/keystore.properties)
 
 Examples:
   ./build_clients_linux.sh
+  ./build_clients_linux.sh --electron
   ./build_clients_linux.sh --electron --no-bump
   ./build_clients_linux.sh --android
   ./build_clients_linux.sh --android --release
   ./build_clients_linux.sh --bump-only --electron
+  ./build_clients_linux.sh --target Android
 
 EOF
     exit 0
 fi
 
-if [[ "$BUILD_ELECTRON" -eq 0 && "$BUILD_ANDROID" -eq 0 ]]; then
+if [[ "$TARGET_EXPLICIT" -eq 0 ]]; then
     BUILD_ELECTRON=1
     BUILD_ANDROID=1
+fi
+
+if [[ "$DO_RELEASE" -eq 1 && "$BUILD_ANDROID" -eq 0 ]]; then
+    fail "--release applies to Android only. Add --android or --target Android."
 fi
 
 CYAN='\033[0;36m'
@@ -179,11 +218,18 @@ ANDROID_DIR="$ROOT/clients/android-client"
 OUTPUT_DIR="$ROOT/server/static/clients"
 
 header "AISignX Client Builder (Linux / macOS)"
-echo -e "${GRAY}  Targets: $(
-    [[ "$BUILD_ELECTRON" -eq 1 ]] && echo -n 'Electron ')
-    [[ "$BUILD_ANDROID" -eq 1 ]] && echo -n 'Android'
+echo ""
+echo -e "${GRAY}  Options: --electron  --android  (default: both)  --target All|Electron|Android${NC}"
+echo -e "${GRAY}           --no-bump  --bump-only  --release (Android signed APK)  --help${NC}"
+echo ""
+echo -e "${CYAN}  Selected: $(
+    parts=()
+    [[ "$BUILD_ELECTRON" -eq 1 ]] && parts+=("Electron")
+    [[ "$BUILD_ANDROID" -eq 1 ]] && parts+=("Android")
+    (IFS=', '; echo "${parts[*]}")
 )${NC}"
 echo -e "${GRAY}  Bump versions: $([[ "$DO_BUMP" -eq 1 ]] && echo yes || echo no)  |  Compile: $([[ "$DO_BUILD" -eq 1 ]] && echo yes || echo 'no (bump-only)')${NC}"
+[[ "$DO_RELEASE" -eq 1 ]] && echo -e "${GRAY}  Android build: signed RELEASE APK${NC}"
 
 PKG_JSON="$ELECTRON_DIR/package.json"
 GRADLE_FILE="$ANDROID_DIR/app/build.gradle.kts"
@@ -191,8 +237,8 @@ mkdir -p "$OUTPUT_DIR"
 
 if [[ "$DO_BUMP" -eq 1 ]]; then
     header "Bumping client versions"
-    if [[ "$BUILD_ELECTRON" -eq 1 ]]; then bump_electron_version; else skip "Electron version bump skipped."; fi
-    if [[ "$BUILD_ANDROID" -eq 1 ]]; then bump_android_version; else skip "Android version bump skipped."; fi
+    if [[ "$BUILD_ELECTRON" -eq 1 ]]; then bump_electron_version; else skip "Electron version bump skipped (not in selected targets)."; fi
+    if [[ "$BUILD_ANDROID" -eq 1 ]]; then bump_android_version; else skip "Android version bump skipped (not in selected targets)."; fi
 fi
 
 if [[ "$DO_BUILD" -eq 0 ]]; then
@@ -229,11 +275,11 @@ ok "npm install complete."
 # Build Linux targets
 step "Building Linux AppImage + .deb..."
 npm run build:linux
-ok "Linux build complete. Artifacts in clients/electron-client/dist/"
+ok "Linux build complete. Artifacts in clients/electron-client/dist-build/"
 
 # Copy Linux AppImage
 step "Copying Linux AppImage to static/clients/..."
-APPIMAGE=$(find "$ELECTRON_DIR/dist" -name "*.AppImage" | head -1)
+APPIMAGE=$(find "$ELECTRON_DIR/dist-build" -name "*.AppImage" | head -1)
 if [ -n "$APPIMAGE" ]; then
     cp "$APPIMAGE" "$OUTPUT_DIR/AISignX-Player.AppImage"
     chmod +x "$OUTPUT_DIR/AISignX-Player.AppImage"
@@ -243,7 +289,7 @@ else
 fi
 
 # Copy Linux .deb
-DEB=$(find "$ELECTRON_DIR/dist" -name "*.deb" | head -1)
+DEB=$(find "$ELECTRON_DIR/dist-build" -name "*.deb" | head -1)
 if [ -n "$DEB" ]; then
     cp "$DEB" "$OUTPUT_DIR/AISignX-Player.deb"
     ok "Copied: AISignX-Player.deb"
@@ -255,7 +301,7 @@ fi
 if command -v wine &>/dev/null; then
     step "Building Windows installer (.exe) via wine cross-compile..."
     npm run build:win || true
-    EXE=$(find "$ELECTRON_DIR/dist" -name "*.exe" | head -1)
+    EXE=$(find "$ELECTRON_DIR/dist-build" -name "*.exe" | head -1)
     if [ -n "$EXE" ]; then
         cp "$EXE" "$OUTPUT_DIR/AISignX-Player-Setup.exe"
         ok "Copied: AISignX-Player-Setup.exe"
@@ -268,7 +314,7 @@ fi
 
 cd "$ROOT"
 else
-    skip "Electron build skipped."
+    skip "Electron build skipped (use --electron or --target Electron to include it)."
 fi
 
 # =====================================================================
@@ -340,7 +386,7 @@ fi
 
 cd "$ROOT"
 else
-    skip "Android build skipped."
+    skip "Android build skipped (use --android or --target Android to include it)."
 fi
 
 # =====================================================================
@@ -372,4 +418,5 @@ if [[ "$DO_BUMP" -eq 1 ]]; then
 else
     echo -e "  Version bump was skipped (--no-bump). Manifest reflects current source versions.${NC}"
 fi
+echo -e "  ${GRAY}Other targets: --electron  --android  (see --help)${NC}"
 echo ""

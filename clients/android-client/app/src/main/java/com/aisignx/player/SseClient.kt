@@ -18,11 +18,10 @@ object SseClient {
 
 	private const val TAG = "AISignX/SSE"
 
-	private val sseHttp = OkHttpClient.Builder()
+	private val sseHttp = LanHttps.apply(OkHttpClient.Builder())
 		.connectTimeout(15, TimeUnit.SECONDS)
 		.readTimeout(0, TimeUnit.MILLISECONDS)        // SSE = no read timeout
 		.pingInterval(30, TimeUnit.SECONDS)
-		.hostnameVerifier { _, _ -> true }
 		.build()
 
 	private val _events = MutableSharedFlow<SseEvent>(extraBufferCapacity = 16)

@@ -160,12 +160,17 @@ python app.py
 </td></tr>
 </table>
 
-Install configures **HTTPS by default**. Start Caddy, then open the admin UI:
+Install configures **HTTPS by default**. Start the server with one command:
+
+```powershell
+# Windows (from server/)
+.\scripts\start_server.ps1 -Hostname localhost
+```
 
 ```bash
-# After install (Linux example)
-cd server
-sudo caddy run --config deploy/Caddyfile
+# Linux (from server/)
+chmod +x scripts/*.sh
+./scripts/start_server.sh --hostname localhost
 ```
 
 Open **https://localhost/** (or your hostname) → `admin` / `Admin123!` → **change the password immediately**.
@@ -255,6 +260,8 @@ Native installers are **built from source** (not on GitHub Releases yet).
 ```powershell
 # Windows — repo root
 powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 -Help
+.\build_clients_windows.ps1 -Electron    # Windows installer only
+.\build_clients_windows.ps1 -Android       # APK only
 ```
 
 ```bash

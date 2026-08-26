@@ -24,21 +24,48 @@ sudo caddy run --config deploy/Caddyfile
 **Windows (run PowerShell as Administrator for port 443)**
 
 ```powershell
-.\scripts\setup_https.ps1 -Hostname signage.example.com
-caddy run --config deploy\Caddyfile
+.\scripts\setup_https.ps1 -Hostname signage.example.com -NonInteractive
+.\scripts\run_caddy.ps1
 ```
 
-Start AISignX bound to localhost (install scripts use HTTPS config; run the app as usual):
+If `caddy` is not on PATH, the setup script downloads a portable `tools\caddy\caddy.exe` or installs via winget. Use `run_caddy.ps1` so you do not need Caddy on PATH.
+
+### One command (recommended)
+
+**Windows** (from `server/`; Caddy opens elevated if needed):
+
+```powershell
+.\scripts\start_server.ps1 -Hostname 192.168.1.22
+```
+
+Start returns to the prompt (AISignX and Caddy run in separate windows):
+
+```powershell
+.\scripts\start_server.ps1 -Hostname 192.168.1.22
+.\scripts\stop_server.ps1
+.\scripts\restart_server.ps1 -Hostname 192.168.1.22
+```
+
+Debug in the current window (blocks until Ctrl+C): add `-Foreground`.
+
+**Linux / macOS**:
 
 ```bash
-# Linux — production-style
-waitress-serve --host=127.0.0.1 --port=5000 app:app
-
-# Dev
-python app.py
+chmod +x scripts/*.sh
+./scripts/start_server.sh --hostname 192.168.1.22
 ```
 
+Default (returns to prompt): `./scripts/start_server.sh --hostname 192.168.1.22` then `./scripts/stop_server.sh` or `./scripts/restart_server.sh`  
+Debug (blocks): add `--foreground`
+
 Open the admin UI at **`https://YOUR_HOSTNAME/`** (not `:5000`).
+
+### Manual (two processes)
+
+```bash
+waitress-serve --host=127.0.0.1 --port=5000 app:app
+sudo caddy run --config deploy/Caddyfile
+```
 
 ---
 
@@ -111,6 +138,6 @@ Downloaded setup files and enrollment JSON always use **https://**.
 | Certificate fails | DNS, firewall 80/443, hostname matches `deploy/Caddyfile` |
 | `connection refused` on 443 | Caddy running? `sudo caddy validate --config deploy/Caddyfile` |
 | Login loops / wrong links | `AISIGNX_DEPLOY_MODE=https`, Caddy sends `X-Forwarded-Proto` (Caddy does by default) |
-| Offline still fails in browser | Page must be `https://`, service worker registered (no red cache banner on display page) |
+| Offline still fails in browser | Open display at `https://YOUR_HOST/display/TOKEN` (not `http://`). First load may reload once to activate the cache; stay online one full playlist cycle; cache warning banner should disappear. |
 
 See also [SERVER_HTTP_ONLY_or_HTTPS_ONLY_Version2.md](SERVER_HTTP_ONLY_or_HTTPS_ONLY_Version2.md) and [DEPLOY_LINUX.md](DEPLOY_LINUX.md).

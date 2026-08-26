@@ -26,6 +26,8 @@ function Write-Fail($msg) {
 
 Write-Header "AISignX Installer for Windows"
 
+. (Join-Path $PSScriptRoot 'scripts\caddy_lib.ps1')
+
 # --- 1. Check Python ---
 Write-Step "Checking Python version..."
 try {
@@ -36,18 +38,25 @@ try {
     exit 1
 }
 
-# --- 2. Create virtual environment ---
+# --- 2. Create virtual environment (.venv preferred; existing venv/ is OK) ---
 Write-Step "Creating virtual environment (.venv)..."
-if (Test-Path ".venv") {
+$venvPy = Resolve-AisignxPython
+if ($venvPy) {
     Write-OK "Virtual environment already exists - skipping."
 } else {
     python -m venv .venv
+    $venvPy = Resolve-AisignxPython
+    if (-not $venvPy) {
+        Write-Fail "Could not create .venv. Run: python -m venv .venv"
+        exit 1
+    }
     Write-OK "Virtual environment created."
 }
 
 # --- 3. Activate virtual environment ---
 Write-Step "Activating virtual environment..."
-& ".venv\Scripts\Activate.ps1"
+$venvDir = Split-Path (Split-Path $venvPy -Parent) -Parent
+& (Join-Path $venvDir 'Scripts\Activate.ps1')
 Write-OK "Virtual environment activated."
 
 # --- 4. Install dependencies ---
@@ -67,7 +76,7 @@ if (Test-Path "config.py") {
     Write-OK "config.py already exists - skipping. Run: python generate_config.py --show"
 } else {
     python generate_config.py --mode https --hostname $Hostname
-    Write-OK "config.py created (HTTPS mode, hostname=$Hostname)."
+    Write-OK "config.py created for HTTPS hostname $Hostname."
 }
 
 if ($env:AISIGNX_SKIP_HTTPS_SETUP -ne "1") {
@@ -77,7 +86,7 @@ if ($env:AISIGNX_SKIP_HTTPS_SETUP -ne "1") {
         try {
             & $setupScript -Hostname $Hostname -NonInteractive
         } catch {
-            Write-Host "[!] Caddy setup skipped or failed — run: .\scripts\setup_https.ps1 -Hostname $Hostname" -ForegroundColor Yellow
+            Write-Host "[!] Caddy setup skipped or failed - run: .\scripts\setup_https.ps1 -Hostname $Hostname" -ForegroundColor Yellow
         }
     }
 }
@@ -97,12 +106,10 @@ Write-OK "uploads/ directory ready."
 # --- 8. Done ---
 Write-Header "Installation Complete!"
 Write-Host ""
-Write-Host "  To start the server:" -ForegroundColor White
-Write-Host "    .venv\Scripts\Activate.ps1" -ForegroundColor Green
-Write-Host "    python app.py" -ForegroundColor Green
-Write-Host ""
-Write-Host "  Then start HTTPS (run PowerShell as Administrator for port 443):" -ForegroundColor White
-Write-Host "    caddy run --config deploy\Caddyfile" -ForegroundColor Green
+Write-Host "  Start AISignX + HTTPS (one command):" -ForegroundColor White
+Write-Host "    .\scripts\start_server.ps1 -Hostname $Hostname" -ForegroundColor Green
+Write-Host "    .\scripts\stop_server.ps1" -ForegroundColor Green
+Write-Host "    .\scripts\restart_server.ps1 -Hostname $Hostname" -ForegroundColor Green
 Write-Host "  Open admin UI:" -ForegroundColor White
 Write-Host "    https://$Hostname/" -ForegroundColor Green
 Write-Host ""

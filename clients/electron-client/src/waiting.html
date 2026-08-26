@@ -40,6 +40,7 @@
     <button id="btnImport">Browse Setup File</button>
     <button id="btnReset">Reset Setup</button>
   </div>
+  <input type="file" id="fileImportConfig" accept="application/json,.json" style="display:none" />
 
   <script>
     window.signage.getDeviceId().then(id => {
@@ -50,15 +51,57 @@
     });
     document.getElementById('btnReset').addEventListener('click', () => window.signage.clearConfig());
     document.getElementById('btnUpdate').addEventListener('click', () => window.signage.checkForUpdate());
+    function pickJsonFileViaInput() {
+      return new Promise((resolve) => {
+        const input = document.getElementById('fileImportConfig');
+        const onChange = () => {
+          input.removeEventListener('change', onChange);
+          const file = input.files && input.files[0] ? input.files[0] : null;
+          input.value = '';
+          resolve(file);
+        };
+        input.addEventListener('change', onChange);
+        input.click();
+      });
+    }
+
     document.getElementById('btnImport').addEventListener('click', async () => {
-      const r = await window.signage.browseClientConfig();
-      if (!r || r.canceled) return;
-      if (!r.ok) {
-        alert(r.error || 'Import failed');
+      if (!window.signage || !window.signage.applyClientConfig) {
+        alert('Player API not available. Restart the app.');
         return;
       }
-      if (r.mode === 'enrollment') {
-        alert('Setup file loaded. Registration details were updated.');
+      let kioskState = null;
+      try {
+        if (window.signage.prepareSetupFilePicker) {
+          kioskState = await window.signage.prepareSetupFilePicker();
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        const file = await pickJsonFileViaInput();
+        if (!file) {
+          alert('No setup file selected.');
+          return;
+        }
+        const text = await file.text();
+        const r = await window.signage.applyClientConfig(text);
+        if (!r || r.canceled) {
+          alert('No setup file selected.');
+          return;
+        }
+        if (!r.ok) {
+          alert(r.error || 'Import failed');
+          return;
+        }
+        if (r.mode === 'enrollment') {
+          alert('Setup file loaded. Registration details were updated.');
+        } else if (r.mode === 'player') {
+          alert('Setup file loaded. Starting player…');
+        }
+      } catch (e) {
+        alert(String(e.message || e));
+      } finally {
+        if (window.signage.finishSetupFilePicker) {
+          await window.signage.finishSetupFilePicker(kioskState);
+        }
       }
     });
     window.signage.onApproved(() => {

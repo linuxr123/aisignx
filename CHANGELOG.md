@@ -14,6 +14,7 @@ when tagged releases begin.
 ## [Unreleased]
 
 ### Server install & HTTPS
+- **Unified start scripts** — `server/scripts/start_server.*` start Waitress + Caddy together; `stop_server.*` / `restart_server.*` for lifecycle
 - **HTTPS-only** — removed `http` deploy mode; install scripts, `generate_config.py`, client setup (Electron/Android), and downloaded setup files require `https://` URLs
 - **HTTPS is the default deploy mode** — `install_linux.sh` / `install_windows.ps1` and `generate_config.py` now create `https` config with a hostname (default `localhost` or machine name)
 - **Caddy setup scripts** — `server/scripts/setup_https.sh` and `setup_https.ps1` generate `deploy/Caddyfile` with automatic **Let's Encrypt** for public hostnames or **internal TLS** for localhost/LAN IP

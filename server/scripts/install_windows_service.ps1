@@ -46,11 +46,15 @@ if (-not (Get-Command $NssmPath -ErrorAction SilentlyContinue)) {
     throw "nssm.exe not found on PATH (or at -NssmPath '$NssmPath'). Download from https://nssm.cc/."
 }
 
-$python   = Join-Path $InstallRoot '.venv\Scripts\python.exe'
+$python = $null
+foreach ($venvName in @('.venv', 'venv')) {
+    $candidate = Join-Path $InstallRoot "$venvName\Scripts\python.exe"
+    if (Test-Path $candidate) { $python = $candidate; break }
+}
 $logsDir  = Join-Path $InstallRoot 'logs'
 
-if (-not (Test-Path $python)) {
-    throw "Python not found at $python. Create a venv with 'py -3.13 -m venv .venv' first."
+if (-not $python) {
+    throw "Python not found under $InstallRoot (.venv or venv). Run install_windows.ps1 first."
 }
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 

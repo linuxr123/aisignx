@@ -11,8 +11,10 @@ Licensed under [AGPL-3.0-or-later](../../LICENSE). Native wrappers around the se
 
 Run the build scripts from the **repository root** (not from this folder):
 
-- Windows: `build_clients_windows.ps1` (`-Help`, `-Electron`, `-Android`, `-NoBump`, `-BumpOnly`)
-- Linux: `build_clients_linux.sh` (`--help`, `--electron`, `--android`, `--no-bump`, `--bump-only`)
+- Windows: `build_clients_windows.ps1` (`-Help`, `-Electron`, `-Android`, `-Target`, `-NoBump`, `-BumpOnly`, `-Release`)
+- Linux: `build_clients_linux.sh` (`--help`, `--electron`, `--android`, `--target`, `--no-bump`, `--bump-only`, `--release`)
+
+Run with no target flags to build **both** clients. Use `-Electron` / `-Android` (or `--electron` / `--android`) to build one only.
 
 Default: bump versions, build both, copy to `server/static/clients/`.
 

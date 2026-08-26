@@ -12,14 +12,38 @@ const https  = require('https');
 const crypto = require('crypto');
 const http   = require('http');
 
-const CONFIG_PATH    = path.join(app.getPath('userData'), 'config.json');
-const DEVICE_ID_PATH = path.join(app.getPath('userData'), 'device_id.txt');
-const LOG_PATH       = path.join(app.getPath('userData'), 'aisignx-player.log');
+// One stable profile dir for dev (`npm start`) and the NSIS install so
+// config.json is not split across aisignx-player vs AISignX Player folders.
+const FIXED_USER_DATA = path.join(app.getPath('appData'), 'AISignX Player');
+if (!app.isReady()) {
+  try {
+    app.setPath('userData', FIXED_USER_DATA);
+  } catch (e) {
+    try { console.warn('[config] setPath userData failed:', e); } catch (_) {}
+  }
+}
+const CONFIG_PATH    = path.join(FIXED_USER_DATA, 'config.json');
+const DEVICE_ID_PATH = path.join(FIXED_USER_DATA, 'device_id.txt');
+const LOG_PATH       = path.join(FIXED_USER_DATA, 'aisignx-player.log');
 const POLL_INTERVAL_MS   = 5_000;
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;  // 15 min
 
 // Player JS reads window.AISIGNX_APP_VERSION on every ping (displays page).
 process.env.AISIGNX_APP_VERSION = app.getVersion();
+
+// Caddy "tls internal" / LAN HTTPS — needed for setup import checks and the player WebView.
+app.commandLine.appendSwitch('ignore-certificate-errors');
+
+// Belt-and-suspenders for self-signed LAN certs: the switch above covers most
+// requests, but service-worker registration and fetches inside the SW go
+// through a separate verification path in some Chromium versions. If that
+// path rejects the cert, the SW never installs and offline media caching
+// silently does not work — exactly the "stops playing when server goes
+// offline" failure mode.
+app.on('certificate-error', (event, _wc, _url, _error, _cert, callback) => {
+  event.preventDefault();
+  callback(true);
+});
 
 let mainWindow  = null;
 let psBlockerId = null;
@@ -41,19 +65,56 @@ try {
   }
 } catch (_) {}
 flog('=== AISignX Player started, version', app.getVersion(), '===');
+flog('[config] userData=', FIXED_USER_DATA, 'config=', CONFIG_PATH);
 
 // ── Config helpers ────────────────────────────────────────────────────────────
+function migrateLegacyConfigIfNeeded() {
+  if (fs.existsSync(CONFIG_PATH)) return;
+  const legacyDirs = [
+    path.join(app.getPath('appData'), 'aisignx-player'),
+    path.join(app.getPath('userData')), // pre-setPath default if different
+  ];
+  for (const dir of legacyDirs) {
+    if (dir === FIXED_USER_DATA) continue;
+    const legacyCfg = path.join(dir, 'config.json');
+    if (!fs.existsSync(legacyCfg)) continue;
+    try {
+      fs.mkdirSync(FIXED_USER_DATA, { recursive: true });
+      fs.copyFileSync(legacyCfg, CONFIG_PATH);
+      const legacyDev = path.join(dir, 'device_id.txt');
+      if (fs.existsSync(legacyDev) && !fs.existsSync(DEVICE_ID_PATH)) {
+        fs.copyFileSync(legacyDev, DEVICE_ID_PATH);
+      }
+      flog('[config] migrated settings from', legacyCfg);
+      return;
+    } catch (e) {
+      flog('[config] migration failed:', String(e));
+    }
+  }
+}
+
 function loadConfig() {
+  migrateLegacyConfigIfNeeded();
   try {
     if (fs.existsSync(CONFIG_PATH)) {
       return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
     }
-  } catch (_) {}
+  } catch (e) {
+    flog('[config] load failed:', String(e));
+  }
   return {};
 }
 
 function saveConfig(data) {
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(data, null, 2));
+  try {
+    fs.mkdirSync(FIXED_USER_DATA, { recursive: true });
+    const tmp = CONFIG_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(tmp, CONFIG_PATH);
+  } catch (e) {
+    flog('[config] save failed:', String(e));
+    throw e;
+  }
 }
 
 function getDeviceId() {
@@ -82,7 +143,7 @@ function getDeviceId() {
     app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', origin);
     // Chromium ignores the flag above unless a --user-data-dir is present.
     // Electron always has one; pass it explicitly to satisfy the check.
-    app.commandLine.appendSwitch('user-data-dir', app.getPath('userData'));
+    app.commandLine.appendSwitch('user-data-dir', FIXED_USER_DATA);
     flog('[offline] treating', origin, 'as secure origin (service worker cache)');
   } catch (e) {
     flog('[offline] secure-origin switch failed:', String(e));
@@ -147,6 +208,30 @@ function normalizeClientServerUrl(raw) {
     url = 'https://' + url.replace(/^\/+/, '');
   }
   return { ok: true, url };
+}
+
+function stripJsonBom(text) {
+  return String(text || '').replace(/^\uFEFF/, '').trim();
+}
+
+/** True if the AISignX server answered on HTTPS (version endpoint or register). */
+async function pingServer(baseUrl) {
+  try {
+    const ver = await doRequest(`${baseUrl}/api/version`);
+    if (ver.status >= 200 && ver.status < 500) return true;
+  } catch (e) {
+    flog('[ping] /api/version failed:', baseUrl, e && e.message ? e.message : String(e));
+  }
+  try {
+    const reg = await doRequest(`${baseUrl}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }, '{}');
+    if (reg.status >= 200 && reg.status < 500) return true;
+  } catch (e) {
+    flog('[ping] /api/register failed:', baseUrl, e && e.message ? e.message : String(e));
+  }
+  return false;
 }
 
 function effectiveUpdateMode() {
@@ -412,6 +497,64 @@ async function runSilentUpdate() {
   }
 }
 
+// Native file dialogs are hidden behind kiosk/fullscreen windows on Windows.
+// Drop kiosk briefly so "Browse for setup file" is usable on the setup screen.
+function suspendKioskForModal() {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const state = {
+    wasKiosk: mainWindow.isKiosk(),
+    wasFullScreen: mainWindow.isFullScreen()
+  };
+  try {
+    mainWindow.setKiosk(false);
+    mainWindow.setFullScreen(false);
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.show();
+    mainWindow.focus();
+  } catch (e) {
+    flog('[dialog] suspend kiosk failed:', String(e));
+  }
+  return state;
+}
+
+function resumeKioskAfterModal(state) {
+  if (!state || !mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    if (state.wasFullScreen) mainWindow.setFullScreen(true);
+    if (state.wasKiosk) mainWindow.setKiosk(true);
+    mainWindow.focus();
+  } catch (e) {
+    flog('[dialog] resume kiosk failed:', String(e));
+  }
+}
+
+async function pickSetupConfigFile() {
+  ensureWindow();
+  const kioskState = suspendKioskForModal();
+  try {
+    // No parent window: on Windows kiosk builds a parented dialog often never appears.
+    const result = await dialog.showOpenDialog({
+      title: 'Select AISignX setup file',
+      properties: ['openFile'],
+      filters: [
+        { name: 'AISignX setup file', extensions: ['json'] },
+        { name: 'All files', extensions: ['*'] }
+      ]
+    });
+    if (result.canceled || !result.filePaths || !result.filePaths[0]) {
+      flog('[setup] file browse canceled');
+      return { ok: false, canceled: true };
+    }
+    const filePath = result.filePaths[0];
+    flog('[setup] file selected:', filePath);
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const applied = await applyClientConfig(raw);
+    return { ...applied, filePath };
+  } finally {
+    resumeKioskAfterModal(kioskState);
+  }
+}
+
 // ── Window factory ────────────────────────────────────────────────────────────
 // We ALWAYS create the window in fullscreen kiosk mode so there is never a
 // visible windowed phase on launch (kiosks should never show a window).
@@ -428,11 +571,15 @@ function ensureWindow() {
     autoHideMenuBar: true,
     backgroundColor: '#000000',
     webPreferences: {
-      preload:          path.join(__dirname, 'preload.js'),
+      preload:          path.resolve(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration:  false,
+      sandbox:          false,
       webSecurity:      false
     }
+  });
+  mainWindow.webContents.on('preload-error', (_event, preloadPath, err) => {
+    flog('[preload] failed to load:', preloadPath, err && err.message ? err.message : String(err));
   });
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -497,6 +644,20 @@ function ensureWindow() {
 function loadLocalFile(file) {
   ensureWindow();
   mainWindow.setMenuBarVisibility(false);
+  // Setup/waiting need a normal window so file pickers and dialogs work on Windows.
+  const isSetupScreen = file === 'setup.html' || file === 'waiting.html';
+  try {
+    if (isSetupScreen) {
+      mainWindow.setKiosk(false);
+      mainWindow.setFullScreen(false);
+      mainWindow.setAlwaysOnTop(false);
+    } else {
+      mainWindow.setKiosk(true);
+      mainWindow.setFullScreen(true);
+    }
+  } catch (e) {
+    flog('[window] mode switch failed:', String(e));
+  }
   mainWindow.loadFile(path.join(__dirname, file));
 }
 
@@ -515,6 +676,10 @@ function loadPlayerUrl(serverUrl, token) {
     clearTimeout(_offlineSwapTimer);
     _offlineSwapTimer = null;
   }
+  try {
+    mainWindow.setKiosk(true);
+    mainWindow.setFullScreen(true);
+  } catch (_) {}
   mainWindow.loadURL(url);
 }
 
@@ -588,6 +753,27 @@ function attachOfflineRetryHandlers() {
         clearTimeout(_retryTimer);
         _retryTimer = null;
       }
+      const ver = app.getVersion();
+      mainWindow.webContents.executeJavaScript(
+        `window.AISIGNX_APP_VERSION=${JSON.stringify(ver)};`,
+        true
+      ).catch(() => {});
+      // Log whether the offline cache (service worker) is actually live.
+      // "controlled" is the healthy state; anything else means media will
+      // NOT survive a server outage — check the cert/secure-context setup.
+      setTimeout(() => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        mainWindow.webContents.executeJavaScript(
+          "(function(){" +
+          "if(!('serviceWorker' in navigator))return 'no-sw-api';" +
+          "if(navigator.serviceWorker.controller)return 'controlled';" +
+          "if(window.__AISIGNX_SW_REGISTERED__)return 'registered-not-controlling';" +
+          "return 'not-registered (secureContext='+window.isSecureContext+')';" +
+          "})()",
+          true
+        ).then(state => flog('[offline] service worker:', state))
+         .catch(() => {});
+      }, 8_000);
     }
   });
 }
@@ -711,46 +897,47 @@ ipcMain.handle('set-display-auto-update', (_, on) => {
 
 async function applyClientConfig(raw) {
   try {
-    const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const text = typeof raw === 'string' ? stripJsonBom(raw) : null;
+    const data = typeof raw === 'string' ? JSON.parse(text) : raw;
     if (!data || data.format !== 'aisignx-player-config') {
-      return { ok: false, error: 'Invalid config format' };
+      return { ok: false, error: 'Not an AISignX setup file (expected format: aisignx-player-config).' };
     }
     const norm = normalizeClientServerUrl(data.server_url || '');
     if (!norm.ok) return { ok: false, error: norm.error };
     const url = norm.url;
-    try {
-      const ver = await doRequest(`${url}/api/version`);
-      if (ver.status !== 200) {
-        return {
-          ok: false,
-          error: `Server responded with status ${ver.status}. Check server_url and that the server is running.`
-        };
-      }
-    } catch (e) {
-      return { ok: false, error: 'Cannot reach server: ' + (e && e.message ? e.message : String(e)) };
-    }
     const token = String(data.display_token || data.token || '').trim();
-    const enroll = String(data.enrollment_code || '').trim();
+    const enroll = String(data.enrollment_code || '').trim().replace(/[\s-]/g, '').toUpperCase();
     if (!token && !enroll) {
-      return { ok: false, error: 'Missing display_token and enrollment_code' };
+      return { ok: false, error: 'Setup file needs display_token or enrollment_code.' };
+    }
+    flog('[setup] import file url=', url, 'token=', token ? '(yes)' : '(no)', 'enroll=', enroll ? '(yes)' : '(no)');
+    if (!(await pingServer(url))) {
+      return {
+        ok: false,
+        error: `Cannot reach ${url} from this PC.\n\nUse the LAN HTTPS address (e.g. https://192.168.1.22) in the setup file, re-download from the admin display page, and ensure Caddy is running on port 443.`
+      };
     }
     const cfg = loadConfig();
     cfg.serverUrl = url;
     if (data.update_mode) cfg.updateMode = normalizeUpdateMode(data.update_mode);
+    const configOut = { ...data, server_url: url };
     if (token) {
       cfg.token = token;
       saveConfig(cfg);
+      flog('[setup] saved token, launching player');
       setTimeout(() => {
         loadPlayerUrl(url, token);
         scheduleUpdateChecks();
       }, 400);
-      return { ok: true, mode: 'player' };
+      return { ok: true, mode: 'player', config: configOut };
     }
     delete cfg.token;
     saveConfig(cfg);
-    return { ok: true, mode: 'enrollment', enrollment: enroll, config: data };
+    flog('[setup] saved enrollment, opening step 2');
+    return { ok: true, mode: 'enrollment', enrollment: enroll, config: configOut };
   } catch (e) {
-    return { ok: false, error: String(e && e.message ? e.message : e) };
+    flog('[setup] apply config error:', String(e));
+    return { ok: false, error: String(e && e.message ? e.message : String(e)) };
   }
 }
 
@@ -758,23 +945,23 @@ ipcMain.handle('apply-client-config', async (_, raw) => {
   return applyClientConfig(raw);
 });
 
+ipcMain.handle('prepare-setup-file-picker', () => {
+  ensureWindow();
+  flog('[setup] prepare file picker (suspend kiosk)');
+  return suspendKioskForModal();
+});
+
+ipcMain.handle('finish-setup-file-picker', (_, state) => {
+  flog('[setup] finish file picker (resume kiosk)');
+  resumeKioskAfterModal(state);
+  return true;
+});
+
 ipcMain.handle('browse-client-config', async () => {
   try {
-    const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Select AISignX setup file',
-      properties: ['openFile'],
-      filters: [
-        { name: 'AISignX setup file', extensions: ['json'] },
-        { name: 'All files', extensions: ['*'] }
-      ]
-    });
-    if (result.canceled || !result.filePaths || !result.filePaths[0]) {
-      return { ok: false, canceled: true };
-    }
-    const raw = fs.readFileSync(result.filePaths[0], 'utf8');
-    const applied = await applyClientConfig(raw);
-    return { ...applied, filePath: result.filePaths[0] };
+    return await pickSetupConfigFile();
   } catch (e) {
+    flog('[setup] file browse failed:', String(e));
     return { ok: false, error: String(e && e.message ? e.message : e) };
   }
 });
@@ -840,13 +1027,8 @@ ipcMain.handle('save-server-url', async (_, serverUrl) => {
   const norm = normalizeClientServerUrl(serverUrl);
   if (!norm.ok) return { ok: false, error: norm.error };
   const url = norm.url;
-  try {
-    const res = await doRequest(`${url}/api/version`);
-    if (res.status !== 200) {
-      return { ok: false, error: `Server responded with status ${res.status}. Check the URL and make sure the server is running.` };
-    }
-  } catch (e) {
-    return { ok: false, error: 'Cannot reach server: ' + e.message };
+  if (!(await pingServer(url))) {
+    return { ok: false, error: `Cannot reach ${url}. Check HTTPS URL, firewall (port 443), and that AISignX + Caddy are running.` };
   }
   const cfg = loadConfig();
   cfg.serverUrl = url;
@@ -907,28 +1089,40 @@ ipcMain.handle('clear-config', () => {
   return true;
 });
 
+/** Validate a display token from a setup file (not the enrollment register API). */
+async function validateStoredPlayerToken(cfg) {
+  if (!cfg.serverUrl || !cfg.token) return { ok: false, reason: 'incomplete' };
+  try {
+    const res = await doRequest(
+      `${cfg.serverUrl}/display/${encodeURIComponent(cfg.token)}/ping`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+      { client_id: getDeviceId(), app_version: app.getVersion() }
+    );
+    if (res.status === 404) return { ok: false, reason: 'invalid_token' };
+    // 409 = another client connected; token is still valid for this device.
+    if (res.status >= 200 && res.status < 500) return { ok: true };
+    return { ok: false, reason: 'http_' + res.status };
+  } catch (e) {
+    flog('[startup] server unreachable, keeping saved config:', String(e));
+    return { ok: true, offline: true };
+  }
+}
+
 // ── App startup ───────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
   const cfg = loadConfig();
   if (cfg.serverUrl && cfg.token) {
-    // Verify the token is still valid before loading the player
-    let tokenValid = false;
-    try {
-      const res = await doRequest(`${cfg.serverUrl}/api/register/status/${getDeviceId()}`);
-      // If server says approved and token matches, we're good
-      if (res.body?.status === 'approved' && res.body?.token === cfg.token) {
-        tokenValid = true;
-      }
-    } catch (_) {
-      // Server unreachable — try loading anyway (may work from cache)
-      tokenValid = true;
-    }
-    if (tokenValid) {
+    const check = await validateStoredPlayerToken(cfg);
+    if (check.ok) {
       loadPlayerUrl(cfg.serverUrl, cfg.token);
       scheduleUpdateChecks();
+    } else if (check.reason === 'invalid_token') {
+      flog('[startup] display token rejected by server — keep server URL, reopen setup');
+      saveConfig({ serverUrl: cfg.serverUrl, updateMode: cfg.updateMode });
+      loadLocalFile('setup.html');
     } else {
-      // Token is stale (display deleted/re-added) — clear and go to setup
-      saveConfig({});
+      flog('[startup] token check failed:', check.reason, '— opening setup');
+      saveConfig({ serverUrl: cfg.serverUrl, updateMode: cfg.updateMode });
       loadLocalFile('setup.html');
     }
   } else if (cfg.serverUrl) {

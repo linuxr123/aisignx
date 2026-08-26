@@ -22,7 +22,40 @@ npm run build:linux  # Linux AppImage + .deb
 npm run build:all    # Both
 ```
 
-Outputs go to `clients/electron-client/dist/`. Copy the relevant installer into `server/static/clients/` and bump `client_versions.json` to publish (or run `build_clients_*.ps1` / `.sh` from the repo root).
+Outputs go to `clients/electron-client/dist-build/` (older clones may still have a locked legacy `dist/` folder).
+
+### Windows build: `app.asar` file in use
+
+If `electron-builder` fails with *The process cannot access the file because it is being used by another process* on `dist-build\` or legacy `dist\`:
+
+1. Quit **AISignX Player** (installed app and any `dist\win-unpacked` test run).
+2. Stop dev mode: close any `npm start` / `electron .` window.
+3. Re-run the build, or run cleanup manually:
+
+```powershell
+cd clients\electron-client
+powershell -ExecutionPolicy Bypass -File scripts\prebuild_clean.ps1
+npm run build:win
+```
+
+If manual `Remove-Item dist` gives **IO / access denied** errors, you do **not** need to delete it anymore — builds write to **`dist-build/`** instead. Run the cleanup script, then build:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\prebuild_clean.ps1
+.\build_clients_windows.ps1 -Electron -NoBump
+```
+
+You can delete the old locked `dist\` folder after a **reboot**, or leave it (it is ignored).
+
+Still stuck? Kill all Electron (dev machines only):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\prebuild_clean.ps1 -KillAllElectron
+```
+
+Then reboot if Task Manager still shows **AISignX Player** or **electron.exe**.
+
+`npm run build:win` runs `prebuild:win` automatically before each build.
 
 ## Releasing a new version
 
@@ -57,7 +90,7 @@ at which point the player re-asserts fullscreen kiosk and re-locks automatically
 The player caches its page, plugins, and media (images/videos) in a service worker so content keeps playing when the server is unreachable. Chromium only enables service workers in a secure context, so on plain-HTTP LAN deployments the client automatically marks the configured server origin as a trusted secure origin (`--unsafely-treat-insecure-origin-as-secure`). HTTPS deployments work without this. Videos that stall mid-stream are skipped after a few seconds instead of freezing the playlist.
 
 The server URL and token are stored in the OS user-data directory:
-- Windows: `%APPDATA%\aisignx-player\`
+- Windows: `%APPDATA%\AISignX Player\` (same folder for dev and installed builds)
 - Linux: `~/.config/aisignx-player/`
 
 ## Diagnostic hotkeys
@@ -74,9 +107,9 @@ Global hotkeys that work even on production builds (where the DevTools menu is h
 
 | File | Purpose |
 |---|---|
-| `%APPDATA%\aisignx-player\aisignx-player.log` | Main app log (startup, commands, update progress) |
-| `%APPDATA%\aisignx-player\aisignx-update-wrapper.log` | Step-by-step trace of the most recent silent update |
-| `%APPDATA%\aisignx-player\aisignx-update-wrapper.stderr.log` | PowerShell errors during update (if any) |
+| `%APPDATA%\AISignX Player\aisignx-player.log` | Main app log (startup, commands, update progress) |
+| `%APPDATA%\AISignX Player\aisignx-update-wrapper.log` | Step-by-step trace of the most recent silent update |
+| `%APPDATA%\AISignX Player\aisignx-update-wrapper.stderr.log` | PowerShell errors during update (if any) |
 
 ## Server-pushed commands
 

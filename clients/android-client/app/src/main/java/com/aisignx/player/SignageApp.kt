@@ -28,7 +28,19 @@ class SignageApp : Application() {
         super.onCreate()
         instance = this
         FileLog.init(this)
+        migrateStoredServerUrl()
         FileLog.i("App", "AISignX Player started")
+    }
+
+    /** One-time migration: http://host:5000 → https://host for Caddy deployments. */
+    private fun migrateStoredServerUrl() {
+        val raw = prefs.getString(KEY_SERVER_URL, "") ?: ""
+        if (raw.isEmpty()) return
+        val normalized = ServerUrl.normalize(raw)
+        if (normalized != raw) {
+            prefs.edit().putString(KEY_SERVER_URL, normalized).apply()
+            FileLog.i("App", "Migrated server URL $raw -> $normalized")
+        }
     }
 
     val prefs get() = getSharedPreferences(PREFS, Context.MODE_PRIVATE)

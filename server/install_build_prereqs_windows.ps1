@@ -211,4 +211,10 @@ Write-Host ""
 Write-Host "  IMPORTANT: Open a NEW PowerShell window before running build_clients_windows.ps1" -ForegroundColor Cyan
 Write-Host "  The new window will pick up all updated PATH and environment variables." -ForegroundColor Cyan
 Write-Host ""
+Write-Host "  Build examples (from repo root):" -ForegroundColor White
+Write-Host "    .\build_clients_windows.ps1 -Help" -ForegroundColor Gray
+Write-Host "    .\build_clients_windows.ps1                    # Electron + Android" -ForegroundColor Gray
+Write-Host "    .\build_clients_windows.ps1 -Electron        # Windows installer only" -ForegroundColor Gray
+Write-Host "    .\build_clients_windows.ps1 -Android         # APK only" -ForegroundColor Gray
+Write-Host ""
 Write-Host ""

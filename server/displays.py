@@ -61,13 +61,24 @@ def _lan_ip():
     return None
 
 
-def _client_setup_server_url():
-    """Base URL for downloaded native client setup files (HTTPS only).
+def _preferred_url_scheme() -> str:
+    return (current_app.config.get('PREFERRED_URL_SCHEME') or 'https').lower()
 
-    Prefer explicit configuration/DNS. If the admin downloads from localhost,
-    replace it with a LAN IP so Android/TV/other devices can reach the server.
+
+def _public_server_base_url(scheme: str | None = None) -> str:
+    """Public base URL for player links (respects deploy mode / proxy).
+
+    Prefer explicit configuration/DNS. If the admin opened the UI on
+    localhost or plain http://host:5000, still return the URL displays
+    should use (https://host when behind Caddy, or http://host:5000 in
+    direct HTTP mode).
     """
-    from https_urls import normalize_https_base_url
+    from https_urls import normalize_public_base_url
+
+    scheme = (scheme or _preferred_url_scheme()).lower()
+    if scheme not in ('http', 'https'):
+        scheme = 'https'
+    normalize = lambda u: normalize_public_base_url(u, scheme)
 
     try:
         import settings as _settings
@@ -75,22 +86,36 @@ def _client_setup_server_url():
     except Exception:
         configured = ''
     if configured:
-        return normalize_https_base_url(configured)
+        return normalize(configured)
 
     server_name = (current_app.config.get('SERVER_NAME') or '').strip()
     if server_name:
-        return normalize_https_base_url(f'https://{server_name}')
+        return normalize(f'{scheme}://{server_name}')
 
     base = (request.url_root or request.host_url or '').rstrip('/')
     parsed = urlparse(base)
     if parsed.scheme and parsed.netloc and not _is_localhost_name(parsed.hostname):
-        return normalize_https_base_url(base)
+        return normalize(base)
 
     ip = _lan_ip()
     if ip:
-        return normalize_https_base_url(f'https://{ip}')
+        if scheme == 'http':
+            return normalize(f'http://{ip}:5000')
+        return normalize(f'https://{ip}')
 
-    return normalize_https_base_url(base or 'https://localhost')
+    return normalize(base or f'{scheme}://localhost')
+
+
+def _client_setup_server_url():
+    """Base URL for native client setup files (always HTTPS)."""
+    from https_urls import normalize_https_base_url
+    return normalize_https_base_url(_public_server_base_url(scheme='https'))
+
+
+def player_display_url(api_key: str) -> str:
+    """Full browser player URL for admin copy/open (matches deploy mode)."""
+    base = _public_server_base_url()
+    return f'{base}/display/{api_key}'
 
 
 def _check_single_client(display, client_ip):
@@ -205,6 +230,7 @@ def display_detail(display_id):
         groups=groups,
         recent_pop=recent_pop,
         pop_enabled=pop_enabled,
+        player_url=player_display_url(display.api_key),
         group_syncs_playback=_display_sync_playback_active(display),
         sync_media_buttons_mismatch=(
             bool(getattr(display, 'show_media_buttons', False))

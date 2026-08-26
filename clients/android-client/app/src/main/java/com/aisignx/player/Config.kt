@@ -8,8 +8,10 @@ object Config {
     private val prefs get() = SignageApp.instance.prefs
 
     var serverUrl: String
-        get() = prefs.getString(SignageApp.KEY_SERVER_URL, "") ?: ""
-        set(v) = prefs.edit().putString(SignageApp.KEY_SERVER_URL, v.trimEnd('/')).apply()
+        get() = ServerUrl.normalize(prefs.getString(SignageApp.KEY_SERVER_URL, "") ?: "")
+        set(v) = prefs.edit()
+            .putString(SignageApp.KEY_SERVER_URL, ServerUrl.normalize(v))
+            .apply()
 
     var token: String
         get() = prefs.getString(SignageApp.KEY_TOKEN, "") ?: ""

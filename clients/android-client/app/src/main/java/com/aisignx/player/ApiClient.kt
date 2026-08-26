@@ -8,11 +8,11 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .hostnameVerifier { _, _ -> true }   // allow self-signed certs on LAN servers
-        .build()
+    private val client = LanHttps.apply(
+        OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+    ).build()
 
     private val JSON = "application/json; charset=utf-8".toMediaType()
 
@@ -74,16 +74,16 @@ object ApiClient {
         }
     }
 
-    /** Quick reachability check â€” just hits /api/register with empty body and looks for a JSON response */
+    /** Quick reachability check — GET /api/version (same probe WebCache uses). */
     fun ping(serverUrl: String): Boolean {
+        val base = ServerUrl.normalize(serverUrl)
+        if (base.isEmpty()) return false
         return try {
             val req = Request.Builder()
-                .url("$serverUrl/api/register")
-                .post("{}".toRequestBody(JSON))
+                .url("$base/api/version")
+                .get()
                 .build()
-            client.newCall(req).execute().use { resp ->
-                resp.isSuccessful || resp.code in 400..499  // 4xx = server reached, request invalid
-            }
+            client.newCall(req).execute().use { resp -> resp.isSuccessful }
         } catch (_: Exception) { false }
     }
 

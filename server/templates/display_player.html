@@ -375,6 +375,7 @@
     window.VOLUME              = {{ volume | tojson }};
     window.AISIGNX_AUTO_UPDATE_CLIENT = {{ auto_update_client | tojson }};
     window.DIAGNOSTICS_ENABLED = {{ diagnostics_enabled | tojson }};
+    window.__SW_VERSION__ = 'signage-v74';
 </script>
 <script>
     if ('serviceWorker' in navigator) {

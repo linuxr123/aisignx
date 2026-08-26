@@ -181,12 +181,12 @@
                 <div class="mb-3">
                     <label class="form-label">Player URL</label>
                     <div class="input-group">
-                        <input type="text" class="form-control" value="{{ request.host_url.rstrip('/') }}/display/{{ display.api_key }}" id="playerUrl" readonly>
+                        <input type="text" class="form-control" value="{{ player_url }}" id="playerUrl" readonly>
                         <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('playerUrl')">Copy</button>
                         <button class="btn btn-outline-secondary" type="button" id="btnDownloadClientConfig" title="JSON for Android / Windows kiosk import (USB)">
                             <i class="bi bi-download"></i> Setup file
                         </button>
-                        <a href="/display/{{ display.api_key }}" target="_blank" class="btn btn-outline-primary" title="Open player in new tab">
+                        <a href="{{ player_url }}" target="_blank" class="btn btn-outline-primary" title="Open player in new tab">
                             <i class="bi bi-display"></i> Open
                         </a>
                     </div>

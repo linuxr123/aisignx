@@ -3,6 +3,7 @@
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
+import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -116,6 +117,16 @@ class PlayerActivity : AppCompatActivity() {
                 view: WebView,
                 req: WebResourceRequest
             ): WebResourceResponse? = WebCache.intercept(this@PlayerActivity, req)
+
+            override fun onReceivedSslError(
+                view: WebView,
+                handler: SslErrorHandler,
+                error: SslError
+            ) {
+                // Caddy "tls internal" / LAN self-signed HTTPS
+                FileLog.w(TAG, "SSL warning (proceeding): ${error.primaryError} ${error.url}")
+                handler.proceed()
+            }
 
             override fun onReceivedError(
                 view: WebView,
@@ -363,6 +374,9 @@ class PlayerActivity : AppCompatActivity() {
             var prev = false
             SseClient.connected.collect { now ->
                 if (!now && prev) {
+                    // Stop passthrough video to the dead host immediately;
+                    // banner still waits for grace + reachability probe.
+                    WebCache.markServerUnreachable(Config.serverUrl)
                     // SSE drops briefly during normal operation (Wi-Fi blips,
                     // server restarts). Do not flash "server offline" until
                     // the stream has been down for several seconds.
@@ -371,10 +385,15 @@ class PlayerActivity : AppCompatActivity() {
                         delay(SSE_OFFLINE_GRACE_MS)
                         if (!SseClient.connected.value) {
                             withContext(Dispatchers.Main) {
-                                b.webView.evaluateJavascript(
-                                    "window.signageReportConnectivity && window.signageReportConnectivity('server-offline');",
-                                    null
-                                )
+                                if (!WebCache.quickReachableForServer(this@PlayerActivity, Config.serverUrl)) {
+                                    WebCache.markServerUnreachable(Config.serverUrl)
+                                    b.webView.evaluateJavascript(
+                                        "window.signageReportConnectivity && window.signageReportConnectivity('server-offline',{immediate:true});",
+                                        null
+                                    )
+                                } else {
+                                    WebCache.markServerReachable(Config.serverUrl)
+                                }
                             }
                         }
                     }
@@ -387,11 +406,13 @@ class PlayerActivity : AppCompatActivity() {
                             FileLog.i(TAG, "SSE reconnected — reloading player")
                             loadPlayer()
                         } else if (_playerPageLoaded) {
-                            WebCache.markServerReachable(Config.serverUrl)
-                            b.webView.evaluateJavascript(
-                                "window.signageReportConnectivity && window.signageReportConnectivity('online');",
-                                null
-                            )
+                            if (WebCache.quickReachableForServer(this@PlayerActivity, Config.serverUrl)) {
+                                WebCache.markServerReachable(Config.serverUrl)
+                                b.webView.evaluateJavascript(
+                                    "window.signageReportConnectivity && window.signageReportConnectivity('online');",
+                                    null
+                                )
+                            }
                         }
                     }
                 }
@@ -816,6 +837,16 @@ class PlayerActivity : AppCompatActivity() {
         @android.webkit.JavascriptInterface
         fun requestMediaPrefetch(url: String) {
             WebCache.requestMediaPrefetch(url, this@PlayerActivity)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun markServerUnreachable() {
+            WebCache.markServerUnreachable(Config.serverUrl)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun markServerReachable() {
+            WebCache.markServerReachable(Config.serverUrl)
         }
 
         @android.webkit.JavascriptInterface

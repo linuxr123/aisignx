@@ -227,18 +227,26 @@ document.getElementById('errorModal').addEventListener('click', (e) => {
 let serverUrl = '';
 
 async function handleImportedConfigResult(r) {
-  if (!r || r.canceled) return;
+  if (!r || r.canceled) {
+    showError('step1Error', 'No setup file selected.');
+    return;
+  }
   if (!r.ok) {
     showErrorModal(r.error || 'Import failed', 'Import setup file');
     return;
   }
   if (r.mode === 'player') {
-    document.getElementById('step1').innerHTML =
-      '<p style="text-align:center;padding:28px 0;color:#94a3b8">Starting player…</p>';
+    showStep(1);
+    showError('step1Error', 'Setup file accepted — starting player…');
+    document.getElementById('step1').querySelector('.subtitle').textContent =
+      'Launching display player with saved token…';
     return;
   }
   const obj = r.config || {};
-  serverUrl = String(obj.server_url || '').trim().replace(/\/$/, '');
+  serverUrl = String(obj.server_url || r.serverUrl || '').trim().replace(/\/$/, '');
+  if (!serverUrl.toLowerCase().startsWith('https://')) {
+    serverUrl = 'https://' + serverUrl.replace(/^\/+/, '');
+  }
   document.getElementById('serverUrl').value = serverUrl;
   if (r.enrollment) {
     document.getElementById('enrollmentCode').value = r.enrollment.replace(/[\s-]/g, '').toUpperCase();
@@ -248,6 +256,7 @@ async function handleImportedConfigResult(r) {
   if (obj.update_mode && um.querySelector('option[value="' + obj.update_mode + '"]')) {
     um.value = obj.update_mode;
   }
+  showError('step2Error', 'Setup file loaded — tap Request Registration when ready.');
   await populateStep2Info();
   showStep(2);
 }
@@ -307,55 +316,69 @@ document.getElementById('btnConnect').addEventListener('click', async () => {
   showStep(2);
 });
 
-document.getElementById('btnImportConfig').addEventListener('click', async () => {
-  if (window.signage.browseClientConfig) {
-    const btnImp = document.getElementById('btnImportConfig');
-    const btnConn = document.getElementById('btnConnect');
-    btnImp.disabled = true;
-    btnConn.disabled = true;
-    try {
-      await handleImportedConfigResult(await window.signage.browseClientConfig());
-    } catch (err) {
-      showErrorModal(String(err.message || err), 'Import setup file');
-    } finally {
-      btnImp.disabled = false;
-      btnConn.disabled = false;
-    }
+function pickJsonFileViaInput() {
+  return new Promise((resolve) => {
+    const input = document.getElementById('fileImportConfig');
+    const onChange = () => {
+      input.removeEventListener('change', onChange);
+      const file = input.files && input.files[0] ? input.files[0] : null;
+      input.value = '';
+      resolve(file);
+    };
+    input.addEventListener('change', onChange);
+    input.click();
+  });
+}
+
+async function browseAndImportSetupFile() {
+  if (!window.signage || !window.signage.applyClientConfig) {
+    showErrorModal(
+      'The player bridge did not load (window.signage is missing).\n\n' +
+        'Quit the app completely, then from clients/electron-client run:\n' +
+        '  npm start\n\n' +
+        'If it still fails, press Ctrl+Alt+L and check aisignx-player.log for [preload] errors.',
+      'Import setup file'
+    );
     return;
   }
-  document.getElementById('fileImportConfig').click();
-});
-document.getElementById('fileImportConfig').addEventListener('change', async (e) => {
-  const f = e.target.files[0];
-  e.target.value = '';
-  if (!f) return;
   const btnImp = document.getElementById('btnImportConfig');
   const btnConn = document.getElementById('btnConnect');
-  let text;
-  try {
-    text = await f.text();
-  } catch (err) {
-    showErrorModal(String(err.message || err), 'Import config');
-    return;
-  }
   btnImp.disabled = true;
   btnConn.disabled = true;
-  let r;
+  showError('step1Error', 'Opening file picker…');
+  let kioskState = null;
   try {
-    r = await window.signage.applyClientConfig(text);
+    if (window.signage.prepareSetupFilePicker) {
+      kioskState = await window.signage.prepareSetupFilePicker();
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const file = await pickJsonFileViaInput();
+    showError('step1Error', '');
+    if (!file) {
+      await handleImportedConfigResult({ canceled: true });
+      return;
+    }
+    showError('step1Error', 'Reading setup file and checking server…');
+    const text = await file.text();
+    const r = await window.signage.applyClientConfig(text);
+    showError('step1Error', '');
+    let obj = {};
+    try { obj = JSON.parse(text); } catch (_) {}
+    await handleImportedConfigResult({ ...r, config: obj });
   } catch (err) {
+    showError('step1Error', '');
+    showErrorModal(String(err.message || err), 'Import setup file');
+  } finally {
+    if (window.signage.finishSetupFilePicker) {
+      await window.signage.finishSetupFilePicker(kioskState);
+    }
     btnImp.disabled = false;
     btnConn.disabled = false;
-    showErrorModal(String(err.message || err), 'Import config');
-    return;
   }
-  btnImp.disabled = false;
-  btnConn.disabled = false;
-  let obj = {};
-  try {
-    obj = JSON.parse(text);
-  } catch (_) {}
-  await handleImportedConfigResult({ ...r, config: obj });
+}
+
+document.getElementById('btnImportConfig').addEventListener('click', () => {
+  browseAndImportSetupFile();
 });
 
 // Step 2 — register

@@ -1,27 +1,32 @@
 # AISignX - Build Clients (Windows)
 # Run from the repo root:
 #   powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1
-#   powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 -Electron -NoBump
+#   powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 -Help
+#   powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 -Electron
 #   powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 -Android
-#   powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 -BumpOnly
+#   powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 -Electron -NoBump
+#   powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 -Android -Release
 #
-# Options:
-#   -Electron     Build/copy Electron (Windows .exe; Linux artifacts if present in dist)
-#   -Android      Build/copy Android APK
-#   (default)     Both Electron and Android if neither switch is set
-#   -NoBump       Do not increment versions in source files
-#   -BumpOnly     Bump versions + update client_versions.json only (no compile)
-#   -Release      Build a SIGNED release APK (requires android-client/keystore.properties).
-#                 Required for fleets that must auto-update: the APK must be signed with
-#                 the SAME keystore as the installed app or Android rejects the update.
-#   -Help         Show usage
+# Target switches (pick one or both; default = both):
+#   -Electron     Windows installer (+ copy Linux artifacts from dist if present)
+#   -Android       APK (debug unless -Release)
+#   -Target All|Electron|Android   Same as switches above (optional positional: Electron)
+#
+# Other:
+#   -NoBump        Skip version bump in package.json / build.gradle.kts
+#   -BumpOnly      Bump versions + client_versions.json only (no compile)
+#   -Release       Signed Android release APK (requires keystore.properties)
+#   -Help          Show full usage
 
 param(
     [switch]$Help,
-    [switch]$NoBump,
-    [switch]$BumpOnly,
+    [Parameter(Position = 0)]
+    [ValidateSet('All', 'Electron', 'Android', 'all', 'electron', 'android', '')]
+    [string]$Target = '',
     [switch]$Electron,
     [switch]$Android,
+    [switch]$NoBump,
+    [switch]$BumpOnly,
     [switch]$Release
 )
 
@@ -41,9 +46,6 @@ function Write-Skip($msg) { Write-Host "[SKIP] $msg" -ForegroundColor DarkGray }
 function Write-Fail($msg) { Write-Host "[FAIL] $msg" -ForegroundColor Red }
 
 function Write-TextNoBom([string]$Path, [string]$Content) {
-    # Windows PowerShell 5.1 `Set-Content -Encoding UTF8` prepends a BOM, which
-    # breaks JSON parsers (electron-builder, Python json) and Gradle Kotlin DSL.
-    # Always write UTF-8 without a BOM.
     $enc = New-Object System.Text.UTF8Encoding $false
     [System.IO.File]::WriteAllText($Path, $Content, $enc)
 }
@@ -65,27 +67,68 @@ AISignX client build script (Windows)
 
 Usage:
   powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 [options]
+  powershell -ExecutionPolicy Bypass -File build_clients_windows.ps1 -Help
 
-Options:
-  -Electron      Build Electron (Windows installer; copy Linux artifacts from dist if present)
-  -Android       Build Android debug APK
-  (no target)    Build both Electron and Android
+Targets (build one or both; if none specified, builds BOTH):
+  -Electron              Build Windows .exe installer (Electron)
+  -Android               Build Android APK (debug keystore)
+  -Target <name>         All | Electron | Android  (same as the switches above)
+  <Electron|Android|All> Optional first positional argument (= -Target)
 
-  -NoBump        Skip version bump in package.json / build.gradle.kts
-  -BumpOnly      Only bump versions and update client_versions.json (no compile)
-  -Release       Build a SIGNED release APK (needs android-client/keystore.properties).
-                 Use this for fleets that must auto-update; the keystore MUST match the
-                 one the installed app was signed with, or Android rejects the update.
-  -Help          Show this help
+Shared options:
+  -NoBump                Do not increment versions in source files
+  -BumpOnly              Only bump versions and update client_versions.json
+  -Help                  Show this help
+
+Android-only:
+  -Release               Signed release APK (needs clients\android-client\keystore.properties)
 
 Examples:
-  .\build_clients_windows.ps1                       # bump + build all (debug APK)
-  .\build_clients_windows.ps1 -Electron -NoBump     # rebuild Windows installer only
-  .\build_clients_windows.ps1 -Android              # bump + build debug APK only
-  .\build_clients_windows.ps1 -Android -Release     # bump + build SIGNED release APK
-  .\build_clients_windows.ps1 -BumpOnly -Electron   # bump Electron version + manifest only
+  .\build_clients_windows.ps1                         # bump + build Electron + Android
+  .\build_clients_windows.ps1 -Electron               # bump + Windows installer only
+  .\build_clients_windows.ps1 -Android                # bump + debug APK only
+  .\build_clients_windows.ps1 -Electron -NoBump       # rebuild installer, same version
+  .\build_clients_windows.ps1 -Android -Release       # signed release APK
+  .\build_clients_windows.ps1 -BumpOnly -Electron     # bump Electron version only
+  .\build_clients_windows.ps1 -Target Android         # same as -Android
 
 "@
+}
+
+function Show-BuildOptionsBanner {
+    Write-Host ""
+    Write-Host "  Options:" -ForegroundColor White
+    Write-Host "    -Electron   -Android     (default: both if neither is set)" -ForegroundColor Gray
+    Write-Host "    -Target All|Electron|Android" -ForegroundColor Gray
+    Write-Host "    -NoBump  -BumpOnly  -Release (Android signed APK)  -Help" -ForegroundColor Gray
+    Write-Host ""
+}
+
+function Resolve-BuildTargets {
+    param(
+        [string]$Target,
+        [bool]$ElectronSwitch,
+        [bool]$AndroidSwitch
+    )
+    if ($ElectronSwitch -and $AndroidSwitch) {
+        return @{ Electron = $true; Android = $true }
+    }
+    if ($ElectronSwitch) {
+        return @{ Electron = $true; Android = $false }
+    }
+    if ($AndroidSwitch) {
+        return @{ Electron = $false; Android = $true }
+    }
+    $t = ($Target + '').Trim()
+    if ($t -eq '') {
+        return @{ Electron = $true; Android = $true }
+    }
+    switch ($t.ToLowerInvariant()) {
+        'electron' { return @{ Electron = $true; Android = $false } }
+        'android'  { return @{ Electron = $false; Android = $true } }
+        'all'      { return @{ Electron = $true; Android = $true } }
+        default    { throw "Unknown target '$t'. Use All, Electron, or Android (or -Help)." }
+    }
 }
 
 function Get-ElectronVersion {
@@ -175,10 +218,16 @@ function Update-ClientVersionsManifest {
 
 if ($Help) { Show-BuildHelp; exit 0 }
 
-$buildElectron = $Electron.IsPresent -or (-not $Electron.IsPresent -and -not $Android.IsPresent)
-$buildAndroid  = $Android.IsPresent  -or (-not $Electron.IsPresent -and -not $Android.IsPresent)
+$targets = Resolve-BuildTargets -Target $Target -ElectronSwitch $Electron.IsPresent -AndroidSwitch $Android.IsPresent
+$buildElectron = $targets.Electron
+$buildAndroid  = $targets.Android
 $doBump        = -not $NoBump.IsPresent
 $doBuild       = -not $BumpOnly.IsPresent
+
+if ($Release.IsPresent -and -not $buildAndroid) {
+    Write-Fail "-Release applies to Android only. Add -Android or use -Target Android."
+    exit 1
+}
 
 $root         = Split-Path -Parent $MyInvocation.MyCommand.Path
 $electronDir  = Join-Path $root "clients\electron-client"
@@ -186,11 +235,15 @@ $androidDir   = Join-Path $root "clients\android-client"
 $outputDir    = Join-Path $root "server\static\clients"
 
 Write-Header "AISignX Client Builder (Windows)"
-Write-Host "  Targets: $(@(
-    $(if ($buildElectron) { 'Electron' })
-    $(if ($buildAndroid) { 'Android' })
-) -join ', ')" -ForegroundColor Gray
+Show-BuildOptionsBanner
+$targetNames = @()
+if ($buildElectron) { $targetNames += 'Electron' }
+if ($buildAndroid)  { $targetNames += 'Android' }
+Write-Host "  Selected: $($targetNames -join ', ')" -ForegroundColor Cyan
 Write-Host "  Bump versions: $(if ($doBump) { 'yes' } else { 'no' })  |  Compile: $(if ($doBuild) { 'yes' } else { 'no (BumpOnly)' })" -ForegroundColor Gray
+if ($Release.IsPresent) {
+    Write-Host "  Android build: signed RELEASE APK" -ForegroundColor Gray
+}
 
 $pkgPath    = Join-Path $electronDir "package.json"
 $gradlePath = Join-Path $androidDir "app\build.gradle.kts"
@@ -199,9 +252,9 @@ $versionsFile = Join-Path $outputDir "client_versions.json"
 if ($doBump) {
     Write-Header "Bumping client versions"
     if ($buildElectron) { [void](Invoke-BumpElectronVersion $pkgPath) }
-    else { Write-Skip "Electron version bump skipped (-Android only)." }
+    else { Write-Skip "Electron version bump skipped (not in selected targets)." }
     if ($buildAndroid) { [void](Invoke-BumpAndroidVersion $gradlePath) }
-    else { Write-Skip "Android version bump skipped (-Electron only)." }
+    else { Write-Skip "Android version bump skipped (not in selected targets)." }
 }
 
 if ($BumpOnly) {
@@ -220,6 +273,7 @@ $userPath    = [System.Environment]::GetEnvironmentVariable("PATH", "User")
 $env:PATH    = "$machinePath;$userPath"
 
 # --- Find node.exe wherever it lives if not already on PATH ---
+if ($buildElectron) {
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     Write-Step "node not on PATH - searching common install locations..."
     $nodeCandidates = @(
@@ -232,17 +286,14 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
         "C:\Program Files\nodejs",
         "C:\Program Files (x86)\nodejs"
     )
-    # Also check every directory already on the machine PATH for node.exe
     ($machinePath + ";" + $userPath).Split(";") | Where-Object { $_ -ne "" } | ForEach-Object {
         if (Test-Path "$_\node.exe") { $nodeCandidates += $_ }
     }
-    # Broad search under Program Files if still not found
     $found = $null
     foreach ($c in $nodeCandidates) {
         if ($c -and (Test-Path "$c\node.exe")) { $found = $c; break }
     }
     if (-not $found) {
-        # Last resort - search Program Files dirs up to 2 levels deep
         foreach ($base in @($env:ProgramFiles, "${env:ProgramFiles(x86)}", $env:LOCALAPPDATA)) {
             if (-not $base) { continue }
             $hit = Get-ChildItem -Path $base -Recurse -Depth 2 -Filter "node.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -256,18 +307,17 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     }
 }
 
-# --- Check Node.js (Electron builds only) ---
-if ($buildElectron) {
     Write-Step "Checking Node.js..."
     $nodePath = Get-Command node -ErrorAction SilentlyContinue
     if (-not $nodePath) {
         Write-Host ""
-        Write-Host "[FAIL] node.exe could not be found on this machine." -ForegroundColor Red
+        Write-Fail "node.exe could not be found (required for -Electron)."
         Write-Host ""
         Write-Host "  Fix options:" -ForegroundColor White
         Write-Host "    1. Run server\install_build_prereqs_windows.ps1 as Administrator" -ForegroundColor Yellow
-        Write-Host "    2. Download Node.js manually from https://nodejs.org and install it" -ForegroundColor Yellow
-        Write-Host "    3. After installing, open a NEW PowerShell window and re-run this script" -ForegroundColor Yellow
+        Write-Host "    2. Install Node.js from https://nodejs.org" -ForegroundColor Yellow
+        Write-Host "    3. Open a NEW PowerShell window and re-run this script" -ForegroundColor Yellow
+        Write-Host "    Or build Android only:  .\build_clients_windows.ps1 -Android" -ForegroundColor Yellow
         Write-Host ""
         exit 1
     }
@@ -294,18 +344,18 @@ npm install --silent
 Write-OK "npm install complete."
 
 Write-Step "Building Windows installer (.exe)..."
+Write-Host "  (prebuild:win stops any running player and clears dist/ to avoid app.asar locks)" -ForegroundColor DarkGray
 npm run build:win
 if ($LASTEXITCODE -ne 0) {
     Write-Fail "Electron build failed. Check output above."
     Set-Location $root
     exit 1
 }
-Write-OK "Electron build complete. Artifacts in clients\electron-client\dist\"
+$electronDist = Join-Path $electronDir "dist-build"
+Write-OK "Electron build complete. Artifacts in clients\electron-client\dist-build\"
 
-# --- Copy Windows installer ---
 Write-Step "Copying Windows installer to static/clients/..."
-# Find the NSIS installer — it's the .exe that is NOT a .blockmap and NOT inside win-unpacked
-$winExe = Get-ChildItem "$electronDir\dist" -Filter "*.exe" |
+$winExe = Get-ChildItem "$electronDist" -Filter "*.exe" |
     Where-Object { $_.Name -notlike "*.blockmap" -and $_.DirectoryName -notlike "*win-unpacked*" } |
     Sort-Object Length -Descending |
     Select-Object -First 1
@@ -316,9 +366,8 @@ if ($winExe) {
     Write-Skip "Windows .exe not found in dist - skipping."
 }
 
-# --- Copy Linux AppImage ---
 Write-Step "Copying Linux AppImage to static/clients/..."
-$appImage = Get-ChildItem "$electronDir\dist" -Filter "*.AppImage" | Select-Object -First 1
+$appImage = Get-ChildItem "$electronDist" -Filter "*.AppImage" | Select-Object -First 1
 if ($appImage) {
     Copy-Item $appImage.FullName (Join-Path $outputDir "AISignX-Player.AppImage") -Force
     Write-OK "Copied: AISignX-Player.AppImage"
@@ -326,8 +375,7 @@ if ($appImage) {
     Write-Skip "Linux .AppImage not found in dist - skipping (cross-compile may not produce this on Windows)."
 }
 
-# --- Copy Linux .deb ---
-$deb = Get-ChildItem "$electronDir\dist" -Filter "*.deb" | Select-Object -First 1
+$deb = Get-ChildItem "$electronDist" -Filter "*.deb" | Select-Object -First 1
 if ($deb) {
     Copy-Item $deb.FullName (Join-Path $outputDir "AISignX-Player.deb") -Force
     Write-OK "Copied: AISignX-Player.deb"
@@ -337,7 +385,7 @@ if ($deb) {
 
 Set-Location $root
 } else {
-    Write-Skip "Electron build skipped (-Android only)."
+    Write-Skip "Electron build skipped (use -Electron or -Target Electron to include it)."
 }
 
 # =====================================================================
@@ -353,7 +401,7 @@ if (-not (Test-Path $gradlew)) {
 }
 
 if (-not $env:JAVA_HOME) {
-    Write-Fail "JAVA_HOME is not set. Set it to your JDK 17 installation path and re-run."
+    Write-Fail "JAVA_HOME is not set (required for -Android). Set JDK 17 and re-run."
     exit 1
 }
 Write-OK "JAVA_HOME: $env:JAVA_HOME"
@@ -389,7 +437,6 @@ Write-OK "Android build complete."
 Write-Step "Copying APK to static/clients/..."
 $apkDir = if ($useRelease) { "$androidDir\app\build\outputs\apk\release" }
           else             { "$androidDir\app\build\outputs\apk\debug" }
-# Prefer a non-"unsigned" APK so we never publish an unsigned release artifact.
 $apk = Get-ChildItem $apkDir -Filter "*.apk" -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -notlike "*unsigned*" } |
     Select-Object -First 1
@@ -404,7 +451,7 @@ if ($apk) {
 
 Set-Location $root
 } else {
-    Write-Skip "Android build skipped (-Electron only)."
+    Write-Skip "Android build skipped (use -Android or -Target Android to include it)."
 }
 
 # =====================================================================
@@ -434,4 +481,5 @@ if ($doBump) {
 } else {
     Write-Host "  Version bump was skipped (-NoBump). Manifest reflects current source versions." -ForegroundColor Gray
 }
+Write-Host "  Other targets: -Electron  -Android  (see -Help)" -ForegroundColor DarkGray
 Write-Host ""

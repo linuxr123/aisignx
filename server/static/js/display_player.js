@@ -24,7 +24,7 @@
     const SSE_BASE    = 1_000;                  // SSE reconnect base delay ms
     const SSE_MAX     = 30_000;                 // SSE reconnect cap ms
     const CACHE_KEY   = `signage_playlist_${TOKEN}`;  // localStorage key
-    const JS_VERSION  = 'v31';                  // bump when display_player.js changes
+    const JS_VERSION  = 'v39';                  // bump when display_player.js changes
     const BLACK_VIDEO_POSTER = 'data:image/svg+xml;charset=utf-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="16" height="9" viewBox="0 0 16 9"%3E%3Crect width="16" height="9" fill="%23000"/%3E%3C/svg%3E';
     const CLIENT_ID   = getClientInstanceId();
     let SHOW_MEDIA_BUTTONS = !!window.SHOW_MEDIA_BUTTONS;
@@ -609,10 +609,18 @@
     // Native shells (Android WebView) buffer more aggressively — use a longer
     // stall window so normal mid-playback buffering is not mistaken for failure.
     const VIDEO_STALL_TIMEOUT_NATIVE_MS = 18_000;
-    const PING_FAILS_BEFORE_OFFLINE = 3;
+    const PING_FAILS_BEFORE_OFFLINE = 2;
     const SSE_OFFLINE_GRACE_MS = 12_000;
+    const SSE_OFFLINE_GRACE_FAST_MS = 6_000;
+    /** Debounce only when reachability is ambiguous (avoids banner flashes). */
+    const OFFLINE_CONFIRM_MS = 8_000;
+    const OFFLINE_MEDIA_WAIT_MS = 8_000;
+    const OFFLINE_VIDEO_WAIT_MS = 25_000;
+    const PREFETCH_LOOP_MS = 45_000;
     let _pingFailStreak = 0;
     let _sseOfflineTimer = null;
+    let _offlineConfirmTimer = null;
+    let _pendingOfflineState = null;
 
     function isNativeShell() {
         return (typeof window.AISignXNative !== 'undefined') ||
@@ -622,6 +630,85 @@
 
     function isPlaybackOffline() {
         return _serverOffline || _networkState !== 'online';
+    }
+
+    /** True when pings or SSE suggest the server may be down (before banner debounce). */
+    function isConnectivityDegraded() {
+        return isPlaybackOffline() || _pingFailStreak > 0 ||
+            !(sseSource && sseSource.readyState === EventSource.OPEN);
+    }
+
+    /** Prefer disk/SW cache for media when the server may be unreachable. */
+    function shouldUseOfflineCache() {
+        return isConnectivityDegraded();
+    }
+
+    function isMediaCachedNow(url) {
+        if (!url) return false;
+        try {
+            if (window.AISignXNative?.isMediaCached) {
+                return !!window.AISignXNative.isMediaCached(absoluteUrl(url));
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    async function isMediaCachedNowAsync(url) {
+        if (!url) return false;
+        if (isMediaCachedNow(url)) return true;
+        if (offlineCacheUsesServiceWorker()) {
+            return isWebMediaCached(url);
+        }
+        return false;
+    }
+
+    /**
+     * Browser/Electron offline playback requires an active service worker.
+     * First visit often installs the SW but does not control the page until
+     * one reload — without control, prefetch postMessages are ignored and
+     * /uploads/ never land in signage-media.
+     */
+    async function ensureServiceWorkerControl(options = {}) {
+        const allowReload = options.allowReload !== false;
+        if (!offlineCacheUsesServiceWorker() || !window.isSecureContext) return false;
+        try {
+            await navigator.serviceWorker.ready;
+            if (navigator.serviceWorker.controller) {
+                window.__AISIGNX_SW_CONTROLLER__ = true;
+                return true;
+            }
+            if (allowReload && !sessionStorage.getItem('aisignx_sw_claim_reload')) {
+                sessionStorage.setItem('aisignx_sw_claim_reload', '1');
+                window.location.reload();
+                return false;
+            }
+            return false;
+        } catch (e) {
+            console.warn('[player] service worker control failed:', e);
+            return false;
+        }
+    }
+
+    async function waitForServiceWorkerController() {
+        if (!offlineCacheUsesServiceWorker()) return null;
+        try {
+            await navigator.serviceWorker.ready;
+            return navigator.serviceWorker.controller;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    async function confirmServerUnreachable() {
+        try {
+            const c = new AbortController();
+            const t = setTimeout(() => c.abort(), 2500);
+            const r = await fetch('/api/version', { signal: c.signal, cache: 'no-store' });
+            clearTimeout(t);
+            return !r.ok;
+        } catch (_) {
+            return true;
+        }
     }
 
     /** Stable cache identity for /uploads/ (path only — signed query may rotate). */
@@ -636,11 +723,14 @@
     }
 
     function offlineCacheUsesServiceWorker() {
-        return !isNativeShell() && !!(navigator.serviceWorker);
+        // Electron is a native shell but has no AISignXNative media bridge —
+        // it caches via the service worker exactly like a browser. Only the
+        // Android shell (AISignXNative) bypasses the SW.
+        return !window.AISignXNative && !!(navigator.serviceWorker);
     }
 
     function offlineCacheLikelyActive() {
-        if (isNativeShell()) return true;
+        if (window.AISignXNative) return true;
         if (!window.isSecureContext) return false;
         return !!(navigator.serviceWorker && navigator.serviceWorker.controller);
     }
@@ -648,7 +738,7 @@
     function updateOfflineCacheWarning() {
         const el = document.getElementById('cache-warning-banner');
         if (!el) return;
-        if (isNativeShell()) {
+        if (window.AISignXNative) {
             el.style.display = 'none';
             return;
         }
@@ -873,7 +963,7 @@
         return { mediaUrls, pluginUrls };
     }
 
-    function deliverPrefetchPayload(payload) {
+    async function deliverPrefetchPayload(payload) {
         try {
             if (window.AISignXNative && window.AISignXNative.prefetchPlaylist) {
                 window.AISignXNative.prefetchPlaylist(
@@ -881,10 +971,11 @@
                     JSON.stringify(payload.pluginUrls || []),
                     payload.pagePath || window.location.pathname
                 );
+                return;
             }
         } catch (_) {}
 
-        const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+        const sw = await waitForServiceWorkerController();
         if (!sw) return;
         if (payload.mediaUrls && payload.mediaUrls.length) {
             sw.postMessage({ type: 'prefetch_media', urls: payload.mediaUrls });
@@ -921,27 +1012,177 @@
         return false;
     }
 
+    async function isWebMediaCached(url) {
+        if (!url || !('caches' in window)) return false;
+        try {
+            const abs = absoluteUrl(url);
+            const cache = await caches.open('signage-media');
+            const stable = mediaUploadStableKey(abs);
+            if (await cache.match(stable)) return true;
+            if (stable !== abs && await cache.match(abs)) return true;
+            return false;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    async function ensureWebMediaReady(url, maxMs = 20_000) {
+        if (!url) return true;
+        if (window.AISignXNative) return ensureNativeMediaReady(url, maxMs);
+        if (!offlineCacheUsesServiceWorker()) return true;
+        await waitForServiceWorkerController();
+        if (await isWebMediaCached(url)) return true;
+        const abs = absoluteUrl(url);
+        try {
+            const sw = await waitForServiceWorkerController();
+            if (sw) {
+                sw.postMessage({ type: 'prefetch_media', urls: [abs] });
+            }
+        } catch (_) {}
+        const deadline = Date.now() + maxMs;
+        while (Date.now() < deadline) {
+            if (await isWebMediaCached(url)) return true;
+            await new Promise(r => setTimeout(r, 400));
+        }
+        return false;
+    }
+
+    function ensureMediaReady(url, maxMs) {
+        if (window.AISignXNative) return ensureNativeMediaReady(url, maxMs);
+        return ensureWebMediaReady(url, maxMs);
+    }
+
+    function kickMediaPrefetch(url) {
+        if (!url) return;
+        const abs = absoluteUrl(url);
+        try {
+            if (window.AISignXNative?.requestMediaPrefetch) {
+                window.AISignXNative.requestMediaPrefetch(abs);
+                return;
+            }
+        } catch (_) {}
+        waitForServiceWorkerController().then((sw) => {
+            if (!sw) return;
+            try {
+                sw.postMessage({ type: 'prefetch_media', urls: [abs] });
+            } catch (_) {}
+        }).catch(() => {});
+    }
+
+    function skipSlideForMissingMedia(slide, reason) {
+        console.warn('[player] Skipping slide — media not available:', reason);
+        if (activeSlide === slide) setTimeout(advance, 400);
+    }
+
+    /** Start image/video on a slide — wait for cache when connectivity is degraded. */
+    async function activateSlideMedia(slide, item) {
+        if (!slide || !item || !item.content_url) return;
+        const url = item.content_url;
+        kickMediaPrefetch(url);
+
+        const needCache = shouldUseOfflineCache() && !(await isMediaCachedNowAsync(url));
+        if (needCache) {
+            const waitMs = item.type === 'video' ? OFFLINE_VIDEO_WAIT_MS : OFFLINE_MEDIA_WAIT_MS;
+            const ready = await ensureMediaReady(url, waitMs);
+            if (activeSlide !== slide) return;
+            if (!ready) {
+                skipSlideForMissingMedia(slide, url);
+                return;
+            }
+        }
+
+        if (item.type === 'image') {
+            const img = slide.querySelector('img');
+            if (!img) return;
+            // Preserve a preloaded src — re-assigning restarts the load.
+            if (!img.getAttribute('src')) {
+                img.dataset.retry = '';
+                img.dataset.urlRefresh = '';
+                img.src = url;
+            }
+            return;
+        }
+        if (item.type === 'video') {
+            const vid = slide.querySelector('video');
+            if (!vid) return;
+            const playVid = () => { vid.play().catch(() => advance()); };
+            // Preserve preloaded src + buffered data; only assign if missing.
+            if (!vid.src) {
+                vid.src = url;
+                vid.load();
+            }
+            // Preload warms videos muted — restore the real audio decision now.
+            vid.autoplay = true;
+            applyVideoAudio(vid);
+            playVid();
+        }
+    }
+
+    /**
+     * Warm the preloaded (next) slide's media so the transition is seamless.
+     * Online: start loading immediately. Degraded: only assign src once the
+     * cache confirms it has the file — otherwise the <img>/<video> error
+     * handlers would fire on a slide that isn't even visible yet.
+     */
+    function warmPreloadedSlideMedia(slide, item) {
+        if (!slide || !item || !item.content_url) return;
+        if (item.type !== 'image' && item.type !== 'video') return;
+        const url = item.content_url;
+        kickMediaPrefetch(url);
+        const assign = () => {
+            if (item.type === 'image') {
+                const img = slide.querySelector('img');
+                if (img && !img.getAttribute('src')) {
+                    img.src = url;
+                    if (img.decode) img.decode().catch(() => {});
+                }
+            } else {
+                const vid = slide.querySelector('video');
+                if (vid && !vid.src) {
+                    vid.src = url;
+                    vid.load();
+                }
+            }
+        };
+        if (!shouldUseOfflineCache()) {
+            assign();
+            return;
+        }
+        isMediaCachedNowAsync(url).then((cached) => {
+            if (cached) assign();
+        }).catch(() => {});
+    }
+
     function warmPlaylistCaches(data, fromCache = false, urgent = false) {
         if (!data || !data.items || !data.items.length) return;
         const payload = collectPrefetchUrls(data);
         payload.pagePath = window.location.pathname;
 
         if (window._prefetchTimer) clearTimeout(window._prefetchTimer);
-        const nativeShell = (window.AISIGNX_NATIVE_CLIENT === 'android');
-        // Android has no service worker — prefetch aggressively on every playlist.
-        const delay = (fromCache || urgent || nativeShell) ? 0
-            : (data.sync && data.sync.enabled ? 2_000 : 5_000);
+        // Prefetch as soon as the playlist is known so mixed image/video/plugin
+        // playlists are warm before a network drop (Android has no service worker).
+        const delay = (fromCache || urgent || window.AISIGNX_NATIVE_CLIENT === 'android') ? 0 : 500;
+        const runPrefetch = () => {
+            deliverPrefetchPayload(payload).catch(() => {});
+        };
         window._prefetchTimer = setTimeout(() => {
             window._prefetchTimer = null;
-            deliverPrefetchPayload(payload);
+            runPrefetch();
         }, delay);
-
         if (navigator.serviceWorker) {
-            navigator.serviceWorker.ready
-                .then(() => deliverPrefetchPayload(payload))
-                .catch(() => {});
+            navigator.serviceWorker.ready.then(runPrefetch).catch(() => {});
         } else {
-            deliverPrefetchPayload(payload);
+            runPrefetch();
+        }
+
+        // Keep warming media while online — large videos need sustained prefetch time.
+        if (data && data.items && data.items.length) {
+            if (window._prefetchLoop) clearInterval(window._prefetchLoop);
+            window._prefetchLoop = setInterval(() => {
+                if (_pingFailStreak === 0 && _networkState === 'online' && !blocked) {
+                    deliverPrefetchPayload(collectPrefetchUrls(data));
+                }
+            }, PREFETCH_LOOP_MS);
         }
     }
 
@@ -1374,11 +1615,8 @@
 
         if (item.type === 'image') {
             const img = document.createElement('img');
-            if (window.AISIGNX_NATIVE_CLIENT === 'android' && isPlaybackOffline()) {
-                div._pendingImageUrl = item.content_url;
-            } else {
-                img.src = item.content_url;
-            }
+            // src is set in activateSlideMedia after cache is ready (offline-safe).
+            img.dataset.contentUrl = item.content_url || '';
             img.alt = '';
             img.draggable = false;
             // If the image fails to load (e.g. offline + not cached), skip this slide
@@ -1389,7 +1627,7 @@
                         (items[idx] && items[idx].content_url) || item.content_url);
                     if (activeSlide === div) setTimeout(advance, 500);
                 };
-                if (!img.dataset.urlRefresh) {
+                if (!img.dataset.urlRefresh && !shouldUseOfflineCache()) {
                     img.dataset.urlRefresh = '1';
                     refreshPlaylistUrls().then((ok) => {
                         const it = items[idx];
@@ -1461,21 +1699,20 @@
             vid.playsInline = true;
             vid.loop = false;
             vid.preload = 'auto';
-            // Offline Android: do not hit the network until the full file is on disk.
-            if (window.AISIGNX_NATIVE_CLIENT === 'android' && isPlaybackOffline()) {
-                div._pendingVideoUrl = item.content_url;
-            } else {
-                vid.src = item.content_url;
-            }
+            vid.dataset.contentUrl = item.content_url || '';
             div.classList.add('video-pending');
             const markVideoReady = () => div.classList.remove('video-pending');
             vid.addEventListener('loadeddata', () => {
                 clearVideoStartupTimer();
+                markVideoReady();
                 if (typeof vid.requestVideoFrameCallback === 'function') {
                     vid.requestVideoFrameCallback(markVideoReady);
                 }
             }, { once: true });
-            vid.addEventListener('loadedmetadata', clearVideoStartupTimer, { once: true });
+            vid.addEventListener('loadedmetadata', () => {
+                clearVideoStartupTimer();
+                markVideoReady();
+            }, { once: true });
             vid.addEventListener('canplay', clearVideoStartupTimer, { once: true });
             vid.addEventListener('timeupdate', () => {
                 clearVideoStartupTimer();
@@ -1499,7 +1736,7 @@
                     failVideo('error event (offline, not cached)');
                     return;
                 }
-                if (!vid.dataset.urlRefresh) {
+                if (!vid.dataset.urlRefresh && !shouldUseOfflineCache()) {
                     vid.dataset.urlRefresh = '1';
                     refreshPlaylistUrls().then((ok) => {
                         const it = items[(slideIdx != null) ? slideIdx : currentIdx];
@@ -1518,11 +1755,14 @@
             div._startVideoStartupTimer = () => {
                 clearVideoStartupTimer();
                 if (vid.readyState >= 2) return;
+                const startupMs = (shouldUseOfflineCache() && window.AISIGNX_NATIVE_CLIENT === 'android')
+                    ? 3_500
+                    : (shouldUseOfflineCache() ? 5_000 : VIDEO_STARTUP_TIMEOUT_MS);
                 videoStartupTimer = setTimeout(() => {
                     if (activeSlide === div && vid.readyState < 2) {
                         failVideo('startup timeout');
                     }
-                }, VIDEO_STARTUP_TIMEOUT_MS);
+                }, startupMs);
             };
 
             // Mid-playback stall watchdog. We track the last time currentTime
@@ -1539,9 +1779,11 @@
             };
             vid.addEventListener('timeupdate', markProgress);
             vid.addEventListener('playing', markProgress);
-            const stallTimeoutMs = isNativeShell()
-                ? VIDEO_STALL_TIMEOUT_NATIVE_MS
-                : VIDEO_STALL_TIMEOUT_MS;
+            const stallTimeoutMs = (shouldUseOfflineCache() && window.AISIGNX_NATIVE_CLIENT === 'android')
+                ? VIDEO_STALL_TIMEOUT_MS
+                : (isNativeShell()
+                    ? VIDEO_STALL_TIMEOUT_NATIVE_MS
+                    : VIDEO_STALL_TIMEOUT_MS);
             div._startVideoStallWatch = () => {
                 if (stallTimer) clearInterval(stallTimer);
                 lastProgressAt = Date.now();
@@ -1573,11 +1815,12 @@
                 }, 1000);
             };
             // Safety: never leave the black video-pending overlay up forever.
+            const pendingCapMs = shouldUseOfflineCache() ? 3_500 : 8_000;
             div._videoPendingCapTimer = setTimeout(() => {
                 if (activeSlide === div && div.classList.contains('video-pending')) {
                     markVideoReady();
                 }
-            }, 20_000);
+            }, pendingCapMs);
             vid.addEventListener('ended', () => {
                 if (stallTimer) { clearInterval(stallTimer); stallTimer = null; }
             });
@@ -1750,22 +1993,32 @@
         const item = items[nextIdx];
         const slide = buildSlide(item, nextIdx);
 
-        if (item.type === 'image') {
-            const img = slide.querySelector('img');
-            if (img) img.decode().catch(() => {}); // warm browser decode cache
-        } else if (item.type === 'video') {
-            const vid = slide.querySelector('video');
-            if (vid) {
-                vid.preload = 'auto';
-                vid.muted = true;
-                vid.autoplay = false;
-                // Start loading but keep paused — autoplay fires when shown
-                vid.load();
+        if (item.type === 'image' || item.type === 'video') {
+            if (item.type === 'video') {
+                const vid = slide.querySelector('video');
+                if (vid) {
+                    vid.preload = 'auto';
+                    vid.muted = true;
+                    vid.autoplay = false;
+                }
             }
-            if (item.content_url && window.AISignXNative?.requestMediaPrefetch) {
+            // Assign src (online or cache-confirmed) so the next slide is
+            // already loading/decoded before it goes on screen.
+            warmPreloadedSlideMedia(slide, item);
+        } else if (item.type === 'webpage' && item.content_url &&
+                   (/^\/plugin\//.test(item.content_url) || item.plugin)) {
+            const pluginUrl = absoluteUrl(item.content_url);
+            if (window.AISignXNative?.prefetchPlaylist) {
                 try {
-                    window.AISignXNative.requestMediaPrefetch(absoluteUrl(item.content_url));
+                    window.AISignXNative.prefetchPlaylist('[]', JSON.stringify([pluginUrl]), '');
                 } catch (_) {}
+            } else {
+                waitForServiceWorkerController().then((sw) => {
+                    if (!sw) return;
+                    try {
+                        sw.postMessage({ type: 'prefetch_plugins', urls: [pluginUrl] });
+                    } catch (_) {}
+                }).catch(() => {});
             }
         }
         // iframes: src is set in buildSlide but the frame is not in the DOM
@@ -1912,61 +2165,8 @@
                 // Tell any plugin iframe in this slide about current online state
                 notifyIframeOfState(newSlide);
 
-                if (item.type === 'image' && newSlide._pendingImageUrl &&
-                    window.AISIGNX_NATIVE_CLIENT === 'android') {
-                    const img = newSlide.querySelector('img');
-                    const waitMs = isPlaybackOffline() ? 12_000 : 6_000;
-                    ensureNativeMediaReady(newSlide._pendingImageUrl, waitMs).then((ready) => {
-                        if (!ready && isPlaybackOffline()) {
-                            console.warn('[player] image not cached offline:', newSlide._pendingImageUrl);
-                            if (activeSlide === newSlide) setTimeout(advance, 500);
-                            return;
-                        }
-                        if (activeSlide === newSlide && img) {
-                            img.src = newSlide._pendingImageUrl;
-                            newSlide._pendingImageUrl = null;
-                        }
-                    });
-                }
-
-                // Explicitly play video — autoplay on dynamically created elements
-                // is unreliable in Electron/Chromium when not yet attached to DOM.
-                if (item.type === 'video') {
-                    const vid = newSlide.querySelector('video');
-                    if (vid && !paused) {
-                        const playVid = () => {
-                            vid.play().catch(() => advance());
-                        };
-                        if (window.AISIGNX_NATIVE_CLIENT === 'android' && item.content_url) {
-                            const waitMs = isPlaybackOffline() ? 25_000 : 10_000;
-                            ensureNativeMediaReady(item.content_url, waitMs).then((ready) => {
-                                if (!ready && isPlaybackOffline()) {
-                                    console.warn('[player] video not cached offline:', item.content_url);
-                                    if (activeSlide === newSlide && typeof newSlide._failVideo === 'function') {
-                                        newSlide._failVideo('not cached offline');
-                                    }
-                                    return;
-                                }
-                                if (activeSlide === newSlide) {
-                                    if (newSlide._pendingVideoUrl) {
-                                        vid.src = newSlide._pendingVideoUrl;
-                                        newSlide._pendingVideoUrl = null;
-                                        vid.load();
-                                    }
-                                    playVid();
-                                }
-                            });
-                        } else if (!offlineCacheLikelyActive() && isPlaybackOffline()) {
-                            console.warn('[player] skipping video — offline cache not active');
-                            if (typeof newSlide._failVideo === 'function') {
-                                newSlide._failVideo('offline cache unavailable');
-                            } else {
-                                setTimeout(advance, 500);
-                            }
-                        } else {
-                            playVid();
-                        }
-                    }
+                if ((item.type === 'image' || item.type === 'video') && !paused) {
+                    activateSlideMedia(newSlide, item);
                 }
 
                 // Start preloading the next slide immediately
@@ -2218,7 +2418,11 @@
         }
 
         if (!fromCache) savePlaylistCache(data);
-        showOfflineBanner(fromCache, fromCache ? _networkState : 'online');
+        if (fromCache) {
+            setNetworkState('server-offline', { immediate: true });
+        } else if (_networkState !== 'online') {
+            setNetworkState('online');
+        }
 
         clearPreloadedSlide();
         warmPlaylistCaches(data, fromCache, versionChanged);
@@ -2283,6 +2487,16 @@
                 return;
             }
             if (!r.ok) {
+                const cachedOnFail = loadPlaylistCache();
+                if (cachedOnFail && cachedOnFail.items && cachedOnFail.items.length) {
+                    if (items.length) {
+                        setNetworkState('server-offline');
+                        warmPlaylistCaches(cachedOnFail, true);
+                        return;
+                    }
+                    applyPlaylist(cachedOnFail, true);
+                    return;
+                }
                 showOverlay('No content scheduled.', false);
                 return;
             }
@@ -2304,7 +2518,7 @@
                 applyPlaylist(cached, true);
             } else if (cached && items.length) {
                 // Already playing — keep going and warm any missing media.
-                showOfflineBanner(true, _networkState);
+                setNetworkState('server-offline');
                 warmPlaylistCaches(cached, true);
             } else {
                 showOverlay('Server unreachable — no cached playlist available.', false);
@@ -2486,27 +2700,37 @@
             // emergency stays on screen until an explicit emergency_clear event arrives.
             // Brief SSE blips are common; wait before declaring the server offline.
             if (_sseOfflineTimer) clearTimeout(_sseOfflineTimer);
-            _sseOfflineTimer = setTimeout(() => {
+            const graceMs = _pingFailStreak >= PING_FAILS_BEFORE_OFFLINE
+                ? SSE_OFFLINE_GRACE_FAST_MS
+                : SSE_OFFLINE_GRACE_MS;
+            _sseOfflineTimer = setTimeout(async () => {
                 _sseOfflineTimer = null;
-                setNetworkState('server-offline');
-            }, SSE_OFFLINE_GRACE_MS);
+                if (sseSource && sseSource.readyState === EventSource.OPEN) return;
+                if (_pingFailStreak === 0) return;
+                const down = await confirmServerUnreachable();
+                if (down) applyNetworkState('server-offline');
+                else setNetworkState('server-offline');
+            }, graceMs);
             ping();
             setTimeout(connectSSE, sseRetryDelay);
             sseRetryDelay = Math.min(sseRetryDelay * 2, SSE_MAX);
         };
 
-        sseSource.onopen = () => {
+        sseSource.onopen = async () => {
             if (_sseOfflineTimer) {
                 clearTimeout(_sseOfflineTimer);
                 _sseOfflineTimer = null;
             }
             sseRetryDelay = SSE_BASE;
+            const down = await confirmServerUnreachable();
+            if (down) return;
             _pingFailStreak = 0;
+            try {
+                if (window.AISignXNative?.markServerReachable) {
+                    window.AISignXNative.markServerReachable();
+                }
+            } catch (_) {}
             setNetworkState('online');
-            // SSE reopened -> we have server reachability again. Network
-            // outages plus wake-from-suspend are when local clocks
-            // diverge the most, so refresh the offset with multiple
-            // samples right after reconnect.
             calibrateServerClock(3);
         };
     }
@@ -2532,10 +2756,10 @@
     }
 
     /**
-     * Update the network connectivity state. Called by the ping loop.
-     * `state` is one of 'online' | 'server-offline' | 'network-offline'.
+     * Update the network connectivity state. Called by the ping loop and SSE.
+     * Going offline is debounced so brief SSE/ping blips do not flash the banner.
      */
-    function setNetworkState(state) {
+    function applyNetworkState(state) {
         if (_networkState === state) return;
         const wasOffline = _serverOffline;
         _networkState              = state;
@@ -2546,15 +2770,40 @@
         showOfflineBanner(_serverOffline, state);
         updateOfflineCacheWarning();
         diagLog('net', 'state', 'network state', { state: state, was_offline: wasOffline });
-        // Transitioning back online: refresh the server clock offset with
-        // a multi-sample calibration. While we were offline both the
-        // server clock and our OS clock kept ticking independently, so
-        // the cached offset is almost certainly stale.
         if (wasOffline && !_serverOffline) {
             calibrateServerClock(3);
-            // Also flush any diagnostics that piled up during the outage.
             flushDiagnostics();
         }
+    }
+
+    function setNetworkState(state, options) {
+        const immediate = !!(options && options.immediate);
+        if (state === 'online') {
+            if (_offlineConfirmTimer) {
+                clearTimeout(_offlineConfirmTimer);
+                _offlineConfirmTimer = null;
+            }
+            _pendingOfflineState = null;
+            applyNetworkState('online');
+            return;
+        }
+        if (immediate) {
+            if (_offlineConfirmTimer) {
+                clearTimeout(_offlineConfirmTimer);
+                _offlineConfirmTimer = null;
+            }
+            _pendingOfflineState = null;
+            applyNetworkState(state);
+            return;
+        }
+        _pendingOfflineState = state;
+        if (_offlineConfirmTimer) return;
+        _offlineConfirmTimer = setTimeout(() => {
+            _offlineConfirmTimer = null;
+            const pending = _pendingOfflineState;
+            _pendingOfflineState = null;
+            if (pending) applyNetworkState(pending);
+        }, OFFLINE_CONFIRM_MS);
     }
 
     /** Backwards-compat shim — older code calls setServerOffline(bool). */
@@ -2729,29 +2978,50 @@
                 handleBlocked();
                 return;
             }
+            if (!r.ok) {
+                throw new Error('ping failed: HTTP ' + r.status);
+            }
             // Ping succeeded — server is online
+            if (_sseOfflineTimer) {
+                clearTimeout(_sseOfflineTimer);
+                _sseOfflineTimer = null;
+            }
             _pingFailStreak = 0;
+            try {
+                if (window.AISignXNative?.markServerReachable) {
+                    window.AISignXNative.markServerReachable();
+                }
+            } catch (_) {}
             setNetworkState('online');
         } catch {
             _pingFailStreak++;
+            try {
+                if (window.AISignXNative?.markServerUnreachable) {
+                    window.AISignXNative.markServerUnreachable();
+                }
+            } catch (_) {}
+            if (_pingFailStreak === 1) setTimeout(ping, 3_000);
             if (_pingFailStreak < PING_FAILS_BEFORE_OFFLINE) return;
-            if (typeof window.AISignXNative !== 'undefined') {
-                setNetworkState('server-offline');
+            const down = await confirmServerUnreachable();
+            if (down) {
+                if (typeof window.AISignXNative !== 'undefined') {
+                    applyNetworkState('server-offline');
+                } else {
+                    const internetUp = await probeInternet();
+                    applyNetworkState(internetUp ? 'server-offline' : 'network-offline');
+                }
                 return;
             }
-            // Ping failed — figure out whether the wider internet is up too
-            const internetUp = await probeInternet();
-            setNetworkState(internetUp ? 'server-offline' : 'network-offline');
+            setNetworkState('server-offline');
         }
     }
 
     function startPingLoop() {
         clearInterval(pingTimer);
         pingTimer = setInterval(ping, PING_EVERY);
-        // Also do a faster recovery ping every 10s when offline
         setInterval(() => {
-            if (_serverOffline) ping();
-        }, 10_000);
+            if (_serverOffline || _pingFailStreak > 0) ping();
+        }, 5_000);
     }
 
     /* -----------------------------------------------------------------------
@@ -2940,6 +3210,10 @@
         // offset from loadPlaylistCache() keeps us going.
         await calibrateServerClock(3);
 
+        // Browser kiosk: one-time reload so the service worker controls this
+        // page and can cache /uploads/ for offline playback (same path as Electron).
+        await ensureServiceWorkerControl({ allowReload: true });
+
         if (hasBoot) {
             applyPlaylist(BOOT);
         } else if (cached && cached.items && cached.items.length) {
@@ -2952,8 +3226,19 @@
         connectSSE();
         updateOfflineCacheWarning();
         if (navigator.serviceWorker) {
-            navigator.serviceWorker.ready.then(() => updateOfflineCacheWarning()).catch(() => {});
-            navigator.serviceWorker.addEventListener('controllerchange', () => updateOfflineCacheWarning());
+            navigator.serviceWorker.ready.then(() => {
+                updateOfflineCacheWarning();
+                if (playlist && playlist.items && playlist.items.length) {
+                    deliverPrefetchPayload(collectPrefetchUrls(playlist)).catch(() => {});
+                }
+            }).catch(() => {});
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                window.__AISIGNX_SW_CONTROLLER__ = true;
+                updateOfflineCacheWarning();
+                if (playlist && playlist.items && playlist.items.length) {
+                    deliverPrefetchPayload(collectPrefetchUrls(playlist)).catch(() => {});
+                }
+            });
         }
         await ensureReportedAppVersion();
         startPingLoop();
@@ -2961,10 +3246,14 @@
         // Electron minimize / task switch pauses media without unloading the page.
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState !== 'visible') return;
-            _pingFailStreak = 0;
             if (_sseOfflineTimer) {
                 clearTimeout(_sseOfflineTimer);
                 _sseOfflineTimer = null;
+            }
+            if (_offlineConfirmTimer) {
+                clearTimeout(_offlineConfirmTimer);
+                _offlineConfirmTimer = null;
+                _pendingOfflineState = null;
             }
             ping();
             resumePlayback();
@@ -3313,16 +3602,27 @@
         forceLock: () => { _unlockedUntil = 0; applyInputLock(); }
     };
     window.promptSignagePin = promptForPin;
-    window.signageReportConnectivity = function(state) {
+    window.signageReportConnectivity = async function(state, options) {
         if (state === 'online') {
+            const down = await confirmServerUnreachable();
+            if (down) {
+                setNetworkState('server-offline', options);
+                return;
+            }
+            try {
+                if (window.AISignXNative?.markServerReachable) {
+                    window.AISignXNative.markServerReachable();
+                }
+            } catch (_) {}
+            _pingFailStreak = 0;
             setNetworkState('online');
             return;
         }
         if (state === 'network-offline') {
-            setNetworkState('network-offline');
+            setNetworkState('network-offline', options);
             return;
         }
-        setNetworkState('server-offline');
+        setNetworkState('server-offline', options);
     };
 
     // Apply lock on boot

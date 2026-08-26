@@ -11,6 +11,7 @@ server/.env
 server/config.py
 server/deploy/Caddyfile
 server/.caddy/
+server/tools/caddy/
 **/keystore.properties
 *.keystore
 **/keystorepass.txt
@@ -52,6 +53,8 @@ server/backups/**
 node_modules/
 clients/electron-client/node_modules/
 clients/electron-client/dist/
+clients/electron-client/dist-build/
+clients/electron-client/dist._delete_*/
 clients/electron-client/out/
 npm-debug.log*
 

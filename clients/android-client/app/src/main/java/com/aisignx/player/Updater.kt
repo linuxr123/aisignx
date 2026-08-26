@@ -32,10 +32,9 @@ object Updater {
 	private const val SESSION_NAME = "aisignx-update"
 	private const val APK_FILENAME = "aisignx-update.apk"
 
-	private val downloadHttp = OkHttpClient.Builder()
+	private val downloadHttp = LanHttps.apply(OkHttpClient.Builder())
 		.connectTimeout(20, TimeUnit.SECONDS)
 		.readTimeout(120, TimeUnit.SECONDS)
-		.hostnameVerifier { _, _ -> true }
 		.build()
 
 	/**
