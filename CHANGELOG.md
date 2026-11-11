@@ -12,3 +12,7 @@ v3 is a clean rewrite of AiSignX as a single-organization app.
 - Settings page (organization name, time zone).
 - Bootstrap 5 base layout served locally (works offline) and a `/healthz` endpoint.
 - pytest suite that builds the schema through Alembic migrations.
+- Phase 2 (Content): media library with multi-file image and video upload, web pages by URL, file validation (Pillow / ffprobe), thumbnails, detected video length and resolution, search and type filter.
+- Playlists with drag-and-drop ordering (plus up/down buttons), per-item duration, transition, fit mode and video mute, a playlist default transition (including random), duplicate, and total runtime.
+- Setting for the default duration of new images and web pages.
+- Uploads are stored in `server/uploads` (`AISIGNX_UPLOAD_DIR`), with a size limit from `AISIGNX_MAX_UPLOAD_MB` (default 2048).

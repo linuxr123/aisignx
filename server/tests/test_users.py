@@ -69,16 +69,21 @@ def test_admin_can_manage_other_admins(app, admin_client):
 
 def test_settings_page_saves(app, admin_client):
     assert admin_client.get("/settings/").status_code == 200
-    admin_client.post("/settings/", data={"org_name": "New Name", "timezone": "America/New_York"})
+    admin_client.post("/settings/", data={
+        "org_name": "New Name", "timezone": "America/New_York", "default_duration": "15",
+    })
     from aisignx.models import Setting
     with app.app_context():
         assert Setting.get("org_name") == "New Name"
         assert Setting.get("timezone") == "America/New_York"
+        assert Setting.get("default_duration") == "15"
     assert b"New Name" in admin_client.get("/dashboard").data
 
 
 def test_settings_rejects_unknown_timezone(app, admin_client):
-    resp = admin_client.post("/settings/", data={"org_name": "X", "timezone": "Mars/Base"})
+    resp = admin_client.post("/settings/", data={
+        "org_name": "X", "timezone": "Mars/Base", "default_duration": "10",
+    })
     assert resp.status_code == 200
     from aisignx.models import Setting
     with app.app_context():

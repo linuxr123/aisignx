@@ -17,6 +17,7 @@ def app(tmp_path, monkeypatch):
         "TESTING": True,
         "SQLALCHEMY_DATABASE_URI": f"sqlite:///{(tmp_path / 'test.db').as_posix()}",
         "WTF_CSRF_ENABLED": False,
+        "UPLOAD_FOLDER": str(tmp_path / "uploads"),
     })
     with app.app_context():
         upgrade()  # build the schema through Alembic, exactly like production
@@ -54,6 +55,24 @@ def configured(app):
 def admin_client(configured, client):
     login(client, "admin")
     return client
+
+
+def png_bytes(size=(64, 36), color=(200, 30, 30)) -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", size, color).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def upload(client, *files):
+    """files: (filename, bytes) pairs."""
+    from io import BytesIO
+
+    data = {"files": [(BytesIO(content), name) for name, content in files]}
+    return client.post("/media/upload", data=data, content_type="multipart/form-data")
 
 
 def csrf_token_from(html: str) -> str:
