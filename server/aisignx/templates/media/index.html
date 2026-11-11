@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "media/_thumb.html" import thumb, type_badge %}
+{% from "media/_thumb.html" import thumb, type_badge, preview_warning %}
 {% block title %}Media{% endblock %}
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
@@ -24,7 +24,7 @@
         <button class="btn btn-primary" type="submit">Upload</button>
       </div>
       {% if not ffmpeg_ok %}
-      <div class="form-text text-warning-emphasis">ffmpeg was not found, so videos upload without a detected duration or thumbnail.</div>
+      <div class="form-text text-warning-emphasis">ffmpeg was not found, so videos upload without a detected duration or thumbnail. Run the installer or see the README.</div>
       {% endif %}
     </form>
   </div>
@@ -38,6 +38,9 @@
       <div class="col-md-2">{{ web_form.duration.label(class_="form-label") }}{{ web_form.duration(class_="form-control", min=1, placeholder=default_duration) }}</div>
       <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Add</button></div>
     </form>
+    {% if not browser_ok %}
+    <div class="form-text text-warning-emphasis">No Edge, Chrome or Chromium browser was found, so web pages get a title card instead of a screenshot. Run the installer or see the README.</div>
+    {% endif %}
   </div>
 </div>
 {% endif %}
@@ -67,7 +70,7 @@
       <div class="card-body p-2">
         <div class="fw-semibold text-truncate" title="{{ m.name }}">{{ m.name }}</div>
         <div class="small text-secondary d-flex flex-wrap gap-2 align-items-center">
-          {{ type_badge(m) }}
+          {{ type_badge(m) }} {{ preview_warning(m) }}
           <span>{{ m.effective_duration|duration }}</span>
           {% if m.resolution %}<span>{{ m.resolution }}</span>{% endif %}
           {% if m.file_size %}<span>{{ m.file_size|filesize }}</span>{% endif %}

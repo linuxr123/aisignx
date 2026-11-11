@@ -18,6 +18,8 @@ def app(tmp_path, monkeypatch):
         "SQLALCHEMY_DATABASE_URI": f"sqlite:///{(tmp_path / 'test.db').as_posix()}",
         "WTF_CSRF_ENABLED": False,
         "UPLOAD_FOLDER": str(tmp_path / "uploads"),
+        "THUMBNAILS_ASYNC": False,  # run thumbnail jobs inline so tests are deterministic
+        "BROWSER_PATH": "aisignx-test-no-browser",  # no real browser/network unless a test opts in
     })
     with app.app_context():
         upgrade()  # build the schema through Alembic, exactly like production

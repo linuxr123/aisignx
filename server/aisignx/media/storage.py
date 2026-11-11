@@ -56,6 +56,12 @@ def thumbs_dir() -> Path:
     return _folder("thumbs")
 
 
+def work_dir() -> Path:
+    """Scratch space for jobs. Kept under the upload folder rather than /tmp because
+    snap-packaged browsers (Ubuntu's Chromium) have a private /tmp."""
+    return _folder("tmp")
+
+
 def new_stored_name(ext: str) -> str:
     return f"{secrets.token_hex(16)}.{ext}"
 

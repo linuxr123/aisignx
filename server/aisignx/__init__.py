@@ -30,6 +30,8 @@ def create_app(test_config: dict | None = None) -> Flask:
     from . import models  # noqa: F401  (register models with SQLAlchemy)
 
     _register_blueprints(app)
+    from . import system
+    system.register(app)
     _register_setup_guard(app)
     _register_template_context(app)
     _register_error_pages(app)

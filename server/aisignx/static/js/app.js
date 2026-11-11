@@ -22,6 +22,24 @@
     });
   });
 
+  // Reload once background thumbnails (web page screenshots) are ready.
+  const pending = [...document.querySelectorAll("[data-thumb-pending]")].map((el) => el.dataset.thumbPending);
+  if (pending.length) {
+    const statusUrl = document.body.dataset.thumbStatusUrl;
+    let tries = 0;
+    const poll = async () => {
+      tries += 1;
+      try {
+        const query = pending.map((id) => "id=" + encodeURIComponent(id)).join("&");
+        const response = await fetch(statusUrl + "?" + query, { headers: { Accept: "application/json" } });
+        const data = await response.json();
+        if (data.pending.length < pending.length) { window.location.reload(); return; }
+      } catch (err) { /* try again */ }
+      if (tries < 40) window.setTimeout(poll, 3000);
+    };
+    window.setTimeout(poll, 3000);
+  }
+
   // Drag-and-drop reordering for playlist items.
   const list = document.getElementById("playlistItems");
   if (list && list.dataset.reorderUrl) {

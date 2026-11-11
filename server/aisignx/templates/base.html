@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
-<body class="bg-body-tertiary">
+<body class="bg-body-tertiary"{% if current_user.is_authenticated %} data-thumb-status-url="{{ url_for('media.thumbnail_status') }}"{% endif %}>
 {% if current_user.is_authenticated %}
 <nav class="navbar navbar-expand-md bg-dark" data-bs-theme="dark">
   <div class="container-fluid">

@@ -8,6 +8,8 @@ Secrets never live in this file. Supported variables:
     AISIGNX_UPLOAD_DIR    where uploaded media is stored (default: server/uploads)
     AISIGNX_MAX_UPLOAD_MB largest accepted upload in MB (default: 2048)
     AISIGNX_FFMPEG / AISIGNX_FFPROBE  paths to ffmpeg tools (default: found on PATH)
+    AISIGNX_BROWSER       Edge/Chrome/Chromium used for web page previews (default: auto-detect)
+    AISIGNX_WEBSHOT_TIMEOUT  seconds allowed per web page screenshot (default: 45)
 """
 import os
 import secrets
@@ -44,6 +46,9 @@ def build_config(instance_path: str) -> dict:
         "MAX_CONTENT_LENGTH": int(os.environ.get("AISIGNX_MAX_UPLOAD_MB", "2048")) * 1024 * 1024,
         "FFMPEG_PATH": os.environ.get("AISIGNX_FFMPEG", "ffmpeg"),
         "FFPROBE_PATH": os.environ.get("AISIGNX_FFPROBE", "ffprobe"),
+        "BROWSER_PATH": os.environ.get("AISIGNX_BROWSER") or None,
+        "WEBSHOT_TIMEOUT": int(os.environ.get("AISIGNX_WEBSHOT_TIMEOUT", "45")),
+        "THUMBNAILS_ASYNC": True,
         "SECRET_KEY": load_secret_key(instance_path),
         "SQLALCHEMY_DATABASE_URI": os.environ.get("AISIGNX_DATABASE_URL", default_db),
         "SQLALCHEMY_TRACK_MODIFICATIONS": False,

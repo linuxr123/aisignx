@@ -11,6 +11,11 @@ MEDIA_TYPES = (MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB)
 
 DEFAULT_DURATION = 10  # seconds, for images and web pages
 
+# Thumbnail states. "failed" may still have a fallback image (e.g. a title card).
+THUMB_OK = "ok"
+THUMB_PENDING = "pending"
+THUMB_FAILED = "failed"
+
 
 def _utcnow():
     return datetime.now(timezone.utc)
@@ -42,6 +47,7 @@ class Media(db.Model):
     default_duration = db.Column(db.Integer, nullable=False, default=DEFAULT_DURATION)
 
     thumbnail_name = db.Column(db.String(64), nullable=True)
+    thumbnail_status = db.Column(db.String(16), nullable=True)
     uploaded_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"),
                                nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)

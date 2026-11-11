@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_form.html" import field %}
-{% from "media/_thumb.html" import thumb, type_badge %}
+{% from "media/_thumb.html" import thumb, type_badge, preview_warning %}
 {% block title %}Edit {{ media.name }}{% endblock %}
 {% block content %}
 <h1 class="h3 mb-4">Edit media</h1>
@@ -10,7 +10,7 @@
       {{ thumb(media, "card-img-top") }}
       <div class="card-body small">
         <dl class="row mb-0">
-          <dt class="col-5">Type</dt><dd class="col-7">{{ type_badge(media) }}</dd>
+          <dt class="col-5">Type</dt><dd class="col-7">{{ type_badge(media) }} {{ preview_warning(media) }}</dd>
           {% if media.original_filename %}<dt class="col-5">File</dt><dd class="col-7 text-break">{{ media.original_filename }}</dd>{% endif %}
           {% if media.file_size %}<dt class="col-5">Size</dt><dd class="col-7">{{ media.file_size|filesize }}</dd>{% endif %}
           {% if media.resolution %}<dt class="col-5">Resolution</dt><dd class="col-7">{{ media.resolution }}</dd>{% endif %}
@@ -35,7 +35,11 @@
         <a class="btn btn-link" href="{{ url_for('media.index') }}">Cancel</a>
       </form>
       <hr>
-      <form method="post" action="{{ url_for('media.delete', media_id=media.id) }}"
+      <form method="post" action="{{ url_for('media.refresh_thumbnail', media_id=media.id) }}" class="d-inline">
+        {{ delete_form.hidden_tag() }}
+        <button class="btn btn-outline-secondary" type="submit">Refresh preview</button>
+      </form>
+      <form method="post" action="{{ url_for('media.delete', media_id=media.id) }}" class="d-inline"
             data-confirm="Delete this media?{% if usage %} It will also be removed from {{ usage|length }} playlist(s).{% endif %}">
         {{ delete_form.hidden_tag() }}
         <button class="btn btn-outline-danger" type="submit">Delete media</button>

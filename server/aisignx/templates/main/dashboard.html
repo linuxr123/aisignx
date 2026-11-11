@@ -2,6 +2,16 @@
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 <h1 class="h3 mb-4">Dashboard</h1>
+{% if problems %}
+<div class="alert alert-warning">
+  <h2 class="h6 alert-heading">Some programs AiSignX uses are missing on this server</h2>
+  <ul class="mb-0">
+    {% for c in problems %}
+    <li><strong>{{ c.name }}</strong>: {{ c.purpose }} {{ c.fix }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
 <div class="row g-3">
   {% for label, value in counts.items() %}
   <div class="col-sm-6 col-lg-3">

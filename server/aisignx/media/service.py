@@ -3,8 +3,8 @@ import os
 
 from ..extensions import db
 from ..models import Media, Setting
-from ..models.media import DEFAULT_DURATION, MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB
-from . import probe, storage
+from ..models.media import DEFAULT_DURATION, MEDIA_IMAGE, MEDIA_WEB, THUMB_FAILED, THUMB_OK
+from . import probe, storage, thumbnails
 
 
 def default_duration() -> int:
@@ -50,7 +50,8 @@ def create_from_upload(file_storage, user) -> Media:
         default_duration=default_duration(),
         uploaded_by_id=getattr(user, "id", None),
     )
-    media.thumbnail_name = _build_thumbnail(media, path)
+    media.thumbnail_name = thumbnails.build_file_thumbnail(media, path)
+    media.thumbnail_status = THUMB_OK if media.thumbnail_name else THUMB_FAILED
     db.session.add(media)
     return media
 
@@ -74,15 +75,3 @@ def delete_media(media: Media) -> None:
     db.session.commit()
     storage.remove_file(storage.media_dir(), stored)
     storage.remove_file(storage.thumbs_dir(), thumb)
-
-
-def _build_thumbnail(media: Media, src) -> str | None:
-    name = storage.new_stored_name("jpg")
-    dest = storage.thumbs_dir() / name
-    if media.media_type == MEDIA_IMAGE:
-        ok = probe.make_image_thumbnail(src, dest)
-    elif media.media_type == MEDIA_VIDEO:
-        ok = probe.make_video_thumbnail(src, dest, media.duration_seconds)
-    else:
-        ok = False
-    return name if ok else None

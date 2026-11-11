@@ -10,23 +10,39 @@ for a home, a small business, or a company with a few dozen screens.
 ## Requirements
 
 - Python 3.10 or newer
-- [ffmpeg](https://ffmpeg.org/) on the PATH (optional, recommended). It's used to read video length
-  and resolution and to make video thumbnails. Without it, videos still upload and play.
+- [ffmpeg](https://ffmpeg.org/): reads video length and resolution and makes video thumbnails.
+- A Chromium-based browser (Microsoft Edge, Google Chrome or Chromium): takes screenshots of web
+  pages for their previews. It runs in headless mode, so no browser window opens.
 
-## Quick start (Windows, PowerShell)
+The install scripts check for all of these and install whatever is missing.
+
+## Install
+
+**Windows** (uses `winget` for anything missing):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1
+```
+
+**Linux or macOS** (uses apt, dnf, pacman, zypper or Homebrew):
+
+```bash
+./scripts/install.sh
+```
+
+Add `-Yes` (Windows) or `-y` (Linux/macOS) to install without asking. The scripts are safe to
+run again. Then start the server:
 
 ```powershell
 cd server
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-.venv\Scripts\flask --app wsgi db upgrade     # create / update the database
-.venv\Scripts\flask --app wsgi run
+.venv\Scripts\flask --app wsgi run        # Linux/macOS: .venv/bin/flask --app wsgi run
 ```
-
-On Linux or macOS, use `.venv/bin/` instead of `.venv\Scripts\`.
 
 Open http://127.0.0.1:5000. On first start, the setup wizard asks for your organization name,
 time zone and the first admin account. There are no default passwords.
+
+To check the system at any time, run `flask --app wsgi check` in `server/`. Admins also see a
+warning on the dashboard if a required program is missing.
 
 ## Configuration
 
@@ -40,11 +56,16 @@ Settings come from environment variables or `server/.env` (see `server/.env.exam
 | `AISIGNX_UPLOAD_DIR` | `server/uploads` | Where uploaded media is stored |
 | `AISIGNX_MAX_UPLOAD_MB` | `2048` | Largest accepted upload |
 | `AISIGNX_FFMPEG` / `AISIGNX_FFPROBE` | found on PATH | Paths to the ffmpeg tools |
+| `AISIGNX_BROWSER` | auto-detected | Edge, Chrome or Chromium used for web page previews |
+| `AISIGNX_WEBSHOT_TIMEOUT` | `45` | Seconds allowed per web page screenshot |
 
 ## Media and playlists
 
 - **Media:** upload images (JPG, PNG, GIF, WebP, BMP) and videos (MP4, WebM, MOV, M4V, MKV), or
   add a web page by URL. Files are checked on upload and stored under random names.
+- **Web page previews:** a headless browser takes the screenshot in the background, so it appears
+  a few seconds after you add the page. Use **Refresh preview** on the edit page when the site
+  changes. If the page can't be loaded, a title card is shown instead.
 - **Playlists:** drag items to reorder them. Each item can override its duration, transition,
   fit mode (fit, fill or stretch) and, for videos, mute. Videos play for their full length unless
   you set a duration.

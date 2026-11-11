@@ -1,7 +1,11 @@
 {# Thumbnail for a media item, with a typed placeholder when none exists. #}
 {% macro thumb(m, cls="") %}
-  {% if m.thumbnail_name %}
-    <img src="{{ url_for('media.thumb', media_id=m.id) }}" alt="" loading="lazy" class="media-thumb {{ cls }}">
+  {% if m.thumbnail_status == "pending" %}
+    <div class="media-thumb media-thumb-placeholder {{ cls }}" data-thumb-pending="{{ m.id }}">
+      <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Generating preview…
+    </div>
+  {% elif m.thumbnail_name %}
+    <img src="{{ url_for('media.thumb', media_id=m.id, v=m.thumbnail_name[:8]) }}" alt="" loading="lazy" class="media-thumb {{ cls }}">
   {% else %}
     <div class="media-thumb media-thumb-placeholder {{ cls }}">
       {{ {"image": "Image", "video": "Video", "web": "Web page"}[m.media_type] }}
@@ -11,4 +15,11 @@
 
 {% macro type_badge(m) %}
   <span class="badge {{ {'image': 'text-bg-primary', 'video': 'text-bg-danger', 'web': 'text-bg-info'}[m.media_type] }}">{{ m.media_type }}</span>
+{% endmacro %}
+
+{# Shown when a web page could not be captured and a title card was used instead. #}
+{% macro preview_warning(m) %}
+  {% if m.media_type == "web" and m.thumbnail_status == "failed" %}
+  <span class="badge text-bg-warning" title="The page could not be captured. Check the address or use Refresh preview.">no screenshot</span>
+  {% endif %}
 {% endmacro %}

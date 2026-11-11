@@ -2,6 +2,7 @@ from flask import redirect, render_template, url_for
 from flask_login import current_user, login_required
 
 from ..models import Media, Playlist, User
+from ..system import run_checks
 from . import bp
 
 
@@ -20,7 +21,8 @@ def dashboard():
         "Playlists": Playlist.query.count(),
         "Users": User.query.count(),
     }
-    return render_template("main/dashboard.html", counts=counts)
+    problems = [c for c in run_checks() if not c.ok] if current_user.is_admin else []
+    return render_template("main/dashboard.html", counts=counts, problems=problems)
 
 
 @bp.route("/healthz")
