@@ -1,0 +1,17 @@
+{# Render one WTForms field with Bootstrap 5 markup. #}
+{% macro field(f, autofocus=false) %}
+  {% if f.type == 'BooleanField' %}
+  <div class="form-check mb-3">
+    {{ f(class_="form-check-input" ~ (" is-invalid" if f.errors else "")) }}
+    {{ f.label(class_="form-check-label") }}
+    {% for e in f.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+  </div>
+  {% else %}
+  <div class="mb-3">
+    {{ f.label(class_="form-label") }}
+    {% set cls = ("form-select" if f.type == 'SelectField' else "form-control") ~ (" is-invalid" if f.errors else "") %}
+    {% if autofocus %}{{ f(class_=cls, autofocus=true) }}{% else %}{{ f(class_=cls) }}{% endif %}
+    {% for e in f.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+  </div>
+  {% endif %}
+{% endmacro %}

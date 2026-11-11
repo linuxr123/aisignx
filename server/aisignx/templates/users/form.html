@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}{{ "Edit " ~ user.username if user else "Add user" }}{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">{{ "Edit " ~ user.username if user else "Add user" }}</h1>
+<div class="card" style="max-width: 36rem"><div class="card-body">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {% if form.username %}{{ field(form.username, autofocus=true) }}{% endif %}
+    {{ field(form.email) }}
+    {{ field(form.role) }}
+    {% if form.active %}{{ field(form.active) }}{% endif %}
+    {{ field(form.password) }}
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-link" href="{{ url_for('users.index') }}">Cancel</a>
+  </form>
+</div></div>
+{% endblock %}

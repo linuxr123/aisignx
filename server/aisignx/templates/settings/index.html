@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Settings</h1>
+<div class="card" style="max-width: 36rem"><div class="card-body">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {{ field(form.org_name) }}
+    {{ field(form.timezone) }}
+    <button class="btn btn-primary" type="submit">Save</button>
+  </form>
+</div></div>
+{% endblock %}

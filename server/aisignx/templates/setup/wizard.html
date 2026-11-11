@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Welcome{% endblock %}
+{% block content %}
+<div class="card shadow-sm setup-card">
+  <div class="card-body p-4">
+    <h1 class="h4">Welcome to AiSignX</h1>
+    <p class="text-secondary">Set up your organization and create the first admin account.
+      You can change these later in Settings.</p>
+    <form method="post" novalidate>
+      {{ form.hidden_tag() }}
+      <h2 class="h6 text-uppercase text-secondary mt-4">Organization</h2>
+      {{ field(form.org_name, autofocus=true) }}
+      {{ field(form.timezone) }}
+      <h2 class="h6 text-uppercase text-secondary mt-4">Admin account</h2>
+      {{ field(form.username) }}
+      {{ field(form.email) }}
+      {{ field(form.password) }}
+      {{ field(form.confirm) }}
+      <button class="btn btn-primary w-100" type="submit">Finish setup</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<div class="card shadow-sm auth-card">
+  <div class="card-body p-4">
+    <h1 class="h4 mb-1">AiSignX</h1>
+    <p class="text-secondary mb-4">Sign in to {{ org_name }}</p>
+    <form method="post" novalidate>
+      {{ form.hidden_tag() }}
+      {{ field(form.username, autofocus=true) }}
+      {{ field(form.password) }}
+      {{ field(form.remember) }}
+      <button class="btn btn-primary w-100" type="submit">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Profile{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Profile</h1>
+<div class="row g-4">
+  <div class="col-md-5">
+    <div class="card"><div class="card-body">
+      <dl class="mb-0">
+        <dt>Username</dt><dd>{{ current_user.username }}</dd>
+        <dt>Email</dt><dd>{{ current_user.email or "—" }}</dd>
+        <dt>Role</dt><dd class="mb-0">{{ current_user.role|capitalize }}</dd>
+      </dl>
+    </div></div>
+  </div>
+  <div class="col-md-7">
+    <div class="card"><div class="card-body">
+      <h2 class="h5 mb-3">Change password</h2>
+      <form method="post" novalidate>
+        {{ form.hidden_tag() }}
+        {{ field(form.current_password) }}
+        {{ field(form.password) }}
+        {{ field(form.confirm) }}
+        <button class="btn btn-primary" type="submit">Change password</button>
+      </form>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

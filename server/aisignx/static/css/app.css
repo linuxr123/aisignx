@@ -1,0 +1,10 @@
+/* AiSignX admin styles (on top of Bootstrap 5). */
+.auth-card {
+  max-width: 28rem;
+  margin: 3rem auto;
+}
+
+.setup-card {
+  max-width: 36rem;
+  margin: 2rem auto;
+}
