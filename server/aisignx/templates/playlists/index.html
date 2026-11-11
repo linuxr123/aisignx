@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Playlists{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">Playlists</h1>
+  {% if current_user.can_edit %}<a class="btn btn-primary" href="{{ url_for('playlists.create') }}">New playlist</a>{% endif %}
+</div>
+{% if playlists %}
+<div class="card"><div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Name</th><th>Items</th><th>Total length</th><th>Transition</th><th>Updated</th><th></th></tr></thead>
+    <tbody>
+    {% for p in playlists %}
+      <tr>
+        <td><a href="{{ url_for('playlists.detail', playlist_id=p.id) }}" class="fw-semibold">{{ p.name }}</a>
+          {% if p.description %}<div class="small text-secondary text-truncate" style="max-width: 24rem">{{ p.description }}</div>{% endif %}</td>
+        <td>{{ p.items|length }}</td>
+        <td>{{ p.total_duration|duration }}</td>
+        <td>{{ p.default_transition|replace("-", " ")|capitalize }}</td>
+        <td class="small text-secondary">{{ p.updated_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+        <td class="text-end text-nowrap">
+          {% if current_user.can_edit %}
+          <form class="d-inline" method="post" action="{{ url_for('playlists.duplicate', playlist_id=p.id) }}">
+            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit">Duplicate</button>
+          </form>
+          <form class="d-inline" method="post" action="{{ url_for('playlists.delete', playlist_id=p.id) }}"
+                data-confirm="Delete this playlist? The media stays in the library.">
+            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% else %}
+<div class="text-center text-secondary py-5">No playlists yet.{% if current_user.can_edit %} Create one to start arranging your media.{% endif %}</div>
+{% endif %}
+{% endblock %}

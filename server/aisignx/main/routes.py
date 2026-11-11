@@ -1,7 +1,7 @@
 from flask import redirect, render_template, url_for
 from flask_login import current_user, login_required
 
-from ..models import User
+from ..models import Media, Playlist, User
 from . import bp
 
 
@@ -15,7 +15,12 @@ def index():
 @bp.route("/dashboard")
 @login_required
 def dashboard():
-    return render_template("main/dashboard.html", user_count=User.query.count())
+    counts = {
+        "Media": Media.query.count(),
+        "Playlists": Playlist.query.count(),
+        "Users": User.query.count(),
+    }
+    return render_template("main/dashboard.html", counts=counts)
 
 
 @bp.route("/healthz")

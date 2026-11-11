@@ -39,11 +39,13 @@ def create_app(test_config: dict | None = None) -> Flask:
 def _register_blueprints(app: Flask) -> None:
     from .auth import bp as auth_bp
     from .main import bp as main_bp
+    from .media import bp as media_bp
+    from .playlists import bp as playlists_bp
     from .settings import bp as settings_bp
     from .setup import bp as setup_bp
     from .users import bp as users_bp
 
-    for bp in (auth_bp, main_bp, settings_bp, setup_bp, users_bp):
+    for bp in (auth_bp, main_bp, media_bp, playlists_bp, settings_bp, setup_bp, users_bp):
         app.register_blueprint(bp)
 
 
@@ -61,7 +63,10 @@ def _register_setup_guard(app: Flask) -> None:
 
 
 def _register_template_context(app: Flask) -> None:
+    from . import filters
     from .models import Setting
+
+    filters.register(app)
 
     @app.context_processor
     def inject_globals():
@@ -73,7 +78,13 @@ def _register_template_context(app: Flask) -> None:
 
 
 def _register_error_pages(app: Flask) -> None:
-    from flask import render_template
+    from flask import flash, redirect, render_template, url_for
+
+    @app.errorhandler(413)
+    def too_large(_e):
+        limit_mb = app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024)
+        flash(f"Upload too large. The limit is {limit_mb} MB.", "danger")
+        return redirect(url_for("media.index"), 303)
 
     @app.errorhandler(403)
     def forbidden(_e):

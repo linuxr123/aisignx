@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}{{ "Edit playlist" if playlist else "New playlist" }}{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">{{ "Edit " ~ playlist.name if playlist else "New playlist" }}</h1>
+<div class="card" style="max-width: 36rem"><div class="card-body">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {{ field(form.name, autofocus=true) }}
+    {{ field(form.description) }}
+    {{ field(form.default_transition) }}
+    <p class="form-text mt-n2">Used for every item that doesn't set its own transition. "Random" picks one per slide.</p>
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-link" href="{{ url_for('playlists.detail', playlist_id=playlist.id) if playlist else url_for('playlists.index') }}">Cancel</a>
+  </form>
+</div></div>
+{% endblock %}

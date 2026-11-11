@@ -5,6 +5,7 @@ from ..extensions import db
 DEFAULTS = {
     "org_name": "My Organization",
     "timezone": "UTC",
+    "default_duration": "10",
 }
 
 

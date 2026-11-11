@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% from "media/_thumb.html" import thumb, type_badge %}
+{% block title %}Edit {{ media.name }}{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Edit media</h1>
+<div class="row g-4">
+  <div class="col-md-5">
+    <div class="card">
+      {{ thumb(media, "card-img-top") }}
+      <div class="card-body small">
+        <dl class="row mb-0">
+          <dt class="col-5">Type</dt><dd class="col-7">{{ type_badge(media) }}</dd>
+          {% if media.original_filename %}<dt class="col-5">File</dt><dd class="col-7 text-break">{{ media.original_filename }}</dd>{% endif %}
+          {% if media.file_size %}<dt class="col-5">Size</dt><dd class="col-7">{{ media.file_size|filesize }}</dd>{% endif %}
+          {% if media.resolution %}<dt class="col-5">Resolution</dt><dd class="col-7">{{ media.resolution }}</dd>{% endif %}
+          {% if media.is_video %}<dt class="col-5">Length</dt><dd class="col-7">{{ media.duration_seconds|duration if media.duration_seconds else "Unknown" }}</dd>{% endif %}
+          <dt class="col-5">Uploaded</dt><dd class="col-7">{{ media.created_at.strftime('%Y-%m-%d %H:%M') }} UTC{% if media.uploaded_by %} by {{ media.uploaded_by.username }}{% endif %}</dd>
+          <dt class="col-5">Used in</dt><dd class="col-7">{{ usage|join(", ") if usage else "No playlists" }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-7">
+    <div class="card"><div class="card-body">
+      <form method="post" novalidate>
+        {{ form.hidden_tag() }}
+        {{ field(form.name, autofocus=true) }}
+        {% if media.media_type == "web" %}{{ field(form.url) }}{% endif %}
+        {{ field(form.default_duration) }}
+        {% if media.is_video %}
+        <p class="form-text mt-n2">Videos play for their full length. This is only used when the length is unknown.</p>
+        {% endif %}
+        <button class="btn btn-primary" type="submit">Save</button>
+        <a class="btn btn-link" href="{{ url_for('media.index') }}">Cancel</a>
+      </form>
+      <hr>
+      <form method="post" action="{{ url_for('media.delete', media_id=media.id) }}"
+            data-confirm="Delete this media?{% if usage %} It will also be removed from {{ usage|length }} playlist(s).{% endif %}">
+        {{ delete_form.hidden_tag() }}
+        <button class="btn btn-outline-danger" type="submit">Delete media</button>
+      </form>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

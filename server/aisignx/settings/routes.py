@@ -15,10 +15,12 @@ def index():
     if form.validate_on_submit():
         Setting.set("org_name", form.org_name.data.strip())
         Setting.set("timezone", form.timezone.data)
+        Setting.set("default_duration", form.default_duration.data)
         db.session.commit()
         flash("Settings saved.", "success")
         return redirect(url_for("settings.index"))
     if not form.is_submitted():
         form.org_name.data = Setting.get("org_name")
         form.timezone.data = Setting.get("timezone")
+        form.default_duration.data = int(Setting.get("default_duration"))
     return render_template("settings/index.html", form=form)

@@ -20,7 +20,7 @@
           <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('users.edit', user_id=u.id) }}">Edit</a>
           {% if u.id != current_user.id %}
           <form class="d-inline" method="post" action="{{ url_for('users.delete', user_id=u.id) }}"
-                onsubmit="return confirm('Delete user {{ u.username }}?');">
+                data-confirm="Delete user {{ u.username }}?">
             {{ delete_form.hidden_tag() }}
             <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
           </form>

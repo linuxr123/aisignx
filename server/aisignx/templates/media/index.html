@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% from "media/_thumb.html" import thumb, type_badge %}
+{% block title %}Media{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="h3 mb-0">Media</h1>
+  {% if current_user.can_edit %}
+  <div class="d-flex gap-2">
+    <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#uploadPanel">Upload files</button>
+    <button class="btn btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#webPanel">Add web page</button>
+  </div>
+  {% endif %}
+</div>
+
+{% if current_user.can_edit %}
+<div class="collapse mb-3" id="uploadPanel">
+  <div class="card card-body">
+    <form method="post" action="{{ url_for('media.upload') }}" enctype="multipart/form-data">
+      {{ upload_form.hidden_tag() }}
+      <label class="form-label" for="files">Images (JPG, PNG, GIF, WebP, BMP) or videos (MP4, WebM, MOV, M4V, MKV)</label>
+      <div class="d-flex gap-2">
+        <input class="form-control" type="file" id="files" name="files" multiple required
+               accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mov,.m4v,.mkv">
+        <button class="btn btn-primary" type="submit">Upload</button>
+      </div>
+      {% if not ffmpeg_ok %}
+      <div class="form-text text-warning-emphasis">ffmpeg was not found, so videos upload without a detected duration or thumbnail.</div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+<div class="collapse mb-3" id="webPanel">
+  <div class="card card-body">
+    <form method="post" action="{{ url_for('media.add_web') }}" class="row g-2 align-items-end">
+      {{ web_form.hidden_tag() }}
+      <div class="col-md-3">{{ web_form.name.label(class_="form-label") }}{{ web_form.name(class_="form-control", required=true) }}</div>
+      <div class="col-md-5">{{ web_form.url.label(class_="form-label") }}{{ web_form.url(class_="form-control", type="url", placeholder="https://", required=true) }}</div>
+      <div class="col-md-2">{{ web_form.duration.label(class_="form-label") }}{{ web_form.duration(class_="form-control", min=1, placeholder=default_duration) }}</div>
+      <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Add</button></div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<form class="row g-2 mb-3" method="get">
+  <div class="col-sm-5 col-md-4">
+    <input class="form-control" type="search" name="q" value="{{ search }}" placeholder="Search by name">
+  </div>
+  <div class="col-sm-4 col-md-3">
+    <select class="form-select" name="type" onchange="this.form.submit()">
+      <option value="">All types</option>
+      {% for t, label in [("image", "Images"), ("video", "Videos"), ("web", "Web pages")] %}
+      <option value="{{ t }}" {% if media_type == t %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto"><button class="btn btn-outline-secondary" type="submit">Filter</button></div>
+</form>
+
+{% if items %}
+<div class="row row-cols-2 row-cols-md-3 row-cols-xl-4 g-3">
+  {% for m in items %}
+  <div class="col">
+    <div class="card h-100">
+      {% if m.stored_name %}<a href="{{ url_for('media.file', media_id=m.id) }}" target="_blank" rel="noopener">{{ thumb(m, "card-img-top") }}</a>
+      {% else %}<a href="{{ m.url }}" target="_blank" rel="noopener noreferrer">{{ thumb(m, "card-img-top") }}</a>{% endif %}
+      <div class="card-body p-2">
+        <div class="fw-semibold text-truncate" title="{{ m.name }}">{{ m.name }}</div>
+        <div class="small text-secondary d-flex flex-wrap gap-2 align-items-center">
+          {{ type_badge(m) }}
+          <span>{{ m.effective_duration|duration }}</span>
+          {% if m.resolution %}<span>{{ m.resolution }}</span>{% endif %}
+          {% if m.file_size %}<span>{{ m.file_size|filesize }}</span>{% endif %}
+        </div>
+        {% if m.url %}<div class="small text-truncate text-secondary" title="{{ m.url }}">{{ m.url }}</div>{% endif %}
+      </div>
+      {% if current_user.can_edit %}
+      <div class="card-footer bg-transparent p-2 d-flex gap-2">
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('media.edit', media_id=m.id) }}">Edit</a>
+        <form method="post" action="{{ url_for('media.delete', media_id=m.id) }}" class="ms-auto"
+              data-confirm="Delete this media? It will also be removed from any playlists.">
+          {{ delete_form.hidden_tag() }}
+          <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center text-secondary py-5">
+  {% if search or media_type %}No media matches your filter.{% else %}No media yet.{% if current_user.can_edit %} Upload some files or add a web page to get started.{% endif %}{% endif %}
+</div>
+{% endif %}
+{% endblock %}

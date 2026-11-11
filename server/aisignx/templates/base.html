@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}{{ org_name }}{% endblock %} · AiSignX</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
@@ -18,7 +19,10 @@
     </button>
     <div class="collapse navbar-collapse" id="mainNav">
       <ul class="navbar-nav me-auto">
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
+        {% set ep = request.endpoint or '' %}
+        <li class="nav-item"><a class="nav-link{% if ep == 'main.dashboard' %} active{% endif %}" href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link{% if ep.startswith('media.') %} active{% endif %}" href="{{ url_for('media.index') }}">Media</a></li>
+        <li class="nav-item"><a class="nav-link{% if ep.startswith('playlists.') %} active{% endif %}" href="{{ url_for('playlists.index') }}">Playlists</a></li>
         {% if current_user.is_admin %}
         <li class="nav-item"><a class="nav-link" href="{{ url_for('users.index') }}">Users</a></li>
         <li class="nav-item"><a class="nav-link" href="{{ url_for('settings.index') }}">Settings</a></li>
@@ -60,5 +64,6 @@
 
 <footer class="container pb-4 text-secondary small">AiSignX {{ app_version }}</footer>
 <script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

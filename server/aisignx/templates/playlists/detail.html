@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% from "media/_thumb.html" import thumb, type_badge %}
+{% block title %}{{ playlist.name }}{% endblock %}
+{% block content %}
+{% set editable = current_user.can_edit %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <a class="small" href="{{ url_for('playlists.index') }}">&larr; Playlists</a>
+    <h1 class="h3 mb-1">{{ playlist.name }}</h1>
+    <div class="text-secondary small">
+      {{ playlist.items|length }} item{{ "s" if playlist.items|length != 1 }} ·
+      total <span id="totalDuration">{{ playlist.total_duration|duration }}</span> ·
+      default transition: {{ playlist.default_transition|replace("-", " ") }}
+    </div>
+    {% if playlist.description %}<p class="mt-2 mb-0">{{ playlist.description }}</p>{% endif %}
+  </div>
+  {% if editable %}
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('playlists.edit', playlist_id=playlist.id) }}">Playlist settings</a>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMedia">Add media</button>
+  </div>
+  {% endif %}
+</div>
+
+{% if playlist.items %}
+<ol class="list-group playlist-items" id="playlistItems"
+    {% if editable %}data-reorder-url="{{ url_for('playlists.reorder', playlist_id=playlist.id) }}"{% endif %}>
+  {% for item in playlist.items %}
+  <li class="list-group-item" data-item-id="{{ item.id }}">
+    <div class="d-flex flex-wrap gap-3 align-items-center">
+      {% if editable %}<span class="drag-handle text-secondary" title="Drag to reorder" aria-hidden="true">⋮⋮</span>{% endif %}
+      <span class="text-secondary item-number">{{ loop.index }}</span>
+      {{ thumb(item.media, "item-thumb") }}
+      <div class="flex-grow-1" style="min-width: 10rem">
+        <div class="fw-semibold">{{ item.media.name }}</div>
+        <div class="small text-secondary d-flex gap-2 align-items-center">
+          {{ type_badge(item.media) }}
+          <span>{{ item.effective_duration|duration }}</span>
+          <span>{{ item.effective_transition|replace("-", " ") }}</span>
+        </div>
+      </div>
+      {% if editable %}
+      <form method="post" action="{{ url_for('playlists.update_item', playlist_id=playlist.id, item_id=item.id) }}"
+            class="d-flex flex-wrap gap-2 align-items-center item-form">
+        {{ item_form.csrf_token }}
+        <input class="form-control form-control-sm" style="width: 6.5rem" type="number" min="1" name="duration"
+               value="{{ item.duration or '' }}" placeholder="{{ item.media.effective_duration }}s"
+               title="Duration in seconds (blank = media default)" aria-label="Duration in seconds">
+        <select class="form-select form-select-sm" style="width: auto" name="transition" aria-label="Transition">
+          {% for c in item_form.transition.choices %}
+          <option value="{{ c.value }}" {% if (item.transition or '') == c.value %}selected{% endif %}>{{ c.label }}</option>
+          {% endfor %}
+        </select>
+        <select class="form-select form-select-sm" style="width: auto" name="fit_mode" aria-label="Fit">
+          {% for c in item_form.fit_mode.choices %}
+          <option value="{{ c.value }}" {% if item.fit_mode == c.value %}selected{% endif %}>{{ c.label }}</option>
+          {% endfor %}
+        </select>
+        {% if item.media.is_video %}
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input" type="checkbox" name="mute" value="y" id="mute{{ item.id }}" {% if item.mute %}checked{% endif %}>
+          <label class="form-check-label small" for="mute{{ item.id }}">Mute</label>
+        </div>
+        {% endif %}
+        <button class="btn btn-sm btn-outline-primary" type="submit">Save</button>
+      </form>
+      <div class="d-flex gap-1">
+        {% for direction, label in [("up", "↑"), ("down", "↓")] %}
+        <form method="post" action="{{ url_for('playlists.move_item', playlist_id=playlist.id, item_id=item.id) }}">
+          {{ action_form.csrf_token }}<input type="hidden" name="direction" value="{{ direction }}">
+          <button class="btn btn-sm btn-outline-secondary" type="submit" aria-label="Move {{ direction }}"
+                  {% if (direction == "up" and loop.first) or (direction == "down" and loop.last) %}disabled{% endif %}>{{ label }}</button>
+        </form>
+        {% endfor %}
+        <form method="post" action="{{ url_for('playlists.remove_item', playlist_id=playlist.id, item_id=item.id) }}">
+          {{ action_form.csrf_token }}
+          <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Remove">✕</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<div class="text-center text-secondary py-5 border rounded bg-body">This playlist is empty.{% if editable %} Use <strong>Add media</strong> to fill it.{% endif %}</div>
+{% endif %}
+
+{% if editable %}
+<div class="modal fade" id="addMedia" tabindex="-1" aria-labelledby="addMediaTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <form class="modal-content" method="post" action="{{ url_for('playlists.add_items', playlist_id=playlist.id) }}">
+      {{ action_form.csrf_token }}
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="addMediaTitle">Add media</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        {% if library %}
+        <input class="form-control mb-3" type="search" placeholder="Filter by name" data-filter-target="#mediaPicker">
+        <div class="row row-cols-2 row-cols-md-4 g-2" id="mediaPicker">
+          {% for m in library %}
+          <div class="col" data-name="{{ m.name|lower }}">
+            <label class="card h-100 picker-card">
+              <input class="form-check-input picker-check" type="checkbox" name="media_ids" value="{{ m.id }}">
+              {{ thumb(m, "card-img-top") }}
+              <span class="card-body p-2 small">
+                <span class="d-block text-truncate fw-semibold">{{ m.name }}</span>
+                {{ type_badge(m) }} {{ m.effective_duration|duration }}
+              </span>
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-secondary mb-0">The media library is empty. <a href="{{ url_for('media.index') }}">Upload media first.</a></p>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-link" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" type="submit" {% if not library %}disabled{% endif %}>Add selected</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
