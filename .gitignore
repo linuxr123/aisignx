@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets / local config
+.env
+server/instance/
+*.db
+*.sqlite3
+
+# Runtime data
+server/uploads/
+server/backups/
+server/logs/
+
+# Client builds and signing
+clients/**/node_modules/
+clients/**/dist/
+clients/**/build/
+keystore.properties
+*.jks
+*.keystore
+
+# Editors / OS
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
