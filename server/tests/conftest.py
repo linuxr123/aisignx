@@ -81,3 +81,44 @@ def csrf_token_from(html: str) -> str:
     match = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', html)
     assert match, "no CSRF token in page"
     return match.group(1)
+
+
+# --- Screens (Phase 3) ------------------------------------------------------------------
+
+DISPLAY_TOKEN = "test-display-token-0123456789abcdefghijklmnopq"
+
+
+def bearer(token: str) -> dict:
+    """Request headers carrying a display token."""
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def paired_display(app):
+    """A paired Display (no playlist) with a known token. Returns (display_id, token)."""
+    from aisignx.models import Display
+    from aisignx.player.auth import hash_token
+    from aisignx.timeutil import utcnow
+
+    with app.app_context():
+        display = Display(name="Lobby", token_hash=hash_token(DISPLAY_TOKEN), paired_at=utcnow())
+        db.session.add(display)
+        db.session.commit()
+        return display.id, DISPLAY_TOKEN
+
+
+def make_csrf_app(tmp_path, monkeypatch, **overrides):
+    """An app with CSRF protection ON (the default fixture turns it off)."""
+    monkeypatch.setenv("AISIGNX_SECRET_KEY", "test-secret")
+    config = {
+        "TESTING": True,
+        "SQLALCHEMY_DATABASE_URI": f"sqlite:///{(tmp_path / 'csrf.db').as_posix()}",
+        "UPLOAD_FOLDER": str(tmp_path / "uploads"),
+        "THUMBNAILS_ASYNC": False,
+        "BROWSER_PATH": "aisignx-test-no-browser",
+    }
+    config.update(overrides)
+    app = create_app(config)
+    with app.app_context():
+        upgrade()
+    return app

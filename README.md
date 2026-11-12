@@ -3,8 +3,9 @@
 Self-hosted digital signage. One web admin manages playlists, schedules and screens,
 for a home, a small business, or a company with a few dozen screens.
 
-> **Status:** v3 is a rewrite in progress. Phase 1 (accounts, roles, settings, setup wizard) and
-> Phase 2 (media library, playlists) are done. Displays and scheduling are coming next.
+> **Status:** v3 is a rewrite in progress. Phase 1 (accounts, roles, settings, setup wizard),
+> Phase 2 (media library, playlists) and Phase 3 (screens: pairing, browser player, live updates)
+> are done. Scheduling is coming next.
 > See [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
@@ -35,8 +36,11 @@ run again. Then start the server:
 
 ```powershell
 cd server
-.venv\Scripts\flask --app wsgi run        # Linux/macOS: .venv/bin/flask --app wsgi run
+.venv\Scripts\flask --app wsgi serve      # Linux/macOS: .venv/bin/flask --app wsgi serve
 ```
+
+`serve` runs the production web server (waitress) with enough threads for your screens.
+`flask --app wsgi run` also works for a quick test at home.
 
 Open http://127.0.0.1:5000. On first start, the setup wizard asks for your organization name,
 time zone and the first admin account. There are no default passwords.
@@ -58,6 +62,8 @@ Settings come from environment variables or `server/.env` (see `server/.env.exam
 | `AISIGNX_FFMPEG` / `AISIGNX_FFPROBE` | found on PATH | Paths to the ffmpeg tools |
 | `AISIGNX_BROWSER` | auto-detected | Edge, Chrome or Chromium used for web page previews |
 | `AISIGNX_WEBSHOT_TIMEOUT` | `45` | Seconds allowed per web page screenshot |
+| `AISIGNX_MAX_STREAMS` | `50` | Most screens with a live-update connection at once; `serve` starts this many threads plus 16 |
+| `AISIGNX_PROXY_HOPS` | `0` | Number of reverse proxies in front of AiSignX; set to `1` behind nginx, Caddy or IIS |
 
 ## Media and playlists
 
@@ -69,6 +75,23 @@ Settings come from environment variables or `server/.env` (see `server/.env.exam
 - **Playlists:** drag items to reorder them. Each item can override its duration, transition,
   fit mode (fit, fill or stretch) and, for videos, mute. Videos play for their full length unless
   you set a duration.
+
+## Screens
+
+1. On the screen, open `http://<server>:5000/player/` in a browser, in full screen or kiosk mode.
+   It shows a six-character pairing code.
+2. In the admin, go to **Displays > Pair a display**, type the code, name the screen and choose a
+   playlist. The screen starts playing within a few seconds.
+
+Changes to playlists and media reach the screens within about a second. A screen keeps playing
+what it has if the server goes offline, and catches up when the server is back. Use **Reload** on
+a display to refresh its page, and **Unpair** to make it show a new pairing code.
+
+Each connected screen keeps one server thread busy. `flask --app wsgi serve` sizes the threads
+from `AISIGNX_MAX_STREAMS` (default 50 screens), so raise that setting if you have more screens.
+Run a single server process. For kiosk browser settings, reverse proxies and HTTPS, see
+[docs/deployment.md](docs/deployment.md). Native player apps use the API in
+[docs/player-api.md](docs/player-api.md).
 
 ## Roles
 
