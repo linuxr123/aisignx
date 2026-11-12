@@ -25,6 +25,19 @@ clients/**/build/
 keystore.properties
 *.jks
 *.keystore
+clients/**/dist-build/
+clients/**/out/
+clients/**/.gradle/
+clients/**/.kotlin/
+clients/**/local.properties
+clients/**/captures/
+clients/**/app/release/
+clients/**/*.log
+*.apk
+*.aab
+*.p12
+*.pfx
+keystorepass.txt
 
 # Editors / OS
 .vs/

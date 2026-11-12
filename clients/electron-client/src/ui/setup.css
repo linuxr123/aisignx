@@ -1,0 +1,33 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: #f4f5f7; color: #1d2330;
+  font: 15px/1.45 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+.card { max-width: 640px; margin: 24px auto; background: #fff; border-radius: 10px; padding: 28px 32px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+h1 { margin: 0 0 4px; font-size: 1.5rem; }
+h2 { margin: 0 0 8px; font-size: 1.05rem; }
+.lead { margin: 0 0 20px; color: #5b6475; }
+label { display: block; font-weight: 600; margin: 0 0 6px; }
+.row { display: flex; gap: 8px; }
+input[type="text"] { flex: 1; min-width: 0; padding: 9px 11px; border: 1px solid #c4cad4; border-radius: 6px; font: inherit; }
+input[type="text"]:focus { outline: 2px solid #2f6fde; border-color: #2f6fde; }
+button { padding: 9px 16px; border-radius: 6px; border: 1px solid #2f6fde; background: #2f6fde; color: #fff;
+  font: inherit; cursor: pointer; }
+button.secondary { background: #fff; color: #1d2330; border-color: #c4cad4; }
+button.danger { background: #fff; color: #b42318; border-color: #e3a29b; }
+button:disabled { opacity: 0.55; cursor: default; }
+.result { min-height: 1.4em; margin: 10px 0; }
+.result.ok { color: #157f3b; }
+.result.err { color: #b42318; }
+.result.warn { color: #9a5b00; }
+.warning { background: #fff6e5; border: 1px solid #f0c674; border-radius: 6px; padding: 8px 10px; }
+.trust { border: 1px solid #e3a29b; background: #fff5f4; border-radius: 8px; padding: 14px 16px; margin: 12px 0; }
+.trust dl { display: grid; grid-template-columns: 150px 1fr; gap: 4px 10px; margin: 0 0 10px; }
+.trust dt { color: #5b6475; }
+.trust dd { margin: 0; word-break: break-all; }
+.mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 0.9em; }
+.hint { color: #5b6475; font-size: 0.92em; }
+.check { font-weight: 400; margin: 14px 0; display: flex; gap: 8px; align-items: center; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; align-items: center; }
+.spacer { flex: 1; }
+footer { margin-top: 22px; color: #5b6475; font-size: 0.88em; border-top: 1px solid #e6e9ee; padding-top: 10px; }
+footer p { margin: 2px 0; }

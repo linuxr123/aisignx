@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AiSignX Player setup</title>
+  <link rel="stylesheet" href="setup.css">
+</head>
+<body>
+  <main class="card">
+    <h1>AiSignX Player</h1>
+    <p class="lead">Connect this screen to your AiSignX server. You pair it in the admin afterwards.</p>
+
+    <form id="form" autocomplete="off" novalidate>
+      <label for="server">Server address</label>
+      <div class="row">
+        <input id="server" type="text" spellcheck="false" placeholder="192.168.1.20:5000 or https://signage.example.lan" maxlength="300" required>
+        <button id="test" type="button" class="secondary">Test</button>
+      </div>
+      <p id="result" class="result" role="status" aria-live="polite"></p>
+      <p id="http-warning" class="warning" hidden>This is plain http to an address outside your local network. Traffic is not encrypted; prefer https.</p>
+
+      <section id="trust-card" class="trust" hidden>
+        <h2 id="trust-title">Certificate not trusted</h2>
+        <dl>
+          <dt>SHA-256 fingerprint</dt><dd id="fp" class="mono"></dd>
+          <dt>Subject</dt><dd id="subject"></dd>
+          <dt>Valid until</dt><dd id="valid-to"></dd>
+        </dl>
+        <p class="hint">Compare with the server's certificate: <span class="mono">openssl x509 -noout -fingerprint -sha256 -in cert.pem</span></p>
+        <label id="trust-label" class="check"><input id="trust" type="checkbox"> Trust this certificate for this server</label>
+        <p id="install-ca" class="hint" hidden>This certificate is issued by a CA that this PC does not trust. Install your CA in the Windows certificate store (Local Computer, Trusted Root Certification Authorities), then test again.</p>
+      </section>
+
+      <label class="check"><input id="autostart" type="checkbox" checked> Start the player when Windows starts (installed app only)</label>
+
+      <div class="actions">
+        <button id="save" type="submit">Save and start</button>
+        <button id="close" type="button" class="secondary">Close</button>
+        <span class="spacer"></span>
+        <button id="forget" type="button" class="danger" hidden>Forget server</button>
+        <button id="quit" type="button" class="secondary">Quit player</button>
+      </div>
+    </form>
+
+    <footer>
+      <p>Shortcuts on the player: Ctrl+Alt+S setup, Ctrl+Alt+L log, Ctrl+Alt+Q quit.</p>
+      <p id="meta" class="mono"></p>
+    </footer>
+  </main>
+  <script src="setup.js"></script>
+</body>
+</html>

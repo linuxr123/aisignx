@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AiSignX Player</string>
+    <string name="setup_title">AiSignX Player setup</string>
+    <string name="setup_intro">Enter the address of your AiSignX server, then press Test. Pair this screen in the admin under Displays after saving.</string>
+    <string name="server_hint">192.168.1.20:5000 or https://signage.example.lan</string>
+    <string name="server_label">Server address</string>
+    <string name="btn_test">Test</string>
+    <string name="btn_save">Save and start</string>
+    <string name="btn_forget">Forget server</string>
+    <string name="testing">Testing&#8230;</string>
+    <string name="result_ok">Connected to an AiSignX server</string>
+    <string name="result_not_aisignx">This address is not an AiSignX server</string>
+    <string name="result_unreachable">Can\'t reach the server: %1$s</string>
+    <string name="result_invalid">Enter an address such as 192.168.1.20:5000 (http or https, no path)</string>
+    <string name="result_untrusted">The server certificate is not trusted by this device</string>
+    <string name="result_pin_mismatch">Server certificate changed. Check it below before trusting it again.</string>
+    <string name="trust_title">Server certificate</string>
+    <string name="trust_fingerprint">SHA-256 fingerprint</string>
+    <string name="trust_hint">Compare with: openssl x509 -noout -fingerprint -sha256 -in cert.pem</string>
+    <string name="trust_check">Trust this certificate</string>
+    <string name="trust_details">Host: %1$s\nSubject: %2$s\nValid until: %3$s</string>
+    <string name="http_warning">Plain http to a public address is not encrypted. Use https for servers outside your local network.</string>
+    <string name="home_mode">Use as Home app (recommended for signage boxes; starts the player after boot)</string>
+    <string name="need_test">Press Test first. Saving needs a successful test.</string>
+    <string name="forgotten">Server forgotten. This screen will need to be paired again.</string>
+    <string name="device_info">Version %1$s. Client ID %2$s</string>
+    <string name="exit_title">Leave the player?</string>
+    <string name="exit_message">Open the AiSignX setup screen on this device?</string>
+    <string name="exit_yes">Open setup</string>
+    <string name="exit_no">Keep playing</string>
+    <string name="reason_offline">Can\'t reach the server</string>
+    <string name="reason_cert_changed">Server certificate changed. Re-run setup.</string>
+</resources>

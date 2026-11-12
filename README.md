@@ -5,8 +5,8 @@ for a home, a small business, or a company with a few dozen screens.
 
 > **Status:** v3 is a rewrite in progress. Phase 1 (accounts, roles, settings, setup wizard),
 > Phase 2 (media library, playlists), Phase 3 (screens: pairing, browser player, live updates)
-> and Phase 4 (schedules, display groups, emergency override) are done. Native clients are next.
-> See [CHANGELOG.md](CHANGELOG.md).
+> Phase 4 (schedules, display groups, emergency override) and Phase 5 (Windows and Android player
+> apps) are done. Operations (backup, audit log, Docker) are next. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
@@ -91,8 +91,22 @@ a display to refresh its page, and **Unpair** to make it show a new pairing code
 Each connected screen keeps one server thread busy. `flask --app wsgi serve` sizes the threads
 from `AISIGNX_MAX_STREAMS` (default 50 screens), so raise that setting if you have more screens.
 Run a single server process. For kiosk browser settings, reverse proxies and HTTPS, see
-[docs/deployment.md](docs/deployment.md). Native player apps use the API in
+[docs/deployment.md](docs/deployment.md). The player API is described in
 [docs/player-api.md](docs/player-api.md).
+
+## Player apps
+
+Instead of a browser, a screen can run one of the AiSignX player apps. They show the same
+player and add a setup screen, offline start-up from a saved copy of the player, a media cache,
+certificate pinning for self-signed HTTPS, kiosk mode and autostart.
+
+- **Windows** (Electron): `clients/electron-client`, built with `npm run dist:win`.
+- **Android** 8.0 or newer, including Android TV boxes: `clients/android-client`, built with
+  `.\gradlew.bat assembleRelease`.
+
+Start the app, enter the server address, press **Test**, then **Save and start**, and pair the
+screen in the admin as usual. See [docs/clients.md](docs/clients.md) for setup, HTTPS, offline
+behaviour, kiosk settings and build steps.
 
 ## Schedules, groups and emergencies
 
@@ -121,6 +135,9 @@ saving rules, are in [docs/scheduling.md](docs/scheduling.md).
 cd server
 .venv\Scripts\python -m pytest
 .venv\Scripts\flask --app wsgi db migrate -m "describe change"   # after changing models
+
+cd ..\clients\electron-client; npm ci; npm test                   # Electron client
+cd ..\android-client; .\gradlew.bat testDebugUnitTest             # Android client
 ```
 
 ## License

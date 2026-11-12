@@ -1,0 +1,25 @@
+<!doctype html>
+<!--
+  Shown by PlayerActivity when the player page cannot load and no snapshot is cached
+  (first start with the server unreachable, or a rejected server certificate).
+  The reason is passed in the URL fragment. Kotlin probes /healthz every 10 seconds
+  and loads the player again once the server answers.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
+<title>AiSignX Player</title>
+<link rel="stylesheet" href="offline.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="spin"></div>
+  <h1>AiSignX</h1>
+  <p id="reason">Can't reach the server</p>
+  <p class="muted" id="cd">Retrying in 10 seconds</p>
+</div>
+<script src="offline.js"></script>
+</body>
+</html>

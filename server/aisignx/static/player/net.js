@@ -34,8 +34,57 @@
     KEYS: { clientId: "aisignx.client_id", manifest: "aisignx.manifest", pairing: "aisignx.pairing" },
   };
 
+  // ---- Shell hook: a kiosk client (Electron preload or Android WebView) may expose
+  // device info and receive state/manifest notices. No credential ever passes here.
+  // Returns {info: {name, version, device, client_id, admin_url}, onState(s), onManifest(json)}
+  // or null in a plain browser. Every shell call is wrapped; a broken shell never stops playback.
+  var shellCache;
+  function str(v, max) { return typeof v === "string" ? v.slice(0, max) : ""; }
+  function readShell() {
+    var raw = null, send = null;
+    try {
+      if (window.AiSignXShell && typeof window.AiSignXShell.info === "function") {
+        var es = window.AiSignXShell;
+        raw = es.info();
+        send = function (kind, value) {
+          var fn = kind === "state" ? es.onState : es.onManifest;
+          if (typeof fn === "function") fn(value);
+        };
+      } else if (window.AiSignXShellInfo && typeof window.AiSignXShellInfo.info === "function") {
+        raw = JSON.parse(window.AiSignXShellInfo.info());
+        send = function (kind, value) {
+          var port = window.AiSignXShellPort;
+          if (!port || typeof port.postMessage !== "function") return;
+          port.postMessage(JSON.stringify(kind === "state" ? { t: "state", s: value } : { t: "manifest", m: value }));
+        };
+      }
+    } catch (e) { raw = null; }
+    if (!raw || typeof raw !== "object" || (raw.name !== "electron" && raw.name !== "android")) return null;
+    var admin = str(raw.admin_url, 300).replace(/\/+$/, "");
+    var info = {
+      name: raw.name,
+      version: str(raw.version, 20),
+      device: str(raw.device, 120),
+      client_id: str(raw.client_id, 32),
+      admin_url: /^https?:\/\/[^\s]+$/i.test(admin) ? admin : "",
+    };
+    function safe(kind) {
+      return function (value) { try { send(kind, value); } catch (e) { /* ignore */ } };
+    }
+    return { info: info, onState: safe("state"), onManifest: safe("manifest") };
+  }
+  function shell() {
+    if (shellCache === undefined) shellCache = readShell();
+    return shellCache;
+  }
+
   // crypto.randomUUID needs a secure context; plain-HTTP LANs are not one.
   function clientId() {
+    var sh = shell();
+    if (sh && /^[0-9a-f]{32}$/.test(sh.info.client_id)) {
+      store.local.set(store.KEYS.clientId, sh.info.client_id);
+      return sh.info.client_id;
+    }
     var id = store.local.get(store.KEYS.clientId);
     if (typeof id === "string" && /^[0-9a-f]{32}$/.test(id)) return id;
     var bytes = new Uint8Array(16);
@@ -237,6 +286,7 @@
     api: api,
     store: store,
     clientId: clientId,
+    shell: shell,
     jitter: jitter,
     Backoff: Backoff,
     Events: Events,

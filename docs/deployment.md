@@ -134,8 +134,19 @@ server {
 - ARR sends `X-Forwarded-For` by default. Add a URL Rewrite server variable so it also sends
   `X-Forwarded-Proto: https`.
 
-Native players (Phase 5) never skip certificate checks. With a self-signed certificate, install
-your own CA on the devices or pin the certificate fingerprint in the client.
+The [player apps](clients.md) never skip certificate checks. With a self-signed certificate,
+install your own CA on the devices or pin the certificate in the app's setup. To compare the
+fingerprint the app shows, print it on the server:
+
+```bash
+openssl x509 -noout -fingerprint -sha256 -in cert.pem
+```
+
+## Player apps
+
+For screens that run unattended, the Windows (Electron) and Android player apps add offline
+start-up, a media cache, certificate pinning, kiosk mode and autostart around the same player.
+See [clients.md](clients.md) for installing, setting up and building them.
 
 ## Kiosk browser on the screen
 

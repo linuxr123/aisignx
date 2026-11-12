@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#0f172a</color>
+    <color name="black">#000000</color>
+    <color name="setup_bg">#0f172a</color>
+    <color name="setup_card">#1e293b</color>
+    <color name="setup_text">#e2e8f0</color>
+    <color name="setup_muted">#94a3b8</color>
+    <color name="accent">#38bdf8</color>
+    <color name="ok">#4ade80</color>
+    <color name="warn">#fbbf24</color>
+    <color name="error">#f87171</color>
+</resources>

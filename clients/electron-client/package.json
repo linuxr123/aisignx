@@ -1,0 +1,57 @@
+{
+  "name": "aisignx-player",
+  "productName": "AiSignX Player",
+  "version": "3.0.0",
+  "description": "AiSignX v3 display client",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "author": "AiSignX",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/*.test.js\"",
+    "smoke": "electron . --smoke --server=http://127.0.0.1:5000",
+    "prebuild:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prebuild_clean.ps1",
+    "dist:win": "npm run prebuild:win && electron-builder --win nsis --x64",
+    "dist:linux": "electron-builder --linux AppImage deb --x64"
+  },
+  "build": {
+    "appId": "com.aisignx.player",
+    "productName": "AiSignX Player",
+    "directories": {
+      "output": "dist-build",
+      "buildResources": "assets"
+    },
+    "files": [
+      "src/**/*",
+      "assets/icon.*"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": false,
+      "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "category": "Utility",
+      "maintainer": "AiSignX",
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "44.10.0",
+    "electron-builder": "26.18.0",
+    "selfsigned": "2.4.1"
+  }
+}

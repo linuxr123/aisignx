@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext is allowed globally because the server address is typed in by the user
+  (often a LAN address such as http://192.168.1.20:5000). Setup warns about plain
+  http on public addresses. HTTPS trusts system CAs and user-installed CAs; a
+  self-signed server certificate is accepted only through the pin set in setup.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

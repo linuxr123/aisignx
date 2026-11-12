@@ -25,7 +25,7 @@ def test_fresh_install_redirects_everything_to_setup(client):
 
 
 def test_healthz_available_during_setup(client):
-    assert client.get("/healthz").json == {"status": "ok"}
+    assert client.get("/healthz").json == {"status": "ok", "app": "aisignx", "api": 1}
 
 
 def test_wizard_creates_admin_and_settings(app, client):

@@ -34,6 +34,13 @@ v3 is a clean rewrite of AiSignX as a single-organization app.
 - Player API: the manifest gains `source` (why this playlist plays) and `emergency`; new events `emergency` and `emergency_clear`. Existing keys are unchanged.
 - A background ticker pushes schedule starts and ends to screens within about a second (`AISIGNX_SCHEDULE_TICKER`, on by default).
 - Dashboard counts for enabled schedules and groups, and an alert while an emergency is live.
+- Phase 5 (Clients): AiSignX Player for Windows (Electron, `clients/electron-client`) and for Android 8.0+ including TV boxes (`clients/android-client`). Both are kiosk shells around the browser player at `/player/`, so pairing and playback work exactly as in a browser. See `docs/clients.md`.
+- Player apps: setup screen with a `/healthz` connection test, an http warning for public addresses, and **Forget server**. No password, token or code is typed on the device.
+- Player apps: HTTPS trust through the system certificate stores, or a SHA-256 certificate pin accepted in setup for self-signed servers. A changed certificate is refused and shows "Server certificate changed".
+- Player apps: offline start-up from a saved copy of the player page, and a media cache (size and checksum verified, LRU, files in the current playlist never evicted) so screens keep playing while the server is down.
+- Electron: loopback caching proxy, kiosk window with blocked keys and Ctrl+Alt admin shortcuts, single instance, keep-awake, crash and hang watchdogs, Windows login item, NSIS installer (`npm run dist:win`).
+- Android: full-screen WebView with immersive mode and keep-awake, remote keys blocked, hidden gesture back to setup, optional Home-app mode and a boot receiver, renderer-crash recovery. Release builds are signed only when `keystore.properties` exists.
+- Player shell hook (`docs/player-api.md`, "Shell hook"): the player reports `electron-<version>` or `android-<version>` and the device name, uses the app's client ID, shows the real server address in the pairing hint, and tells the app when it is paired and when a new manifest arrives. No credential passes through the hook.
 
 ### Changed
 - The install scripts now suggest `flask --app wsgi serve` to start the server.
@@ -42,3 +49,4 @@ v3 is a clean rewrite of AiSignX as a single-organization app.
 - A display's playlist is now called its **Default playlist**: it plays when no schedule matches. The displays list shows what each screen is playing now and why.
 - A playlist used by a schedule or a live emergency can no longer be deleted. Deleting a display or group also removes its schedules.
 - Changing the time zone in Settings updates all screens right away.
+- `/healthz` now returns `{"status": "ok", "app": "aisignx", "api": 1}` so the player apps can recognise an AiSignX server. It still needs no login and shows no version.

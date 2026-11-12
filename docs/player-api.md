@@ -313,6 +313,48 @@ Emergency events are never dropped when a screen's event queue is full.
 Live push reaches only screens connected to the same server process. That is why the heartbeat
 check above is required, not optional.
 
+## Shell hook
+
+The kiosk clients (Electron and Android, see `docs/clients.md`) do not reimplement the player.
+They load the browser player at `/player/` and talk to it through a small hook. In a plain
+browser there is no hook and the player behaves exactly as before.
+
+`net.shell()` in `static/player/net.js` looks for one of two hosts and returns a normalized
+object `{info, onState(s), onManifest(json)}`, or `null`:
+
+- **Electron:** `window.AiSignXShell`, exposed by the preload with `contextBridge`, with
+  `info()` returning an object and the functions `onState(s)` and `onManifest(json)`.
+- **Android:** `window.AiSignXShellInfo.info()` (an `addJavascriptInterface` object) returns a
+  JSON string. `onState` and `onManifest` post a JSON string through `window.AiSignXShellPort`
+  (`addWebMessageListener`): `{"t":"state","s":"PAIRED"}` or `{"t":"manifest","m":"<manifest JSON
+  string>"}`. Without the port (old WebViews) they do nothing.
+
+Every call into the shell is wrapped in `try/catch`; a broken shell never stops playback.
+
+| `info` field | Meaning |
+|---|---|
+| `name` | `electron` or `android`. Any other value means "no shell". |
+| `version` | Client version, for example `3.0.0`. The player reports `player_version` as `<name>-<version>` (for example `electron-3.0.0`) instead of `web-<build>`. |
+| `device` | Device name sent with `POST /pair` (up to 120 characters), for example `HOSTNAME / Windows`. |
+| `client_id` | 32 lowercase hex characters. If valid, the player stores and uses it as its `client_id`. |
+| `admin_url` | The server URL configured in the client (`http(s)://host[:port]`). Used for the pairing hint `<admin_url>/displays/pair`, because behind the Electron proxy `location.origin` is a loopback address. |
+
+`onState(s)` is called on every state change with one of `CONNECTING`, `SETUP_WAIT`, `PAIRING`,
+`PLAYING`, `NO_CONTENT`, plus `PAIRED` once when pairing succeeds (before the player boots).
+Shells flush their cookie store to disk on `PAIRED`.
+
+`onManifest(json)` is called with the manifest as a JSON string after every `GET /manifest` that
+returned 200 (never on 304, and not for the copy restored from `localStorage`). Shells use it to
+prefetch and keep image and video files in their media cache.
+
+**No token or cookie ever reaches the hook.** The credential stays in the HttpOnly
+`aisignx_display` cookie, which JavaScript cannot read; the manifest holds no secret. The hook
+carries only device info, state names and the manifest.
+
+Clients check a server address with `GET /healthz` (no login, no cookie, works before setup).
+It answers `{"status": "ok", "app": "aisignx", "api": 1}`; `app` identifies an AiSignX server and
+`api` is the player API generation. It never includes the software version.
+
 ## Example (curl)
 
 ```bash

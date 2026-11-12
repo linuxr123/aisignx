@@ -1,0 +1,22 @@
+#!/bin/sh
+# Gradle wrapper startup script for Linux and macOS (POSIX sh).
+# Downloads the Gradle version in gradle/wrapper/gradle-wrapper.properties on first use.
+APP_HOME=$(cd "$(dirname "$0")" && pwd -P) || exit 1
+APP_BASE_NAME=$(basename "$0")
+CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
+
+if [ -n "$JAVA_HOME" ]; then
+    JAVACMD=$JAVA_HOME/bin/java
+    if [ ! -x "$JAVACMD" ]; then
+        echo "ERROR: JAVA_HOME is set to an invalid directory: $JAVA_HOME" >&2
+        exit 1
+    fi
+else
+    JAVACMD=java
+    command -v java >/dev/null 2>&1 || { echo "ERROR: JAVA_HOME is not set and no 'java' found in PATH." >&2; exit 1; }
+fi
+
+# JAVA_OPTS and GRADLE_OPTS are split on whitespace on purpose.
+# shellcheck disable=SC2086
+exec "$JAVACMD" -Xmx64m -Xms64m $JAVA_OPTS $GRADLE_OPTS "-Dorg.gradle.appname=$APP_BASE_NAME" \
+    -classpath "$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "$@"

@@ -35,4 +35,6 @@ def dashboard():
 
 @bp.route("/healthz")
 def healthz():
-    return {"status": "ok"}
+    # Kiosk clients probe this in setup to tell an AiSignX server from anything else.
+    # "api" is the player API generation; no version string, so nothing is disclosed.
+    return {"status": "ok", "app": "aisignx", "api": 1}

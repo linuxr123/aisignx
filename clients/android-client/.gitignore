@@ -1,0 +1,18 @@
+# Local build output and machine settings (also covered by the root .gitignore)
+.gradle/
+.kotlin/
+build/
+app/build/
+app/release/
+captures/
+local.properties
+*.log
+*.apk
+*.aab
+# Signing secrets: never commit
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+keystorepass.txt

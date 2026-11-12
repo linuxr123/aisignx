@@ -8,7 +8,11 @@
   var body = document.body, screenEl = document.getElementById("screen");
   var BUILD = body.getAttribute("data-build") || "";
   var ROOT = body.getAttribute("data-root") || "";
-  var PLAYER_VERSION = ("web-" + BUILD).slice(0, 32);
+  // Kiosk client hook (window.AiSignXShell, or the Android adapter in net.js); null in a browser.
+  var shell = net.shell();
+  var PLAYER_VERSION = (shell ? shell.info.name + "-" + shell.info.version : "web-" + BUILD).slice(0, 32);
+  // Behind the Electron loopback proxy location.origin is 127.0.0.1, so prefer the shell's server URL.
+  var ADMIN_URL = (shell && shell.info.admin_url) || location.origin + ROOT;
   var DEBUG = /[?&]debug=1(&|$)/.test(location.search);
   var CLIENT_ID = net.clientId();
 
@@ -64,10 +68,14 @@
     screenEl.appendChild(box);
     screenEl.hidden = false;
   }
-  function setState(s) { S.state = s; body.setAttribute("data-state", s.toLowerCase()); }
+  function setState(s) {
+    S.state = s;
+    body.setAttribute("data-state", s.toLowerCase());
+    if (shell) shell.onState(s);
+  }
   function showConnecting() {
     setState("CONNECTING");
-    showScreen("connecting", "Connecting", ["Waiting for the server at " + location.host + "."]);
+    showScreen("connecting", "Connecting", ["Waiting for the server at " + ((shell && shell.info.admin_url) || location.host) + "."]);
   }
 
   // ---- Live updates: SSE + heartbeat.
@@ -123,6 +131,7 @@
       manifestBackoff.reset();
       store.local.set(K.manifest, res.data);
       applyManifest(res.data);
+      if (shell) shell.onManifest(JSON.stringify(res.data));
     } else if (res.kind === "not_modified") {
       manifestBackoff.reset();
       if (S.state === "NO_CONTENT" && S.items.length) startPlaying();
@@ -272,6 +281,7 @@
 
   // ---- Pairing.
   function deviceName() {
+    if (shell && shell.info.device) return shell.info.device.slice(0, 120);
     var ua = navigator.userAgent || "", browser = "Browser";
     [["Edg", "Edge"], ["OPR", "Opera"], ["Firefox", "Firefox"], ["Chrome", "Chrome"], ["Version", "Safari"]]
       .some(function (b) {
@@ -311,7 +321,7 @@
     S.pairing = p;
     var hint = el("p", "screen-text"), timer = el("p", "screen-sub");
     hint.appendChild(document.createTextNode("Open "));
-    hint.appendChild(el("span", "pair-url", location.origin + ROOT + "/displays/pair"));
+    hint.appendChild(el("span", "pair-url", ADMIN_URL + "/displays/pair"));
     hint.appendChild(document.createTextNode(" and enter this code."));
     showScreen("pairing", "Pair this screen", [el("p", "pair-code", p.display_code), hint, timer]);
     var update = function () {
@@ -336,6 +346,7 @@
         if (S.pairing !== p) return;
         var d = res.data || {};
         if (res.kind === "ok" && d.status === "paired") {
+          if (shell) shell.onState("PAIRED");  // lets the shell flush its cookie store to disk
           endPairing();
           showScreen("paired", "Paired", ["Paired as " + ((d.display && d.display.name) || "this display")]);
           modeLater(boot, PAIRED_SHOW_MS);  // boot starts the heartbeat, which beats at once
