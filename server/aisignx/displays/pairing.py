@@ -140,6 +140,22 @@ def approve(code: str | None, name: str | None, playlist_id: int | None,
     return display
 
 
+def recently_approved(code: str | None) -> Display | None:
+    """The display a code was just approved for (still in its claim window), if any.
+
+    Lets the admin page answer a repeated submit (double-click) with "already paired"
+    instead of "not valid".
+    """
+    normalized = normalize_code(code)
+    if normalized is None:
+        return None
+    row = PairingCode.query.filter(PairingCode.code == normalized,
+                                   PairingCode.display_id.isnot(None)).first()
+    if row is None or as_utc(row.expires_at) <= utcnow():
+        return None
+    return db.session.get(Display, row.display_id)
+
+
 def claim(secret: str):
     """Device poll. Returns (PENDING, expires_in), (EXPIRED, None) or (PAIRED, (display, raw))."""
     row = PairingCode.query.filter_by(secret_hash=hash_secret(secret)).first()

@@ -5,9 +5,26 @@
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";
 
   // <form data-confirm="Are you sure?"> asks before submitting.
+  // POST forms are sent once: a double-click would otherwise submit twice (e.g. pairing a
+  // display, then reporting the already-used code as invalid).
   document.addEventListener("submit", (event) => {
-    const message = event.target.dataset?.confirm;
-    if (message && !window.confirm(message)) event.preventDefault();
+    const form = event.target;
+    const message = form.dataset?.confirm;
+    if (message && !window.confirm(message)) { event.preventDefault(); return; }
+    if ((form.method || "").toLowerCase() !== "post") return;
+    if (form.dataset.submitted) { event.preventDefault(); return; }
+    form.dataset.submitted = "1";
+    // Disable after this tick so the clicked button's name/value is still sent.
+    setTimeout(() => form.querySelectorAll("button[type=submit], input[type=submit]")
+      .forEach((b) => { b.disabled = true; }), 0);
+  });
+  // Coming back via the browser's Back button restores a page whose forms were sent.
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) return;
+    document.querySelectorAll("form[data-submitted]").forEach((f) => {
+      delete f.dataset.submitted;
+      f.querySelectorAll("[type=submit]").forEach((b) => { b.disabled = false; });
+    });
   });
 
   // <input data-filter-target="#grid"> hides children whose data-name doesn't match.

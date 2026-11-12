@@ -456,6 +456,20 @@ def test_full_bearer_flow_via_admin_route(app, admin_client):
     assert _status(player, data["pairing_secret"]).status_code == 404
 
 
+def test_double_submit_reports_already_paired(app, admin_client):
+    """A repeated submit of a just-approved code must not say the code is invalid."""
+    data = _start(app.test_client())
+    first = _admin_pair(admin_client, data["code"], name="Lobby")
+    second = _admin_pair(admin_client, data["code"], name="Lobby")
+    assert first.status_code == 302 and second.status_code == 302
+    assert second.headers["Location"] == first.headers["Location"]
+    page = admin_client.get(second.headers["Location"]).get_data(as_text=True)
+    assert "already paired as Lobby" in page
+    assert "not valid" not in page
+    with app.app_context():
+        assert Display.query.count() == 1
+
+
 def test_expired_code_generic_flash_via_admin_route(app, admin_client):
     data = _start(app.test_client())
     _expire(app, data["code"])

@@ -80,6 +80,10 @@ def pair():
             flash("Paired. The screen will start playing in a few seconds.", "success")
             return _detail(display)
         db.session.rollback()
+        already = pairing.recently_approved(form.code.data)
+        if already is not None:  # e.g. the form was submitted twice
+            flash(f"That code was already paired as {already.name}.", "info")
+            return _detail(already)
         flash("That code is not valid or has expired.", "danger")
     return render_template("displays/pair.html", form=form)
 
