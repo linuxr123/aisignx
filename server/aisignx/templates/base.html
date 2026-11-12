@@ -23,6 +23,7 @@
         <li class="nav-item"><a class="nav-link{% if ep == 'main.dashboard' %} active{% endif %}" href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
         <li class="nav-item"><a class="nav-link{% if ep.startswith('media.') %} active{% endif %}" href="{{ url_for('media.index') }}">Media</a></li>
         <li class="nav-item"><a class="nav-link{% if ep.startswith('playlists.') %} active{% endif %}" href="{{ url_for('playlists.index') }}">Playlists</a></li>
+        <li class="nav-item"><a class="nav-link{% if ep.startswith('displays.') %} active{% endif %}" href="{{ url_for('displays.index') }}">Displays</a></li>
         {% if current_user.is_admin %}
         <li class="nav-item"><a class="nav-link" href="{{ url_for('users.index') }}">Users</a></li>
         <li class="nav-item"><a class="nav-link" href="{{ url_for('settings.index') }}">Settings</a></li>

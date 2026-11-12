@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "displays/_badge.html" import badge %}
+{% block title %}{{ display.name }}{% endblock %}
+{% macro when(dt) %}{% if dt %}{{ dt.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}&mdash;{% endif %}{% endmacro %}
+{% macro text(value) %}{% if value %}{{ value }}{% else %}&mdash;{% endif %}{% endmacro %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <h1 class="h3 mb-0">{{ display.name }} {{ badge(state, labels, display.id) }}</h1>
+  {% if current_user.can_edit %}
+  <div class="text-nowrap">
+    <a class="btn btn-outline-secondary" href="{{ url_for('displays.edit', display_id=display.id) }}">Edit</a>
+    <form class="d-inline" method="post" action="{{ url_for('displays.reload', display_id=display.id) }}">
+      {{ action_form.hidden_tag() }}<button class="btn btn-outline-secondary" type="submit">Reload</button>
+    </form>
+    {% if display.is_paired %}
+    <form class="d-inline" method="post" action="{{ url_for('displays.unpair', display_id=display.id) }}"
+          data-confirm="Unpair {{ display.name }}? The screen stops playing and shows a new pairing code.">
+      {{ action_form.hidden_tag() }}<button class="btn btn-outline-warning" type="submit">Unpair</button>
+    </form>
+    {% endif %}
+    <form class="d-inline" method="post" action="{{ url_for('displays.delete', display_id=display.id) }}"
+          data-confirm="Delete {{ display.name }}? The screen stops playing and shows a new pairing code.">
+      {{ action_form.hidden_tag() }}<button class="btn btn-outline-danger" type="submit">Delete</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% if not display.is_paired %}
+<div class="alert alert-warning">This display is not paired.{% if current_user.can_edit %} Open <code>{{ request.host_url }}player/</code> on the screen, then <a href="{{ url_for('displays.pair') }}">pair it</a> as {{ display.name }}.{% endif %}</div>
+{% endif %}
+<div class="card" style="max-width: 48rem"><div class="card-body">
+  <dl class="row mb-0">
+    <dt class="col-sm-4">Playlist</dt>
+    <dd class="col-sm-8">{% if display.playlist %}<a href="{{ url_for('playlists.detail', playlist_id=display.playlist.id) }}">{{ display.playlist.name }}</a>{% else %}&mdash;{% endif %}</dd>
+    <dt class="col-sm-4">Now showing</dt>
+    <dd class="col-sm-8">{{ text(current_item) }}</dd>
+    <dt class="col-sm-4">Content</dt>
+    <dd class="col-sm-8">{% if not manifest_version or not display.reported_version %}&mdash;{% elif display.reported_version == manifest_version %}Up to date{% else %}Updating{% endif %}</dd>
+    <dt class="col-sm-4">Live push</dt>
+    <dd class="col-sm-8">{{ "Connected" if live else "Not connected" }}</dd>
+    <dt class="col-sm-4">Last seen</dt>
+    <dd class="col-sm-8" data-display-seen="{{ display.id }}">{{ when(display.last_seen_at) }}</dd>
+    <dt class="col-sm-4">Paired</dt>
+    <dd class="col-sm-8">{{ when(display.paired_at) }}</dd>
+    <dt class="col-sm-4">IP address</dt>
+    <dd class="col-sm-8">{{ text(display.last_ip) }}</dd>
+    <dt class="col-sm-4">Player version</dt>
+    <dd class="col-sm-8">{{ text(display.player_version) }}</dd>
+    <dt class="col-sm-4">Screen size</dt>
+    <dd class="col-sm-8">{% if display.screen_width and display.screen_height %}{{ display.screen_width }} &times; {{ display.screen_height }}{% else %}&mdash;{% endif %}</dd>
+    <dt class="col-sm-4">Device</dt>
+    <dd class="col-sm-8">{{ text(display.device_info) }}</dd>
+    <dt class="col-sm-4">Client id</dt>
+    <dd class="col-sm-8">{% if display.client_id %}<code>{{ display.client_id[:8] }}</code>{% else %}&mdash;{% endif %}</dd>
+  </dl>
+</div></div>
+<a class="btn btn-link px-0 mt-3" href="{{ url_for('displays.index') }}">&larr; All displays</a>
+{% endblock %}

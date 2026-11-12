@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Pair a display{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Pair a display</h1>
+<div class="card" style="max-width: 36rem"><div class="card-body">
+  <p class="text-secondary">Open <code>{{ request.host_url }}player/</code> on the screen to see its code. Codes expire after 10 minutes.</p>
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {{ field(form.code, autofocus=true) }}
+    {{ field(form.pair_as) }}
+    <p class="form-text mt-n2">Pick an existing display to move it to new hardware. It keeps its name and playlist, and its old screen is unpaired.</p>
+    {{ field(form.name) }}
+    {{ field(form.playlist) }}
+    <p class="form-text mt-n2">Name and playlist are used for a new display only.</p>
+    <button class="btn btn-primary" type="submit">Pair</button>
+    <a class="btn btn-link" href="{{ url_for('displays.index') }}">Cancel</a>
+  </form>
+</div></div>
+{% endblock %}

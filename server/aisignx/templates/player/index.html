@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#000000">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>AiSignX Player</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='player/player.css', v=build) }}">
+</head>
+<body data-api="{{ request.script_root }}/api/player/v1" data-root="{{ request.script_root }}" data-build="{{ build }}">
+  <div id="stage"></div>
+  <div id="screen" class="screen screen-connecting" role="status" aria-live="polite">
+    <div class="screen-box">
+      <p class="screen-title">AiSignX</p>
+      <p class="screen-text">Starting the player&hellip;</p>
+    </div>
+  </div>
+  <noscript><p class="noscript">The AiSignX player needs JavaScript.</p></noscript>
+  <script src="{{ url_for('static', filename='player/net.js', v=build) }}"></script>
+  <script src="{{ url_for('static', filename='player/render.js', v=build) }}"></script>
+  <script src="{{ url_for('static', filename='player/player.js', v=build) }}"></script>
+</body>
+</html>

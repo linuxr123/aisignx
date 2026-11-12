@@ -1,0 +1,2 @@
+{# Status badge for a display state ("online", "offline", "never", "unpaired"). #}
+{% macro badge(state, labels, display_id) %}{% set label, cls = labels[state] %}<span class="badge {{ cls }}" data-display-badge="{{ display_id }}" data-state="{{ state }}">{{ label }}</span>{% endmacro %}

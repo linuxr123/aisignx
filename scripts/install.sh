@@ -145,5 +145,5 @@ if "$VENV/bin/python" -m flask --app wsgi check; then
 else
   printf '\n\033[33mAiSignX is installed, but some optional programs are missing (see above).\033[0m\n'
 fi
-echo "Start it with:  cd \"$SERVER\" && .venv/bin/flask --app wsgi run"
+echo "Start it with:  cd \"$SERVER\" && .venv/bin/flask --app wsgi serve"
 echo "Then open http://127.0.0.1:5000 to run the setup wizard."

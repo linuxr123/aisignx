@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Edit display{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Edit {{ display.name }}</h1>
+<div class="card" style="max-width: 36rem"><div class="card-body">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {{ field(form.name, autofocus=true) }}
+    {{ field(form.playlist) }}
+    <p class="form-text mt-n2">The screen switches to the new playlist within a few seconds.</p>
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-link" href="{{ url_for('displays.detail', display_id=display.id) }}">Cancel</a>
+  </form>
+</div></div>
+{% endblock %}

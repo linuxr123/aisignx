@@ -133,5 +133,5 @@ if ($checkOk) {
 } else {
     Write-Host 'AiSignX is installed, but some optional programs are missing (see above).' -ForegroundColor Yellow
 }
-Write-Host "Start it with:  cd `"$Server`"; .venv\Scripts\flask --app wsgi run"
+Write-Host "Start it with:  cd `"$Server`"; .venv\Scripts\flask --app wsgi serve"
 Write-Host 'Then open http://127.0.0.1:5000 to run the setup wizard.'

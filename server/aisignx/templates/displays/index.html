@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "displays/_badge.html" import badge %}
+{% block title %}Displays{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">Displays</h1>
+  {% if current_user.can_edit %}<a class="btn btn-primary" href="{{ url_for('displays.pair') }}">Pair a display</a>{% endif %}
+</div>
+{% if displays %}
+<div class="card"><div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Status</th><th>Name</th><th>Playlist</th><th>Last seen</th><th>IP</th><th>Player</th><th></th></tr></thead>
+    <tbody data-display-status-url="{{ url_for('displays.status') }}">
+    {% for d in displays %}
+      <tr>
+        <td class="text-nowrap">{{ badge(states[d.id], labels, d.id) }}
+          <span class="text-success{% if not live[d.id] %} d-none{% endif %}" data-display-live="{{ d.id }}" title="Live push connected">&#9679;</span></td>
+        <td><a href="{{ url_for('displays.detail', display_id=d.id) }}" class="fw-semibold">{{ d.name }}</a></td>
+        <td>{% if d.playlist %}<a href="{{ url_for('playlists.detail', playlist_id=d.playlist.id) }}">{{ d.playlist.name }}</a>{% else %}&mdash;{% endif %}</td>
+        <td class="small text-secondary text-nowrap" data-display-seen="{{ d.id }}">{% if d.last_seen_at %}{{ d.last_seen_at.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}&mdash;{% endif %}</td>
+        <td class="small">{{ d.last_ip or '' }}</td>
+        <td class="small">{{ d.player_version or '' }}</td>
+        <td class="text-end text-nowrap">
+          {% if current_user.can_edit %}
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('displays.edit', display_id=d.id) }}">Edit</a>
+          <form class="d-inline" method="post" action="{{ url_for('displays.reload', display_id=d.id) }}">
+            {{ action_form.hidden_tag() }}<input type="hidden" name="next" value="index">
+            <button class="btn btn-sm btn-outline-secondary" type="submit">Reload</button>
+          </form>
+          {% if d.is_paired %}
+          <form class="d-inline" method="post" action="{{ url_for('displays.unpair', display_id=d.id) }}"
+                data-confirm="Unpair {{ d.name }}? The screen stops playing and shows a new pairing code.">
+            {{ action_form.hidden_tag() }}<input type="hidden" name="next" value="index">
+            <button class="btn btn-sm btn-outline-warning" type="submit">Unpair</button>
+          </form>
+          {% endif %}
+          <form class="d-inline" method="post" action="{{ url_for('displays.delete', display_id=d.id) }}"
+                data-confirm="Delete {{ d.name }}? The screen stops playing and shows a new pairing code.">
+            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% else %}
+<div class="text-center text-secondary py-5">
+  No displays yet. Open <code>{{ request.host_url }}player/</code> on a screen{% if current_user.can_edit %}, then click Pair a display{% endif %}.
+</div>
+{% endif %}
+{% endblock %}

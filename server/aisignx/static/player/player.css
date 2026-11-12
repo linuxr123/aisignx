@@ -1,0 +1,175 @@
+/* AiSignX browser player. Black everywhere, no cursor, no scrollbars. */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+[hidden] { display: none !important; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  cursor: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+body * { cursor: none; }
+::-webkit-scrollbar { display: none; }
+
+#stage {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+/* ---- Slides: pending (hidden, below) -> active (z 2) -> exit (z 1). */
+.slide {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  overflow: hidden;
+  background: #000;
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.slide.active { opacity: 1; z-index: 2; pointer-events: auto; }
+.slide.exit { z-index: 1; }
+/* Applied for one frame so a transition's start state is set without animating. */
+.slide.prep { transition: none !important; }
+
+.media {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  border: 0;
+  background: #000;
+  display: block;
+}
+.fit-fit { object-fit: contain; }
+.fit-fill { object-fit: cover; }
+.fit-stretch { object-fit: fill; }
+iframe.media { background: #fff; }
+
+video::-webkit-media-controls,
+video::-webkit-media-controls-enclosure,
+video::-webkit-media-controls-panel,
+video::-webkit-media-controls-start-playback-button,
+video::-webkit-media-controls-overlay-play-button { display: none !important; -webkit-appearance: none; }
+
+/* ---- Transitions (ported from v2). Each defines the start state,
+   .active (end state of the incoming slide) and .exit (outgoing slide). */
+.slide.t-cut, .slide.t-cut.exit { transition: none; }
+
+/* fade: the old slide fades to black, then the new one fades in. */
+.slide.t-fade { transition: opacity .4s ease-in-out; }
+.slide.t-fade.active { transition-delay: .4s; }
+.slide.t-fade.exit { opacity: 0; }
+
+/* crossfade: the new slide fades in over the old one. */
+.slide.t-crossfade { transition: opacity .8s ease-in-out; }
+.slide.t-crossfade.exit { opacity: 1; transition: none; }
+
+/* wipe: the new slide is revealed left to right over the old one. */
+.slide.t-wipe {
+  opacity: 1;
+  -webkit-clip-path: inset(0 100% 0 0);
+  clip-path: inset(0 100% 0 0);
+  transition: -webkit-clip-path .8s ease-in-out, clip-path .8s ease-in-out;
+}
+.slide.t-wipe.active { -webkit-clip-path: inset(0 0 0 0); clip-path: inset(0 0 0 0); }
+.slide.t-wipe.exit { opacity: 1; -webkit-clip-path: none; clip-path: none; transition: none; }
+
+/* slide-*: both layers move together (push). */
+.slide.t-slide-left, .slide.t-slide-right, .slide.t-slide-up, .slide.t-slide-down {
+  opacity: 1;
+  transition: transform .7s ease-in-out;
+}
+.slide.t-slide-left { transform: translate3d(100%, 0, 0); }
+.slide.t-slide-right { transform: translate3d(-100%, 0, 0); }
+.slide.t-slide-up { transform: translate3d(0, 100%, 0); }
+.slide.t-slide-down { transform: translate3d(0, -100%, 0); }
+.slide.t-slide-left.active, .slide.t-slide-right.active,
+.slide.t-slide-up.active, .slide.t-slide-down.active { transform: translate3d(0, 0, 0); }
+.slide.t-slide-left.exit { transform: translate3d(-100%, 0, 0); }
+.slide.t-slide-right.exit { transform: translate3d(100%, 0, 0); }
+.slide.t-slide-up.exit { transform: translate3d(0, -100%, 0); }
+.slide.t-slide-down.exit { transform: translate3d(0, 100%, 0); }
+
+/* zoom: the new slide grows in from the centre while the old one blows out. */
+.slide.t-zoom { transform: scale(.4); transition: transform .6s ease-out, opacity .6s ease-out; }
+.slide.t-zoom.active { transform: scale(1); opacity: 1; }
+.slide.t-zoom.exit { transform: scale(1.4); opacity: 0; }
+
+/* ---- Message screens: connecting, setup, pairing, paired, no content. */
+.screen {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4vmin;
+  background: #000;
+  text-align: center;
+}
+.screen-box { max-width: 90vw; }
+.screen-title {
+  font-size: clamp(1.5rem, 4vmin, 3.5rem);
+  font-weight: 600;
+  margin-bottom: 2vmin;
+}
+.screen-text {
+  font-size: clamp(1rem, 2.6vmin, 2.2rem);
+  color: #c8c8c8;
+  line-height: 1.4;
+  margin-top: 1.5vmin;
+}
+.screen-sub {
+  font-size: clamp(.9rem, 2vmin, 1.6rem);
+  color: #8a8a8a;
+  margin-top: 3vmin;
+}
+.screen-connecting .screen-title::after {
+  content: "";
+  display: inline-block;
+  width: .6em;
+  height: .6em;
+  margin-left: .5em;
+  border: .12em solid #555;
+  border-top-color: #fff;
+  border-radius: 50%;
+  vertical-align: middle;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.pair-code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, "DejaVu Sans Mono", "Courier New", monospace;
+  font-size: clamp(3rem, 16vmin, 14rem);
+  font-weight: 700;
+  letter-spacing: .08em;
+  line-height: 1.1;
+  margin: 2vmin 0 3vmin;
+  white-space: nowrap;
+}
+.pair-url { color: #fff; font-weight: 600; word-break: break-all; }
+.screen-paired .screen-text { font-size: clamp(1.4rem, 4vmin, 3rem); color: #fff; }
+
+/* ---- ?debug=1 overlay. */
+.debug {
+  position: fixed;
+  left: 1vmin;
+  bottom: 1vmin;
+  z-index: 20;
+  max-width: 96vw;
+  padding: .6em .8em;
+  background: rgba(0, 0, 0, .75);
+  color: #9f9;
+  font: 12px/1.35 ui-monospace, Consolas, "Courier New", monospace;
+  white-space: pre-wrap;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.noscript { padding: 2rem; color: #fff; text-align: center; }

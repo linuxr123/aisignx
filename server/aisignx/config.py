@@ -10,6 +10,10 @@ Secrets never live in this file. Supported variables:
     AISIGNX_FFMPEG / AISIGNX_FFPROBE  paths to ffmpeg tools (default: found on PATH)
     AISIGNX_BROWSER       Edge/Chrome/Chromium used for web page previews (default: auto-detect)
     AISIGNX_WEBSHOT_TIMEOUT  seconds allowed per web page screenshot (default: 45)
+    AISIGNX_MAX_STREAMS   most open live-update streams from screens (default: 50);
+                          `flask --app wsgi serve` sizes its threads from this
+    AISIGNX_PROXY_HOPS    number of reverse proxies in front of the app whose
+                          X-Forwarded-* headers are trusted (default: 0 = none)
 """
 import os
 import secrets
@@ -58,4 +62,15 @@ def build_config(instance_path: str) -> dict:
         "REMEMBER_COOKIE_HTTPONLY": True,
         "REMEMBER_COOKIE_SECURE": secure,
         "WTF_CSRF_TIME_LIMIT": None,
+        # Screens and the player API.
+        "PLAYER_HEARTBEAT_SECONDS": 30,
+        "PLAYER_OFFLINE_AFTER_SECONDS": 90,
+        "PLAYER_SSE_KEEPALIVE_SECONDS": 20,
+        "PLAYER_SSE_MAX_AGE_SECONDS": 1800,
+        "PLAYER_MAX_STREAMS": int(os.environ.get("AISIGNX_MAX_STREAMS") or 50),
+        "PAIRING_CODE_TTL_SECONDS": 600,
+        "PAIRING_CLAIM_SECONDS": 120,
+        "PAIRING_MAX_PENDING": 50,
+        "PAIRING_MAX_PENDING_PER_IP": 10,
+        "PROXY_HOPS": int(os.environ.get("AISIGNX_PROXY_HOPS") or 0),
     }

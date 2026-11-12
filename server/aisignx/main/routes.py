@@ -1,6 +1,7 @@
 from flask import redirect, render_template, url_for
 from flask_login import current_user, login_required
 
+from ..displays.service import dashboard_counts
 from ..models import Media, Playlist, User
 from ..system import run_checks
 from . import bp
@@ -16,7 +17,10 @@ def index():
 @bp.route("/dashboard")
 @login_required
 def dashboard():
+    displays, online = dashboard_counts()
     counts = {
+        "Displays": displays,
+        "Online": online,
         "Media": Media.query.count(),
         "Playlists": Playlist.query.count(),
         "Users": User.query.count(),

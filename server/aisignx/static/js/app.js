@@ -40,6 +40,40 @@
     window.setTimeout(poll, 3000);
   }
 
+  // Display list: refresh status badges, last-seen times and live dots every 15 s.
+  const statusBody = document.querySelector("[data-display-status-url]");
+  if (statusBody) {
+    const BADGES = {
+      online: ["Online", "bg-success"],
+      offline: ["Offline", "bg-secondary"],
+      never: ["Never connected", "bg-light text-dark"],
+      unpaired: ["Unpaired", "bg-warning text-dark"],
+    };
+    const formatSeen = (iso) => (iso ? iso.slice(0, 16).replace("T", " ") + " UTC" : "—");
+    const refresh = async () => {
+      if (document.hidden) return;
+      try {
+        const response = await fetch(statusBody.dataset.displayStatusUrl, { headers: { Accept: "application/json" } });
+        if (!response.ok) return;
+        const data = await response.json();
+        data.displays.forEach((d) => {
+          const badge = document.querySelector(`[data-display-badge="${d.id}"]`);
+          const [label, cls] = BADGES[d.state] || BADGES.offline;
+          if (badge && badge.dataset.state !== d.state) {
+            badge.className = "badge " + cls;
+            badge.textContent = label;
+            badge.dataset.state = d.state;
+          }
+          const seen = document.querySelector(`[data-display-seen="${d.id}"]`);
+          if (seen) seen.textContent = formatSeen(d.last_seen);
+          const live = document.querySelector(`[data-display-live="${d.id}"]`);
+          if (live) live.classList.toggle("d-none", !d.live);
+        });
+      } catch (err) { /* try again next time */ }
+    };
+    window.setInterval(refresh, 15000);
+  }
+
   // Drag-and-drop reordering for playlist items.
   const list = document.getElementById("playlistItems");
   if (list && list.dataset.reorderUrl) {
