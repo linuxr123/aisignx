@@ -24,10 +24,13 @@
         <li class="nav-item"><a class="nav-link{% if ep.startswith('media.') %} active{% endif %}" href="{{ url_for('media.index') }}">Media</a></li>
         <li class="nav-item"><a class="nav-link{% if ep.startswith('playlists.') %} active{% endif %}" href="{{ url_for('playlists.index') }}">Playlists</a></li>
         <li class="nav-item"><a class="nav-link{% if ep.startswith('displays.') %} active{% endif %}" href="{{ url_for('displays.index') }}">Displays</a></li>
+        <li class="nav-item"><a class="nav-link{% if ep.startswith('schedules.') %} active{% endif %}" href="{{ url_for('schedules.index') }}">Schedules</a></li>
+        <li class="nav-item"><a class="nav-link{% if ep.startswith('groups.') %} active{% endif %}" href="{{ url_for('groups.index') }}">Groups</a></li>
         {% if current_user.is_admin %}
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('users.index') }}">Users</a></li>
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('settings.index') }}">Settings</a></li>
+        <li class="nav-item"><a class="nav-link{% if ep.startswith('users.') %} active{% endif %}" href="{{ url_for('users.index') }}">Users</a></li>
+        <li class="nav-item"><a class="nav-link{% if ep.startswith('settings.') %} active{% endif %}" href="{{ url_for('settings.index') }}">Settings</a></li>
         {% endif %}
+        <li class="nav-item"><a class="nav-link text-danger{% if ep.startswith('emergency.') %} active fw-semibold{% endif %}" href="{{ url_for('emergency.index') }}">Emergency</a></li>
       </ul>
       <ul class="navbar-nav">
         <li class="nav-item dropdown">
@@ -49,6 +52,14 @@
     </div>
   </div>
 </nav>
+{% if live_emergency_count|default(0) %}
+<div class="bg-danger text-white py-2" role="alert" data-emergency-banner>
+  <div class="container d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <strong>Emergency active ({{ live_emergency_count }})</strong>
+    <a class="btn btn-sm btn-light" href="{{ url_for('emergency.index') }}">Manage</a>
+  </div>
+</div>
+{% endif %}
 {% endif %}
 
 <main class="container py-4">

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Emergency{% endblock %}
+{% block content %}
+{% set level_badge = {"info": "text-bg-primary", "warning": "text-bg-warning", "critical": "text-bg-danger"} %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">Emergency</h1>
+  {% if current_user.can_edit and live|length > 1 %}
+  <form method="post" action="{{ url_for('emergency.clear_all') }}"
+        data-confirm="Clear all {{ live|length }} live emergency messages? Screens go back to their normal content.">
+    {{ action_form.hidden_tag() }}<button class="btn btn-outline-danger" type="submit">Clear all</button>
+  </form>
+  {% endif %}
+</div>
+
+<h2 class="h5 mb-3">Live now</h2>
+{% if live %}
+<div class="row g-3 mb-4">
+  {% for m in live %}
+  {% set bg, fg = m.colors %}
+  <div class="col-md-6">
+    <div class="card h-100 border-0" style="background-color: {{ bg }}; color: {{ fg }}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div>
+            <span class="badge bg-light text-dark text-uppercase">{{ m.level }}</span>
+            <h3 class="h5 mt-2 mb-1">{{ m.title }}</h3>
+          </div>
+          {% if current_user.can_edit %}
+          <form method="post" action="{{ url_for('emergency.clear', message_id=m.id) }}"
+                data-confirm="Clear {{ m.title }}? Screens go back to their normal content.">
+            {{ action_form.hidden_tag() }}<button class="btn btn-light btn-sm" type="submit">Clear</button>
+          </form>
+          {% endif %}
+        </div>
+        {% if m.message %}<p class="mb-2" style="white-space: pre-wrap">{{ m.message }}</p>{% endif %}
+        <div class="small">
+          {{ m.target_label }}
+          {% if m.playlist %} · playlist {{ m.playlist.name }}{% if not m.show_text %} (no text){% endif %}{% endif %}
+          · since {{ m.created_at|localtime }}{% if m.created_by %} by {{ m.created_by.username }}{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="text-secondary mb-4">No emergency message is live. Screens show their normal content.</p>
+{% endif %}
+
+{% if form %}
+<h2 class="h5 mb-3">Send a message</h2>
+<div class="card mb-4" style="max-width: 40rem"><div class="card-body">
+  <form method="post" action="{{ url_for('emergency.send') }}" novalidate
+        data-confirm="Send this emergency message now? It appears on the chosen screens immediately.">
+    {{ form.hidden_tag() }}
+    {{ field(form.title) }}
+    {{ field(form.message) }}
+    <div class="row g-3">
+      <div class="col-sm-5">{{ field(form.level) }}</div>
+      <div class="col-sm-7">{{ field(form.target) }}</div>
+    </div>
+    {{ field(form.playlist) }}
+    <p class="form-text mt-n2">A playlist plays instead of normal content. Without one the text fills the screen.</p>
+    {{ field(form.show_text) }}
+    <button class="btn btn-danger" type="submit">Send emergency message</button>
+  </form>
+</div></div>
+{% endif %}
+
+<h2 class="h5 mb-3">History</h2>
+{% if history %}
+<div class="card"><div class="table-responsive">
+  <table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Title</th><th>Level</th><th>Shown on</th><th>Sent</th><th>Cleared</th>{% if form %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for m in history %}
+      <tr>
+        <td class="fw-semibold">{{ m.title }}</td>
+        <td><span class="badge {{ level_badge.get(m.level, 'text-bg-secondary') }}">{{ m.level }}</span></td>
+        <td class="small">{{ m.target_label }}</td>
+        <td class="small text-nowrap">{{ m.created_at|localtime }}{% if m.created_by %}<div class="text-secondary">{{ m.created_by.username }}</div>{% endif %}</td>
+        <td class="small text-nowrap">
+          {% if m.live %}<span class="badge text-bg-danger">Live</span>
+          {% else %}{{ m.cleared_at|localtime }}
+            <div class="text-secondary">
+              {% if m.clear_reason == "target_deleted" %}target deleted{% elif m.cleared_by %}{{ m.cleared_by.username }}{% else %}{{ m.clear_reason or "" }}{% endif %}
+            </div>
+          {% endif %}
+        </td>
+        {% if form %}<td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('emergency.index') ~ '?from=' ~ m.id }}">Send again</a></td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% else %}
+<p class="text-secondary">No emergency messages have been sent yet.</p>
+{% endif %}
+{% endblock %}

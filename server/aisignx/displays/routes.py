@@ -1,11 +1,14 @@
 from flask import abort, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
+from sqlalchemy import func
 
 from ..auth.decorators import editor_required
 from ..extensions import db
-from ..models import Display
+from ..emergency.service import clear_for_target
+from ..models import Display, Schedule
 from ..player.broker import get_broker
 from ..player.manifest import build_manifest
+from ..schedules.resolve import load_context, resolve, split_by_day, week_segments
 from . import bp, pairing, service
 from .forms import ActionForm, DisplayForm, PairForm
 
@@ -28,6 +31,13 @@ def _close_streams(display_id: int) -> None:
         broker.close(display_id)
 
 
+def _schedule_counts() -> dict[int, int]:
+    """{display id: schedules that target exactly that display} (removed with it)."""
+    rows = (db.session.query(Schedule.display_id, func.count(Schedule.id))
+            .filter(Schedule.display_id.isnot(None)).group_by(Schedule.display_id).all())
+    return dict(rows)
+
+
 def _detail(display: Display):
     return redirect(url_for("displays.detail", display_id=display.id))
 
@@ -36,10 +46,12 @@ def _detail(display: Display):
 @login_required
 def index():
     displays = Display.query.order_by(Display.name).all()
+    ctx = load_context()
     return render_template("displays/index.html", displays=displays,
                            states=service.states(displays), labels=service.STATE_LABELS,
                            live={d.id: service.is_live(d.id) for d in displays},
-                           action_form=ActionForm())
+                           now_playing_map={d.id: resolve(d, ctx.now, ctx) for d in displays},
+                           schedule_counts=_schedule_counts(), action_form=ActionForm())
 
 
 @bp.route("/status.json")
@@ -76,11 +88,15 @@ def pair():
 @login_required
 def detail(display_id: int):
     display = _get_display_or_404(display_id)
-    version = build_manifest(display)["version"] if display.is_paired else None
+    ctx = load_context()
+    version = build_manifest(display, ctx.now, ctx)["version"] if display.is_paired else None
+    week = split_by_day(week_segments(display, ctx.now, 7, ctx), ctx.tz)
     return render_template("displays/detail.html", display=display,
                            state=service.states([display])[display.id],
                            labels=service.STATE_LABELS, live=service.is_live(display.id),
-                           manifest_version=version,
+                           manifest_version=version, res=resolve(display, ctx.now, ctx),
+                           week=week, tz_name=ctx.tz.key,
+                           schedule_count=_schedule_counts().get(display.id, 0),
                            current_item=service.current_item_name(display),
                            action_form=ActionForm())
 
@@ -89,12 +105,15 @@ def detail(display_id: int):
 @editor_required
 def edit(display_id: int):
     display = _get_display_or_404(display_id)
-    form = DisplayForm(obj=display)
+    form = DisplayForm()  # not obj=: "playlist"/"group" would read the relationships
     if request.method == "GET":
+        form.name.data = display.name
         form.playlist.data = display.playlist_id or 0
+        form.group.data = display.group_id or 0
     if form.validate_on_submit():
         display.name = form.name.data.strip()
         display.playlist_id = form.playlist.data or None
+        display.group_id = form.group.data or None
         db.session.commit()
         flash("Display saved.", "success")
         return _detail(display)
@@ -135,7 +154,8 @@ def delete(display_id: int):
     _require_action_form()
     display = _get_display_or_404(display_id)
     name, ident = display.name, display.id
-    db.session.delete(display)
+    clear_for_target(display=display)  # keeps the history rows (clear_reason target_deleted)
+    db.session.delete(display)  # the DB cascade removes its display-scoped schedules
     db.session.commit()
     _close_streams(ident)
     current_app.logger.info("display %s (%s) deleted by user %s", ident, name, current_user.id)

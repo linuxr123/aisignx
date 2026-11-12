@@ -8,7 +8,9 @@
     {{ form.hidden_tag() }}
     {{ field(form.name, autofocus=true) }}
     {{ field(form.playlist) }}
-    <p class="form-text mt-n2">The screen switches to the new playlist within a few seconds.</p>
+    <p class="form-text mt-n2">{{ form.playlist.description }} The screen switches within a few seconds.</p>
+    {{ field(form.group) }}
+    <p class="form-text mt-n2">Schedules and emergency messages can target a whole group.</p>
     <button class="btn btn-primary" type="submit">Save</button>
     <a class="btn btn-link" href="{{ url_for('displays.detail', display_id=display.id) }}">Cancel</a>
   </form>

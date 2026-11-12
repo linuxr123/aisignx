@@ -153,7 +153,9 @@ Authenticated. Returns what the screen should play.
   {"id": 43, "media_id": 12, "type": "web", "url": "https://example.com/menu",
    "mime": null, "sha256": null, "size": null, "width": null, "height": null,
    "duration_ms": 20000, "media_duration_ms": null, "transition": "cut", "fit": "fit", "muted": true}
- ]}
+ ],
+ "source": {"type": "schedule", "id": 7, "name": "Mornings"},
+ "emergency": null}
 ```
 
 | Field | Meaning |
@@ -161,7 +163,7 @@ Authenticated. Returns what the screen should play.
 | `v` | Schema version of the manifest (1). |
 | `server_time_ms` | Server clock (Unix ms) when the manifest was built. Use it to estimate clock drift. |
 | `heartbeat_s` | How often to send a heartbeat. |
-| `playlist` | `null` when nothing is assigned. Then `items` is `[]`: show a "no content" screen with the display name. |
+| `playlist` | `null` when nothing plays (`source.type` is `none`). Then `items` is `[]`: show a "no content" screen with the display name. |
 | `items` | Play in this order, then loop. |
 | `id` | Playlist item ID (report it as `current_item_id`). |
 | `type` | `image`, `video` or `web`. Skip types you don't support. |
@@ -192,7 +194,54 @@ fails, show "no content" and fetch the manifest again after 30 seconds.
 `slide-up`, `slide-down`, `zoom` and `random`. For `random`, pick one of the eight that are not
 `cut`, per slide. A client may show any transition it doesn't support as `fade` or `cut`.
 
-**Coming in Phase 4:** keys such as `emergency` and `source`. Clients written now ignore them.
+### Source and emergency
+
+The server decides what plays; the client never evaluates schedules. A schedule starting or
+ending, an emergency being sent or cleared, and a change of the default playlist all change
+`version`, so the normal `manifest` event, heartbeat check and `If-None-Match` flow pick them up.
+Clients need no clock or schedule logic.
+
+**`source`** says why this playlist plays. It is for display and logging only.
+
+```json
+"source": {"type": "schedule", "id": 7, "name": "Mornings"}
+```
+
+| `type` | `id`, `name` | Meaning |
+|---|---|---|
+| `emergency` | emergency ID and title | An emergency message with its own playlist is live. |
+| `schedule` | schedule ID and name | A schedule is active. |
+| `default` | `null`, `null` | No schedule matches; the display's default playlist plays. |
+| `none` | `null`, `null` | Nothing to play; `playlist` is `null` and `items` is `[]`. |
+
+**`emergency`** is `null` or an object:
+
+```json
+"emergency": {"id": 3, "title": "Fire drill", "message": "Leave by the nearest exit.",
+  "level": "critical", "background": "#b71c1c", "foreground": "#ffffff",
+  "layout": "fullscreen", "since": "2026-11-11T10:00:00Z"}
+```
+
+| Field | Meaning |
+|---|---|
+| `title`, `message` | Plain text. Show it as text, never as HTML. `message` may be empty and may contain line breaks. |
+| `level` | `info`, `warning` or `critical`. |
+| `background`, `foreground` | Colours to use: info `#1565c0`, warning `#e65100`, critical `#b71c1c`, all with white text. |
+| `layout` | `fullscreen`: cover the whole screen with the text and mute any video. `banner`: keep playing `items` (the emergency playlist) and show the text in a band at the bottom. `none`: play `items` and show no text. |
+| `since` | When the message was sent (UTC, ISO 8601). |
+
+`layout` is `fullscreen` whenever the emergency has no playable playlist, so the text is always
+shown in that case. When several emergencies are live, the server picks one per screen: the
+highest level, then the newest.
+
+Rules for the overlay:
+
+- `emergency` in a manifest you fetched successfully is authoritative: an object means show it
+  (replacing any other overlay), `null` means hide it.
+- If the key is missing (an older server), leave the overlay as it is.
+- Never hide the overlay because of a network error, a failed fetch, a `304`, an SSE error,
+  `bye` or a reconnect. A screen that is offline keeps showing the last emergency until it
+  reaches the server again. Only going back to pairing clears it.
 
 ## Media
 
@@ -254,7 +303,12 @@ Authenticated. A Server-Sent Events stream (`text/event-stream`). Every `data:` 
 | `revoked` | `{}` | The token was revoked. Fetch the manifest; the 401 sends you back to pairing. |
 | `bye` | `{"reason": "max_age"}` or `{"reason": "replaced"}` | The stream is ending. Reconnect after a random 0-3 seconds. |
 | `ka` | `{}` | Keep-alive. Only resets your silence watchdog. |
-| `emergency`, `emergency_clear` | | Reserved for Phase 4. An emergency message stays on screen until an explicit `emergency_clear`, even if the stream drops. |
+| `emergency` | The same object as `manifest.emergency` | Show it right away, replacing any current overlay, then fetch the manifest. Also sent right after `hello` on every connect while an emergency applies to this screen. |
+| `emergency_clear` | `{"id": 3}` | Hide the overlay only if it shows emergency `id`, then always fetch the manifest. If another emergency is still live, an `emergency` event for it is sent instead. |
+
+An emergency overlay is never cleared by a dropped stream, `bye`, a reconnect or a failed request;
+only `emergency_clear`, a manifest with `"emergency": null`, or going back to pairing clears it.
+Emergency events are never dropped when a screen's event queue is full.
 
 Live push reaches only screens connected to the same server process. That is why the heartbeat
 check above is required, not optional.

@@ -18,9 +18,11 @@
       <p class="screen-text">Starting the player&hellip;</p>
     </div>
   </div>
+  <div id="emergency" hidden role="alert" aria-live="assertive"><div class="em-title"></div><div class="em-msg"></div></div>
   <noscript><p class="noscript">The AiSignX player needs JavaScript.</p></noscript>
   <script src="{{ url_for('static', filename='player/net.js', v=build) }}"></script>
   <script src="{{ url_for('static', filename='player/render.js', v=build) }}"></script>
+  <script src="{{ url_for('static', filename='player/emergency.js', v=build) }}"></script>
   <script src="{{ url_for('static', filename='player/player.js', v=build) }}"></script>
 </body>
 </html>

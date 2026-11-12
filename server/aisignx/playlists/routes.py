@@ -3,7 +3,7 @@ from flask_login import login_required
 
 from ..auth.decorators import editor_required
 from ..extensions import db
-from ..models import Media, Playlist, PlaylistItem
+from ..models import EmergencyMessage, Media, Playlist, PlaylistItem, Schedule
 from . import bp, service
 from .forms import ActionForm, ItemForm, PlaylistForm
 
@@ -25,6 +25,28 @@ def _get_item_or_404(playlist: Playlist, item_id: int) -> PlaylistItem:
 def _require_action_form() -> None:
     if not ActionForm().validate_on_submit():
         abort(400)
+
+
+def _names(rows, attr: str, limit: int = 5) -> str:
+    names = [getattr(r, attr) for r in rows[:limit]]
+    more = len(rows) - limit
+    return ", ".join(names) + (f" and {more} more" if more > 0 else "")
+
+
+def _delete_blocker(playlist: Playlist) -> str | None:
+    """Why the playlist can't be deleted (schedules or a live emergency use it), or None."""
+    schedules = (Schedule.query.filter_by(playlist_id=playlist.id)
+                 .order_by(Schedule.name).all())
+    if schedules:
+        return (f"Can't delete {playlist.name}: it is used by schedule(s) "
+                f"{_names(schedules, 'name')}. Change or delete those schedules first.")
+    live = (EmergencyMessage.query.filter(EmergencyMessage.playlist_id == playlist.id,
+                                          EmergencyMessage.cleared_at.is_(None))
+            .order_by(EmergencyMessage.created_at).all())
+    if live:
+        return (f"Can't delete {playlist.name}: live emergency message(s) "
+                f"{_names(live, 'title')} use it. Clear them first.")
+    return None
 
 
 def _back(playlist: Playlist):
@@ -81,6 +103,10 @@ def edit(playlist_id: int):
 def delete(playlist_id: int):
     _require_action_form()
     playlist = _get_playlist_or_404(playlist_id)
+    blocker = _delete_blocker(playlist)
+    if blocker:
+        flash(blocker, "danger")
+        return _back(playlist)
     db.session.delete(playlist)
     db.session.commit()
     flash(f"Deleted playlist {playlist.name}.", "success")

@@ -156,6 +156,34 @@ video::-webkit-media-controls-overlay-play-button { display: none !important; -w
 .pair-url { color: #fff; font-weight: 600; word-break: break-all; }
 .screen-paired .screen-text { font-size: clamp(1.4rem, 4vmin, 3rem); color: #fff; }
 
+/* ---- Emergency overlay (emergency.js): above the stage and screens (10), below debug (20).
+   Colours are set per message via CSSOM; these are the fallbacks. */
+#emergency {
+  position: fixed;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: #b71c1c;
+  color: #fff;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+.em-title { font-weight: 700; line-height: 1.15; }
+.em-msg { white-space: pre-wrap; line-height: 1.35; }
+#emergency.layout-fullscreen { top: 0; right: 0; bottom: 0; left: 0; padding: 6vmin; }
+#emergency.layout-fullscreen .em-title { font-size: 8vh; }
+#emergency.layout-fullscreen .em-msg { font-size: 4.5vh; margin-top: 3vh; max-width: 90vw; }
+#emergency.layout-banner { left: 0; right: 0; bottom: 0; max-height: 25vh; padding: 2vh 4vw; }
+#emergency.layout-banner .em-title { font-size: 4vh; }
+#emergency.layout-banner .em-msg { font-size: 3vh; margin-top: 1vh; }
+#emergency.level-critical { border: .8vmin solid rgba(255, 255, 255, .9); animation: em-pulse 1.2s ease-in-out infinite; }
+@keyframes em-pulse { 50% { border-color: rgba(255, 255, 255, .15); } }
+@media (prefers-reduced-motion: reduce) { #emergency.level-critical { animation: none; } }
+
 /* ---- ?debug=1 overlay. */
 .debug {
   position: fixed;

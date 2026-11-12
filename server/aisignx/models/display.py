@@ -24,9 +24,13 @@ class Display(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    # Phase 3 content source. Phase 4 adds schedules and groups on top.
+    # Default playlist: plays when no schedule matches.
     playlist_id = db.Column(db.Integer, db.ForeignKey("playlists.id", ondelete="SET NULL"),
                             nullable=True, index=True)
+    group_id = db.Column(db.Integer,
+                         db.ForeignKey("display_groups.id", ondelete="SET NULL",
+                                       name="fk_displays_group_id_display_groups"),
+                         nullable=True, index=True)
 
     # sha256 hex of the raw display token. NULL means unpaired or revoked.
     token_hash = db.Column(db.String(64), nullable=True, unique=True, index=True)
@@ -46,6 +50,7 @@ class Display(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
 
     playlist = db.relationship("Playlist")
+    group = db.relationship("DisplayGroup", back_populates="displays")
 
     @property
     def is_paired(self) -> bool:

@@ -20,6 +20,7 @@ def app(tmp_path, monkeypatch):
         "UPLOAD_FOLDER": str(tmp_path / "uploads"),
         "THUMBNAILS_ASYNC": False,  # run thumbnail jobs inline so tests are deterministic
         "BROWSER_PATH": "aisignx-test-no-browser",  # no real browser/network unless a test opts in
+        "PLAYER_SCHEDULE_TICKER": False,  # tests drive ticker.tick() directly
     })
     with app.app_context():
         upgrade()  # build the schema through Alembic, exactly like production
@@ -116,6 +117,7 @@ def make_csrf_app(tmp_path, monkeypatch, **overrides):
         "UPLOAD_FOLDER": str(tmp_path / "uploads"),
         "THUMBNAILS_ASYNC": False,
         "BROWSER_PATH": "aisignx-test-no-browser",
+        "PLAYER_SCHEDULE_TICKER": False,
     }
     config.update(overrides)
     app = create_app(config)

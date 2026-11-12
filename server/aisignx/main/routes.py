@@ -2,7 +2,8 @@ from flask import redirect, render_template, url_for
 from flask_login import current_user, login_required
 
 from ..displays.service import dashboard_counts
-from ..models import Media, Playlist, User
+from ..emergency.service import live as live_emergencies
+from ..models import DisplayGroup, Media, Playlist, Schedule, User
 from ..system import run_checks
 from . import bp
 
@@ -23,10 +24,13 @@ def dashboard():
         "Online": online,
         "Media": Media.query.count(),
         "Playlists": Playlist.query.count(),
+        "Enabled schedules": Schedule.query.filter(Schedule.enabled.is_(True)).count(),
+        "Groups": DisplayGroup.query.count(),
         "Users": User.query.count(),
     }
     problems = [c for c in run_checks() if not c.ok] if current_user.is_admin else []
-    return render_template("main/dashboard.html", counts=counts, problems=problems)
+    return render_template("main/dashboard.html", counts=counts, problems=problems,
+                           emergencies=live_emergencies())
 
 
 @bp.route("/healthz")

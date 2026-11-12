@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% from "displays/_badge.html" import badge %}
+{% from "displays/_week.html" import now_playing, week_list %}
 {% block title %}{{ display.name }}{% endblock %}
-{% macro when(dt) %}{% if dt %}{{ dt.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}&mdash;{% endif %}{% endmacro %}
+{% macro when(dt) %}{% if dt %}{{ dt|localtime }}{% else %}&mdash;{% endif %}{% endmacro %}
 {% macro text(value) %}{% if value %}{{ value }}{% else %}&mdash;{% endif %}{% endmacro %}
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
@@ -19,7 +20,7 @@
     </form>
     {% endif %}
     <form class="d-inline" method="post" action="{{ url_for('displays.delete', display_id=display.id) }}"
-          data-confirm="Delete {{ display.name }}? The screen stops playing and shows a new pairing code.">
+          data-confirm="Delete {{ display.name }}? The screen stops playing and shows a new pairing code.{% if schedule_count %} This also removes {{ schedule_count }} schedule(s) for this display.{% endif %}">
       {{ action_form.hidden_tag() }}<button class="btn btn-outline-danger" type="submit">Delete</button>
     </form>
   </div>
@@ -28,11 +29,21 @@
 {% if not display.is_paired %}
 <div class="alert alert-warning">This display is not paired.{% if current_user.can_edit %} Open <code>{{ request.host_url }}player/</code> on the screen, then <a href="{{ url_for('displays.pair') }}">pair it</a> as {{ display.name }}.{% endif %}</div>
 {% endif %}
-<div class="card" style="max-width: 48rem"><div class="card-body">
+{% if res.emergency %}
+<div class="alert alert-danger d-flex flex-wrap justify-content-between align-items-center gap-2" style="max-width: 48rem">
+  <div><span class="badge {{ {"info": "text-bg-primary", "warning": "text-bg-warning"}.get(res.emergency.level, "text-bg-danger") }} text-uppercase me-1">{{ res.emergency.level }}</span> Emergency on this screen: <strong>{{ res.emergency.title }}</strong></div>
+  <a class="alert-link" href="{{ url_for('emergency.index') }}">Manage</a>
+</div>
+{% endif %}
+<div class="card mb-4" style="max-width: 48rem"><div class="card-body">
   <dl class="row mb-0">
-    <dt class="col-sm-4">Playlist</dt>
+    <dt class="col-sm-4">Now playing</dt>
+    <dd class="col-sm-8">{{ now_playing(res) }}</dd>
+    <dt class="col-sm-4">Default playlist</dt>
     <dd class="col-sm-8">{% if display.playlist %}<a href="{{ url_for('playlists.detail', playlist_id=display.playlist.id) }}">{{ display.playlist.name }}</a>{% else %}&mdash;{% endif %}</dd>
-    <dt class="col-sm-4">Now showing</dt>
+    <dt class="col-sm-4">Group</dt>
+    <dd class="col-sm-8">{% if display.group %}<a href="{{ url_for('groups.index') }}">{{ display.group.name }}</a>{% else %}&mdash;{% endif %}</dd>
+    <dt class="col-sm-4">Current item</dt>
     <dd class="col-sm-8">{{ text(current_item) }}</dd>
     <dt class="col-sm-4">Content</dt>
     <dd class="col-sm-8">{% if not manifest_version or not display.reported_version %}&mdash;{% elif display.reported_version == manifest_version %}Up to date{% else %}Updating{% endif %}</dd>
@@ -53,6 +64,13 @@
     <dt class="col-sm-4">Client id</dt>
     <dd class="col-sm-8">{% if display.client_id %}<code>{{ display.client_id[:8] }}</code>{% else %}&mdash;{% endif %}</dd>
   </dl>
+</div></div>
+<div class="card" style="max-width: 48rem"><div class="card-body">
+  <div class="d-flex justify-content-between align-items-center">
+    <h2 class="h5 mb-0">Next 7 days</h2>
+    {% if current_user.can_edit %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('schedules.create', target='d:' ~ display.id) }}">Add schedule</a>{% endif %}
+  </div>
+  {{ week_list(week, tz_name) }}
 </div></div>
 <a class="btn btn-link px-0 mt-3" href="{{ url_for('displays.index') }}">&larr; All displays</a>
 {% endblock %}

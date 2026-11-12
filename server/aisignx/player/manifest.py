@@ -1,7 +1,7 @@
 """What a screen should play: the manifest the player API, SSE hello and heartbeat share.
 
-Fields may only ever be added; clients ignore keys they don't know. Phase 4 adds
-`emergency` and `source`.
+Fields may only ever be added; clients ignore keys they don't know. Phase 4 added
+`source` (why this playlist plays) and `emergency` (the overlay to show, or null).
 
 `fit` keeps the domain vocabulary; the browser player maps it to CSS object-fit:
     fit -> contain, fill -> cover, stretch -> fill
@@ -15,29 +15,37 @@ from flask import current_app, url_for
 
 from ..models import Display, Playlist
 from ..models.media import MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB
-from ..timeutil import utcnow
 
 MANIFEST_SCHEMA = 1
 _FILE_TYPES = (MEDIA_IMAGE, MEDIA_VIDEO)
 
 
 def resolve_playlist(display: Display, now: datetime) -> Playlist | None:
-    """The playlist a display should show right now.
+    """The playlist a display should show right now (emergency, schedule or default)."""
+    from ..schedules.resolve import resolve
 
-    Phase 3: the display's assigned playlist. Phase 4 replaces this with schedules,
-    display groups and the default playlist.
-    """
-    return display.playlist
+    return resolve(display, now).playlist
+
+
+def is_playable(item) -> bool:
+    """Whether a playlist item can appear in a manifest. No url_for, so the resolver
+    can use it outside a request."""
+    media = item.media
+    if media is None:
+        return False
+    if media.media_type in _FILE_TYPES:
+        return bool(media.stored_name)
+    if media.media_type == MEDIA_WEB:
+        return (media.url or "").strip().lower().startswith(("http://", "https://"))
+    return False
 
 
 def _item_entry(item) -> dict | None:
-    media = item.media
-    if media is None:
+    if not is_playable(item):
         return None
+    media = item.media
     is_video = media.media_type == MEDIA_VIDEO
     if media.media_type in _FILE_TYPES:
-        if not media.stored_name:
-            return None
         entry = {
             "url": url_for("player_api.media_file", media_id=media.id, name=media.stored_name),
             "mime": media.mime_type,
@@ -46,14 +54,9 @@ def _item_entry(item) -> dict | None:
             "width": media.width,
             "height": media.height,
         }
-    elif media.media_type == MEDIA_WEB:
-        url = (media.url or "").strip()
-        if not url.lower().startswith(("http://", "https://")):
-            return None
-        entry = {"url": url, "mime": None, "sha256": None, "size": None,
+    else:  # web page
+        entry = {"url": media.url.strip(), "mime": None, "sha256": None, "size": None,
                  "width": None, "height": None}
-    else:
-        return None
 
     media_ms = None
     if is_video and media.duration_seconds:
@@ -71,6 +74,15 @@ def _item_entry(item) -> dict | None:
     }
 
 
+def _emergency_entry(res) -> dict | None:
+    em = res.emergency
+    if em is None:
+        return None
+    from ..schedules.resolve import layout_for
+
+    return em.to_player(layout_for(em))
+
+
 def manifest_version(body: dict) -> str:
     """Content hash of a manifest body, ignoring version and server_time_ms."""
     stable = {k: v for k, v in body.items() if k not in ("version", "server_time_ms")}
@@ -78,9 +90,15 @@ def manifest_version(body: dict) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def build_manifest(display: Display, now: datetime | None = None) -> dict:
-    """Build the manifest for one display. Needs a request context (for url_for)."""
-    playlist = resolve_playlist(display, now or utcnow())
+def build_manifest(display: Display, now: datetime | None = None, ctx=None) -> dict:
+    """Build the manifest for one display. Needs a request context (for url_for).
+
+    ctx: an optional resolve.Context shared across several displays.
+    """
+    from ..schedules.resolve import resolve  # resolve imports is_playable from here
+
+    res = resolve(display, now, ctx)
+    playlist = res.playlist
     items = []
     if playlist is not None:
         for item in sorted(playlist.items, key=lambda i: (i.position, i.id)):
@@ -94,6 +112,8 @@ def build_manifest(display: Display, now: datetime | None = None) -> dict:
         "display": {"id": display.id, "name": display.name},
         "playlist": {"id": playlist.id, "name": playlist.name} if playlist is not None else None,
         "items": items,
+        "source": dict(res.source),
+        "emergency": _emergency_entry(res),
     }
     body["version"] = manifest_version(body)
     body["server_time_ms"] = int(time.time() * 1000)

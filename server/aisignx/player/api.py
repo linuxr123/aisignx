@@ -22,6 +22,7 @@ from ..timeutil import utcnow
 from . import api_bp
 from .auth import display_required, set_display_cookie
 from .manifest import build_manifest
+from .ticker import ensure_started
 
 MAX_BODY = 8192
 POLL_AFTER_S = 3
@@ -62,6 +63,9 @@ def _before():
         return api_error(503, "setup_required",
                          "AiSignX is not set up yet. Finish the setup wizard in the admin.",
                          retry_after=30)
+    # Started lazily by the first screen request: never during `flask db upgrade`,
+    # pytest or in the reloader's parent process.
+    ensure_started(current_app._get_current_object())
     return None
 
 

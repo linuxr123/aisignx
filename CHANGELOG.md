@@ -27,8 +27,18 @@ v3 is a clean rewrite of AiSignX as a single-organization app.
 - `flask --app wsgi serve` runs the waitress production server with enough threads for the screens (`AISIGNX_MAX_STREAMS`, default 50, plus 16).
 - `AISIGNX_PROXY_HOPS` for running behind nginx, Caddy or IIS; `docs/deployment.md` covers proxy settings, HTTPS and kiosk browsers.
 - Dashboard counts for displays and screens online.
+- Phase 4 (Scheduling): schedules that play a playlist on all screens, a group or one display, on chosen weekdays, all day or in a time window (overnight windows allowed), between optional dates, with a priority from 0 to 100. Times use the organization's time zone, including correct daylight saving changes. See `docs/scheduling.md`.
+- Schedule list with "Playing on N" and "Shadowed" badges, plus enable/disable and duplicate. Each display page shows what plays over the next 7 days.
+- Display groups: a display can belong to one group; groups can be the target of schedules and emergencies.
+- Emergency override: send a message (info, warning or critical) to all screens, a group or one display, as a full-screen text, a banner over an emergency playlist, or the playlist alone. It stays until cleared, also on screens that go offline. A red banner on every admin page shows live emergencies, and the page keeps a history with "Send again".
+- Player API: the manifest gains `source` (why this playlist plays) and `emergency`; new events `emergency` and `emergency_clear`. Existing keys are unchanged.
+- A background ticker pushes schedule starts and ends to screens within about a second (`AISIGNX_SCHEDULE_TICKER`, on by default).
+- Dashboard counts for enabled schedules and groups, and an alert while an emergency is live.
 
 ### Changed
 - The install scripts now suggest `flask --app wsgi serve` to start the server.
 - SQLite uses WAL mode and a 15-second busy timeout, so screen heartbeats and admin edits don't block each other. Keep the database on a local disk.
 - API errors under `/api/` (404, 405, 413 and others) return JSON instead of HTML pages.
+- A display's playlist is now called its **Default playlist**: it plays when no schedule matches. The displays list shows what each screen is playing now and why.
+- A playlist used by a schedule or a live emergency can no longer be deleted. Deleting a display or group also removes its schedules.
+- Changing the time zone in Settings updates all screens right away.

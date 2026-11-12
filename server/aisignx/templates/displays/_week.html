@@ -1,0 +1,37 @@
+{# What a display plays: "now playing" cell and the "Next 7 days" list. #}
+
+{% macro source_badge(source) -%}
+{%- if source.type == "emergency" -%}<span class="badge text-bg-danger" data-source="emergency">Emergency</span>
+{%- elif source.type == "schedule" -%}<span class="badge text-bg-primary" data-source="schedule">Schedule {{ source.name }}</span>
+{%- elif source.type == "default" -%}<span class="badge text-bg-secondary" data-source="default">Default</span>
+{%- else -%}<span class="badge text-bg-light border" data-source="none">Nothing</span>
+{%- endif -%}
+{%- endmacro %}
+
+{# res: a schedules.resolve.Resolution #}
+{% macro now_playing(res) -%}
+{% if res.playlist %}<a href="{{ url_for('playlists.detail', playlist_id=res.playlist.id) }}">{{ res.playlist.name }}</a>{% else %}<span class="text-secondary">Nothing to play</span>{% endif %}
+{{ source_badge(res.source) }}
+{% if res.emergency and res.source.type != "emergency" %}<a class="badge text-bg-danger text-decoration-none" href="{{ url_for('emergency.index') }}" title="{{ res.emergency.title }}">Emergency overlay</a>{% endif %}
+{%- endmacro %}
+
+{# week: [(local date, [(local start, local end, segment), ...]), ...] from resolve.split_by_day #}
+{% macro week_list(week, tz_name) -%}
+<p class="text-secondary small">Times are in {{ tz_name }}. Emergency messages are not included.</p>
+{% for day, pieces in week %}
+<h3 class="h6 mt-3 mb-1">{{ day.strftime('%a %d %b') }}</h3>
+<ul class="list-unstyled mb-0 small">
+  {% for start, end, seg in pieces %}
+  <li>
+    <span class="font-monospace">{{ start.strftime('%H:%M') }}&ndash;{{ '24:00' if end.date() != day else end.strftime('%H:%M') }}</span>
+    &middot;
+    {% if seg.playlist %}{{ seg.playlist.name }}{% else %}<span class="text-secondary">Nothing</span>{% endif %}
+    {% if seg.source.type == "schedule" %}<span class="text-secondary">(schedule {{ seg.source.name }})</span>
+    {% elif seg.source.type == "default" %}<span class="text-secondary">(default)</span>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="text-secondary mb-0">Nothing scheduled.</p>
+{% endfor %}
+{%- endmacro %}

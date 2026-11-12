@@ -12,6 +12,8 @@ Secrets never live in this file. Supported variables:
     AISIGNX_WEBSHOT_TIMEOUT  seconds allowed per web page screenshot (default: 45)
     AISIGNX_MAX_STREAMS   most open live-update streams from screens (default: 50);
                           `flask --app wsgi serve` sizes its threads from this
+    AISIGNX_SCHEDULE_TICKER  "0" turns off the per-process thread that pushes schedule
+                          changes to screens at minute boundaries (default: on)
     AISIGNX_PROXY_HOPS    number of reverse proxies in front of the app whose
                           X-Forwarded-* headers are trusted (default: 0 = none)
 """
@@ -68,6 +70,7 @@ def build_config(instance_path: str) -> dict:
         "PLAYER_SSE_KEEPALIVE_SECONDS": 20,
         "PLAYER_SSE_MAX_AGE_SECONDS": 1800,
         "PLAYER_MAX_STREAMS": int(os.environ.get("AISIGNX_MAX_STREAMS") or 50),
+        "PLAYER_SCHEDULE_TICKER": os.environ.get("AISIGNX_SCHEDULE_TICKER", "1") != "0",
         "PAIRING_CODE_TTL_SECONDS": 600,
         "PAIRING_CLAIM_SECONDS": 120,
         "PAIRING_MAX_PENDING": 50,

@@ -230,7 +230,8 @@ def test_dashboard_counts_and_nav(app, admin_client, paired_display):
     page = admin_client.get("/dashboard").get_data(as_text=True)
     assert "Displays" in page and "Online" in page
     assert 'href="/displays/"' in page
-    assert "Scheduling arrives in the next phase." in page
+    assert "Scheduling arrives in the next phase." not in page
+    assert "Enabled schedules" in page and 'href="/schedules/"' in page
     with app.app_context():
         from aisignx.displays.service import dashboard_counts
         assert dashboard_counts() == (2, 1)

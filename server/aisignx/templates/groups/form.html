@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}{{ "Edit " ~ group.name if group else "New group" }}{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">{{ "Edit " ~ group.name if group else "New group" }}</h1>
+<div class="card" style="max-width: 40rem"><div class="card-body">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {{ field(form.name, autofocus=true) }}
+    {{ field(form.description) }}
+    <fieldset class="mb-3">
+      <legend class="form-label fs-6">{{ form.members.label.text }}</legend>
+      {% if form.displays %}
+      {% set selected = form.members.data or [] %}
+      <div class="border rounded p-2 overflow-auto" style="max-height: 18rem">
+        {% for d in form.displays %}
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="{{ form.members.name }}"
+                 id="member-{{ d.id }}" value="{{ d.id }}"{% if d.id in selected %} checked{% endif %}>
+          <label class="form-check-label" for="member-{{ d.id }}">
+            {{ d.name }}
+            {% if d.group and (not group or d.group_id != group.id) %}
+            <span class="small text-secondary">(in {{ d.group.name }}; ticking moves it here)</span>
+            {% endif %}
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="form-text">A display belongs to at most one group.</div>
+      {% else %}
+      <p class="text-secondary small mb-0">No displays yet. Pair a display first, then add it here.</p>
+      {% endif %}
+      {% for e in form.members.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </fieldset>
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-link" href="{{ url_for('groups.index') }}">Cancel</a>
+  </form>
+</div></div>
+{% endblock %}

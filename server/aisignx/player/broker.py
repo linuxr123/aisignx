@@ -3,6 +3,7 @@
 One broker per app, in app.extensions. Each open /events stream holds one Subscriber.
 Events are hints ("manifest changed"), so a full queue simply drops the new one:
 the client already has a hint waiting and will fetch the latest manifest anyway.
+Emergency events are published with force=True and always get through.
 
 Only streams in the same process are reached. With several processes, screens still
 converge through the heartbeat's manifest_version.
@@ -49,8 +50,11 @@ def _force_put(sub: Subscriber, item) -> None:
                 pass
 
 
-def _offer(subs, event: str, data: dict) -> None:
+def _offer(subs, event: str, data: dict, force: bool = False) -> None:
     for sub in subs:
+        if force:
+            _force_put(sub, (event, data))
+            continue
         try:
             sub.queue.put_nowait((event, data))
         except queue.Full:
@@ -93,11 +97,15 @@ class Broker:
             if not subs:
                 del self._subs[sub.display_id]
 
-    def publish(self, display_id: int, event: str, data: dict) -> int:
-        """Send an event to one display's streams. Returns how many streams it reached."""
+    def publish(self, display_id: int, event: str, data: dict, force: bool = False) -> int:
+        """Send an event to one display's streams. Returns how many streams it reached.
+
+        force=True drops the oldest queued hints if needed, so the event is never lost
+        (emergency events carry data, unlike hints).
+        """
         with self._lock:
             targets = list(self._subs.get(display_id, ()))
-        _offer(targets, event, data)
+        _offer(targets, event, data, force)
         return len(targets)
 
     def publish_all(self, event: str, data: dict) -> int:

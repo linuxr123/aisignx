@@ -4,7 +4,7 @@
   "use strict";
 
   var A = window.AiSignX;
-  var net = A.net, R = A.render, store = net.store, K = net.store.KEYS;
+  var net = A.net, R = A.render, EM = A.emergency, store = net.store, K = net.store.KEYS;
   var body = document.body, screenEl = document.getElementById("screen");
   var BUILD = body.getAttribute("data-build") || "";
   var ROOT = body.getAttribute("data-root") || "";
@@ -81,6 +81,9 @@
     command: function (d) { if (d.action === "reload") requestReload(); },
     revoked: function () { fetchManifest(); },  // the JSON 401 leads to PAIRING
     error: function () { fetchManifest(); },    // EventSource cannot see a 401 itself
+    // Emergencies show at once; the manifest then confirms. Never cleared by a disconnect.
+    emergency: function (d) { EM.show(d); fetchManifest(); },
+    emergency_clear: function (d) { EM.clearIf(d && d.id); fetchManifest(); },
   });
   var hb = net.Heartbeat(function () {
     var dpr = window.devicePixelRatio || 1;
@@ -133,6 +136,7 @@
     startLive();
   }
   function applyManifest(m) {
+    try { EM.apply(m); } catch (e) { if (window.console) console.error(e); }
     S.manifest = m;
     S.version = typeof m.version === "string" ? m.version : null;
     S.items = (Array.isArray(m.items) ? m.items : []).filter(function (it) {
@@ -226,6 +230,7 @@
     R.swap(n.slide, item.transition);
     screenEl.hidden = true;
     S.cur = { slide: n.slide, item: item, shownAt: t, deadline: t + durationOf(item), failed: false };
+    EM.sync();  // a fullscreen emergency keeps the new video silent
     if (!R.isVideo(n.slide)) return;
     var guard = function (fn) { return function (x) { if (g === S.gen) fn(x); }; };
     R.runVideo(n.slide, {
@@ -346,6 +351,7 @@
   function goPairing() {
     if (S.state === "PAIRING") return;  // several 401s can arrive at once; keep one code
     reset("PAIRING");
+    EM.hide();
     store.local.remove(K.manifest);
     S.manifest = null; S.version = null; S.items = [];
     startPairing();
@@ -384,6 +390,7 @@
     tick();
   });
 
+  EM.current = function () { return S.cur; };
   R.init(document.getElementById("stage"));
   setInterval(tick, TICK_MS);
   setInterval(housekeeping, 1000);

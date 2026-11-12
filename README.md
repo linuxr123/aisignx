@@ -4,8 +4,8 @@ Self-hosted digital signage. One web admin manages playlists, schedules and scre
 for a home, a small business, or a company with a few dozen screens.
 
 > **Status:** v3 is a rewrite in progress. Phase 1 (accounts, roles, settings, setup wizard),
-> Phase 2 (media library, playlists) and Phase 3 (screens: pairing, browser player, live updates)
-> are done. Scheduling is coming next.
+> Phase 2 (media library, playlists), Phase 3 (screens: pairing, browser player, live updates)
+> and Phase 4 (schedules, display groups, emergency override) are done. Native clients are next.
 > See [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
@@ -64,6 +64,7 @@ Settings come from environment variables or `server/.env` (see `server/.env.exam
 | `AISIGNX_WEBSHOT_TIMEOUT` | `45` | Seconds allowed per web page screenshot |
 | `AISIGNX_MAX_STREAMS` | `50` | Most screens with a live-update connection at once; `serve` starts this many threads plus 16 |
 | `AISIGNX_PROXY_HOPS` | `0` | Number of reverse proxies in front of AiSignX; set to `1` behind nginx, Caddy or IIS |
+| `AISIGNX_SCHEDULE_TICKER` | `1` | Background check that pushes schedule starts and ends to screens each minute; `0` turns it off (screens then catch up through their 30-second heartbeat) |
 
 ## Media and playlists
 
@@ -81,7 +82,7 @@ Settings come from environment variables or `server/.env` (see `server/.env.exam
 1. On the screen, open `http://<server>:5000/player/` in a browser, in full screen or kiosk mode.
    It shows a six-character pairing code.
 2. In the admin, go to **Displays > Pair a display**, type the code, name the screen and choose a
-   playlist. The screen starts playing within a few seconds.
+   default playlist. The screen starts playing within a few seconds.
 
 Changes to playlists and media reach the screens within about a second. A screen keeps playing
 what it has if the server goes offline, and catches up when the server is back. Use **Reload** on
@@ -92,6 +93,21 @@ from `AISIGNX_MAX_STREAMS` (default 50 screens), so raise that setting if you ha
 Run a single server process. For kiosk browser settings, reverse proxies and HTTPS, see
 [docs/deployment.md](docs/deployment.md). Native player apps use the API in
 [docs/player-api.md](docs/player-api.md).
+
+## Schedules, groups and emergencies
+
+- **Default playlist:** what a screen plays when no schedule matches.
+- **Schedules:** play a playlist on all screens, a group or one display, on chosen weekdays, all
+  day or between two times (22:00-06:00 runs overnight), optionally between two dates. Higher
+  priority wins; at equal priority a display schedule beats a group schedule, which beats one for
+  all screens. Times use the time zone from **Settings**.
+- **Groups:** put displays in a group (one group per display) to target them together.
+- **Emergency:** send a message to all screens, a group or one display. It covers the screen (or
+  shows as a banner over an emergency playlist) until someone clears it, even on a screen that
+  loses its connection. Editors and admins can send and clear.
+
+Screens switch within about a second when a schedule starts or ends. Details, including daylight
+saving rules, are in [docs/scheduling.md](docs/scheduling.md).
 
 ## Roles
 

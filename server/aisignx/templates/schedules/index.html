@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Schedules{% endblock %}
+{% set badge_text = {
+  "shadowed": ("Shadowed", "text-bg-light border text-secondary", "Occurs in the next 7 days but a higher-ranked schedule always wins."),
+  "empty": ("Empty playlist", "text-bg-warning", "The playlist has nothing playable, so this schedule is skipped."),
+  "no_screens": ("No screens", "text-bg-light border text-secondary", "No display is in this schedule's target."),
+} %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+  <h1 class="h3 mb-0">Schedules</h1>
+  {% if current_user.can_edit %}<a class="btn btn-primary" href="{{ url_for('schedules.create') }}">New schedule</a>{% endif %}
+</div>
+<p class="text-secondary small mb-4">
+  Times are in {{ tz_name }}{% if current_user.is_admin %} (<a href="{{ url_for('settings.index') }}">Settings</a>){% else %} (Settings){% endif %}.
+  When several schedules match, the highest priority wins, then the most specific target (display, group, all screens), then the oldest.
+  With no match a screen plays its default playlist.
+</p>
+{% if schedules %}
+<div class="card"><div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Name</th><th>Playlist</th><th>Target</th><th>Days</th><th>Time</th><th>Dates</th><th class="text-end">Priority</th><th>Enabled</th><th>Now</th><th></th></tr></thead>
+    <tbody>
+    {% for s in schedules %}
+      <tr{% if not s.enabled %} class="text-secondary"{% endif %}>
+        <td class="fw-semibold">{% if current_user.can_edit %}<a href="{{ url_for('schedules.edit', schedule_id=s.id) }}">{{ s.name }}</a>{% else %}{{ s.name }}{% endif %}</td>
+        <td><a href="{{ url_for('playlists.detail', playlist_id=s.playlist_id) }}">{{ s.playlist.name }}</a></td>
+        <td>{{ labels[s.id] }}</td>
+        <td class="text-nowrap">{{ s.days_label }}</td>
+        <td class="text-nowrap">{{ s.time_label }}</td>
+        <td class="small text-nowrap">{% if s.start_date or s.end_date %}{{ s.start_date or "…" }} – {{ s.end_date or "…" }}{% else %}&mdash;{% endif %}</td>
+        <td class="text-end">{{ s.priority }}</td>
+        <td>{% if s.enabled %}<span class="badge text-bg-success">On</span>{% else %}<span class="badge text-bg-secondary">Off</span>{% endif %}</td>
+        <td class="text-nowrap">
+          {% if playing.get(s.id) %}<span class="badge text-bg-primary" data-schedule-playing="{{ s.id }}">Playing on {{ playing[s.id] }}</span>{% endif %}
+          {% if badges.get(s.id) %}{% set text, cls, tip = badge_text[badges[s.id]] %}<span class="badge {{ cls }}" title="{{ tip }}" data-schedule-badge="{{ badges[s.id] }}">{{ text }}</span>{% endif %}
+        </td>
+        <td class="text-end text-nowrap">
+          {% if current_user.can_edit %}
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('schedules.edit', schedule_id=s.id) }}">Edit</a>
+          <form class="d-inline" method="post" action="{{ url_for('schedules.toggle', schedule_id=s.id) }}">
+            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit">{{ "Disable" if s.enabled else "Enable" }}</button>
+          </form>
+          <form class="d-inline" method="post" action="{{ url_for('schedules.duplicate', schedule_id=s.id) }}">
+            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit">Duplicate</button>
+          </form>
+          <form class="d-inline" method="post" action="{{ url_for('schedules.delete', schedule_id=s.id) }}"
+                data-confirm="Delete schedule {{ s.name }}? Screens it targets go back to their default playlist or the next matching schedule.">
+            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% else %}
+<div class="text-center text-secondary py-5">
+  No schedules yet. Every screen plays its default playlist{% if current_user.can_edit %}. Click New schedule to play a playlist at set times{% endif %}.
+</div>
+{% endif %}
+{% endblock %}

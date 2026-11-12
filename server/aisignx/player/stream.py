@@ -36,10 +36,14 @@ def frame(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, separators=(',', ':'))}\n\n"
 
 
-def _stream(broker: Broker, sub: Subscriber, hello: dict, keepalive: float, max_age: float):
+def _stream(broker: Broker, sub: Subscriber, hello: dict, keepalive: float, max_age: float,
+            initial: list | None = None):
+    """initial: (event, data) frames sent right after hello (the live emergency)."""
     try:
         yield ":" + " " * _PADDING + f"\nretry: {RETRY_MS}\n\n"
         yield frame("hello", hello)
+        for event, data in initial or ():
+            yield frame(event, data)
         # Jitter the end so screens don't all reconnect at the same moment.
         end = time.monotonic() + max_age * random.uniform(1.0, 1.1)
         while time.monotonic() < end:
@@ -93,7 +97,10 @@ def events():
     keepalive = float(cfg["PLAYER_SSE_KEEPALIVE_SECONDS"])
     max_age = float(cfg["PLAYER_SSE_MAX_AGE_SECONDS"])
 
-    resp = Response(_stream(broker, sub, hello, keepalive, max_age),
+    # On every (re)connect, repeat the live emergency so a screen never misses one.
+    initial = [("emergency", manifest["emergency"])] if manifest.get("emergency") else []
+
+    resp = Response(_stream(broker, sub, hello, keepalive, max_age, initial),
                     mimetype="text/event-stream")
     # A generator that never started does not run its finally block.
     resp.call_on_close(lambda: broker.unsubscribe(sub))

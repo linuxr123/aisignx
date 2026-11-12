@@ -9,12 +9,15 @@ from flask import has_app_context
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 
-from ..models import Display, Media, Playlist, PlaylistItem
+from ..models import (Display, DisplayGroup, EmergencyMessage, Media, Playlist, PlaylistItem,
+                      Schedule)
 from .broker import get_broker
 
-# Models whose changes can alter what a screen shows. Phase 4 adds schedules,
-# groups and emergency messages here.
-WATCHED = (Display, Media, Playlist, PlaylistItem)
+# Models whose changes can alter what a screen shows. Group membership is a Display
+# column, so it is always ORM-dirty. Setting is deliberately absent: the settings page
+# publishes itself when the time zone changes. Never use Core bulk UPDATE/DELETE on
+# these models; that bypasses this hook.
+WATCHED = (Display, Media, Playlist, PlaylistItem, DisplayGroup, Schedule, EmergencyMessage)
 
 _FLAG = "aisignx_player_changed"
 _registered = False

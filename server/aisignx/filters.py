@@ -1,4 +1,5 @@
 """Jinja filters used across templates."""
+from .timeutil import to_local
 
 
 def filesize(num_bytes) -> str:
@@ -24,6 +25,16 @@ def duration(seconds) -> str:
     return f"{minutes}:{secs:02d}"
 
 
+def localtime(dt, fmt: str = "%Y-%m-%d %H:%M") -> str:
+    """Format a stored (UTC) datetime in the organization time zone, with the zone
+    abbreviation, e.g. "2026-11-11 11:00 CET"."""
+    if dt is None:
+        return "—"
+    local = to_local(dt)
+    return f"{local.strftime(fmt)} {local.tzname()}"
+
+
 def register(app) -> None:
     app.add_template_filter(filesize, "filesize")
     app.add_template_filter(duration, "duration")
+    app.add_template_filter(localtime, "localtime")

@@ -54,11 +54,14 @@ def create_app(test_config: dict | None = None) -> Flask:
 def _register_blueprints(app: Flask) -> None:
     from .auth import bp as auth_bp
     from .displays import bp as displays_bp
+    from .emergency import bp as emergency_bp
+    from .groups import bp as groups_bp
     from .main import bp as main_bp
     from .media import bp as media_bp
     from .player import api_bp as player_api_bp
     from .player import page_bp as player_bp
     from .playlists import bp as playlists_bp
+    from .schedules import bp as schedules_bp
     from .settings import bp as settings_bp
     from .setup import bp as setup_bp
     from .users import bp as users_bp
@@ -66,8 +69,8 @@ def _register_blueprints(app: Flask) -> None:
     # The player API authenticates with display tokens, not sessions, and its cookie
     # is SameSite=Strict, so it is exempt from CSRF. Admin forms keep CSRF.
     csrf.exempt(player_api_bp)
-    for bp in (auth_bp, displays_bp, main_bp, media_bp, player_bp, player_api_bp,
-               playlists_bp, settings_bp, setup_bp, users_bp):
+    for bp in (auth_bp, displays_bp, emergency_bp, groups_bp, main_bp, media_bp, player_bp,
+               player_api_bp, playlists_bp, schedules_bp, settings_bp, setup_bp, users_bp):
         app.register_blueprint(bp)
 
 

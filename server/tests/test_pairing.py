@@ -13,7 +13,7 @@ from sqlalchemy import update
 
 from aisignx.displays import pairing
 from aisignx.extensions import db
-from aisignx.models import Display, PairingCode, Playlist
+from aisignx.models import Display, Media, PairingCode, Playlist, PlaylistItem
 from aisignx.player.auth import hash_token
 from aisignx.player.broker import get_broker
 from aisignx.timeutil import as_utc, utcnow
@@ -380,6 +380,9 @@ def test_pair_as_existing_display(app, configured, client, paired_display):
     display_id, old_token = paired_display
     with app.app_context():
         playlist = Playlist(name="Morning")
+        # Needs a playable item: an empty Default playlist resolves to source "none".
+        playlist.items.append(PlaylistItem(position=0, media=Media(
+            name="Menu", media_type="web", url="https://example.com/menu")))
         db.session.add(playlist)
         db.session.flush()
         db.session.get(Display, display_id).playlist_id = playlist.id

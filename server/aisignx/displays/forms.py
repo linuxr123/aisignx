@@ -3,15 +3,23 @@ from wtforms import SelectField, StringField
 from wtforms.fields.choices import SelectChoice
 from wtforms.validators import DataRequired, Length, Optional
 
-from ..models import Display, Playlist
+from ..models import Display, DisplayGroup, Playlist
 
 NO_PLAYLIST = SelectChoice(0, "No playlist")
 NEW_DISPLAY = SelectChoice(0, "New display")
+NO_GROUP = SelectChoice(0, "No group")
+DEFAULT_PLAYLIST_LABEL = "Default playlist"
+DEFAULT_PLAYLIST_HELP = "Plays when no schedule matches."
 
 
 def playlist_choices() -> list[SelectChoice]:
     return [NO_PLAYLIST] + [SelectChoice(p.id, p.name)
                             for p in Playlist.query.order_by(Playlist.name)]
+
+
+def group_choices() -> list[SelectChoice]:
+    return [NO_GROUP] + [SelectChoice(g.id, g.name)
+                         for g in DisplayGroup.query.order_by(DisplayGroup.name)]
 
 
 def display_choices() -> list[SelectChoice]:
@@ -26,7 +34,8 @@ class PairForm(FlaskForm):
     pair_as = SelectField("Pair as", coerce=int, default=0)
     name = StringField("Name", validators=[Optional(), Length(max=100)],
                        render_kw={"placeholder": "e.g. Lobby"})
-    playlist = SelectField("Playlist", coerce=int, default=0)
+    playlist = SelectField(DEFAULT_PLAYLIST_LABEL, coerce=int, default=0,
+                           description=DEFAULT_PLAYLIST_HELP)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -43,11 +52,14 @@ class PairForm(FlaskForm):
 
 class DisplayForm(FlaskForm):
     name = StringField("Name", validators=[DataRequired(), Length(max=100)])
-    playlist = SelectField("Playlist", coerce=int, default=0)
+    playlist = SelectField(DEFAULT_PLAYLIST_LABEL, coerce=int, default=0,
+                           description=DEFAULT_PLAYLIST_HELP)
+    group = SelectField("Group", coerce=int, default=0)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.playlist.choices = playlist_choices()
+        self.group.choices = group_choices()
 
 
 class ActionForm(FlaskForm):

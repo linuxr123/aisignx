@@ -2,6 +2,23 @@
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 <h1 class="h3 mb-4">Dashboard</h1>
+{% if emergencies %}
+<div class="card border-danger mb-4" data-emergency-card>
+  <div class="card-header text-bg-danger d-flex justify-content-between align-items-center">
+    <strong>Emergency active</strong>
+    <a class="btn btn-sm btn-light" href="{{ url_for('emergency.index') }}">Manage</a>
+  </div>
+  <ul class="list-group list-group-flush">
+    {% for m in emergencies %}
+    <li class="list-group-item">
+      <span class="badge {{ {"info": "text-bg-primary", "warning": "text-bg-warning"}.get(m.level, "text-bg-danger") }} text-uppercase me-1">{{ m.level }}</span>
+      <strong>{{ m.title }}</strong>
+      <span class="text-secondary small">&middot; {{ m.target_label }} &middot; since {{ m.created_at|localtime }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
 {% if problems %}
 <div class="alert alert-warning">
   <h2 class="h6 alert-heading">Some programs AiSignX uses are missing on this server</h2>
@@ -22,5 +39,4 @@
   </div>
   {% endfor %}
 </div>
-<p class="text-secondary mt-4">Scheduling arrives in the next phase.</p>
 {% endblock %}

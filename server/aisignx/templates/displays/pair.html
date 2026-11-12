@@ -9,10 +9,10 @@
     {{ form.hidden_tag() }}
     {{ field(form.code, autofocus=true) }}
     {{ field(form.pair_as) }}
-    <p class="form-text mt-n2">Pick an existing display to move it to new hardware. It keeps its name and playlist, and its old screen is unpaired.</p>
+    <p class="form-text mt-n2">Pick an existing display to move it to new hardware. It keeps its name, default playlist, group and schedules, and its old screen is unpaired.</p>
     {{ field(form.name) }}
     {{ field(form.playlist) }}
-    <p class="form-text mt-n2">Name and playlist are used for a new display only.</p>
+    <p class="form-text mt-n2">{{ form.playlist.description }} Name and default playlist are used for a new display only.</p>
     <button class="btn btn-primary" type="submit">Pair</button>
     <a class="btn btn-link" href="{{ url_for('displays.index') }}">Cancel</a>
   </form>

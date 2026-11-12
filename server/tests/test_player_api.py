@@ -7,7 +7,7 @@ import pytest
 from aisignx.extensions import db
 from aisignx.media import service as media_service
 from aisignx.media import storage
-from aisignx.models import Display, Media, Playlist, PlaylistItem
+from aisignx.models import Display, EmergencyMessage, Media, Playlist, PlaylistItem, Schedule
 from aisignx.player.auth import hash_token
 from aisignx.timeutil import as_utc, utcnow
 
@@ -18,6 +18,7 @@ from .conftest import (
 API = "/api/player/v1"
 IMAGE_BYTES = png_bytes((32, 18))
 VIDEO_BYTES = bytes(range(256)) * 64  # 16 KB of "video"; the server never decodes it
+OLD_KEYS = {"v", "version", "server_time_ms", "heartbeat_s", "display", "playlist", "items"}
 ITEM_KEYS = {"id", "media_id", "type", "url", "mime", "sha256", "size", "width", "height",
              "duration_ms", "media_duration_ms", "transition", "fit", "muted"}
 
@@ -148,14 +149,15 @@ def test_manifest_shape(app, client, content):
     assert resp.headers["Cache-Control"] == "no-cache"
     assert resp.headers["X-Content-Type-Options"] == "nosniff"
     body = resp.get_json()
-    assert set(body) == {"v", "version", "server_time_ms", "heartbeat_s", "display",
-                         "playlist", "items"}
+    assert set(body) == OLD_KEYS | {"source", "emergency"}
     assert body["v"] == 1
     assert len(body["version"]) == 16 and int(body["version"], 16) >= 0
     assert abs(body["server_time_ms"] - utcnow().timestamp() * 1000) < 60_000
     assert body["heartbeat_s"] == 30
     assert body["display"] == {"id": content["display_id"], "name": "Lobby"}
     assert body["playlist"] == {"id": content["playlist_id"], "name": "Morning"}
+    assert body["source"] == {"type": "default", "id": None, "name": None}
+    assert body["emergency"] is None
 
     items = body["items"]
     assert [i["id"] for i in items] == content["items"]  # position order
@@ -315,6 +317,116 @@ def test_deleting_playlist_clears_display_playlist(app, admin_client, content):
         assert db.session.get(Display, content["display_id"]).playlist_id is None
     body = _manifest(app.test_client())
     assert body["playlist"] is None and body["items"] == []
+
+
+# --- source and emergency (Phase 4, additive) --------------------------------------------
+
+def _add_schedule(content, **kw) -> int:
+    """An all-screens schedule playing a one-item web playlist "Lunch"."""
+    lunch = Playlist(name="Lunch")
+    lunch.items.append(PlaylistItem(position=0, media=Media(
+        name="Soup", media_type="web", url="https://example.com/soup", default_duration=15)))
+    schedule = Schedule(name="Lunch menu", playlist=lunch, scope="all", **kw)
+    db.session.add(schedule)
+    db.session.commit()
+    return schedule.id
+
+
+def _add_emergency(**kw) -> int:
+    em = EmergencyMessage(title="Fire drill", message="Leave by the nearest exit.",
+                          scope="all", target_label="All screens", **kw)
+    db.session.add(em)
+    db.session.commit()
+    return em.id
+
+
+def test_source_and_emergency_keys_without_playlist(app, configured, client, paired_display):
+    body = _manifest(client)
+    assert set(body) == OLD_KEYS | {"source", "emergency"}
+    assert body["source"] == {"type": "none", "id": None, "name": None}
+    assert body["emergency"] is None
+
+
+def test_schedule_changes_source_playlist_and_version(app, client, content):
+    before = _manifest(client)
+    with app.app_context():
+        schedule_id = _add_schedule(content)
+    body = _manifest(client)
+    assert body["version"] != before["version"]
+    assert body["source"] == {"type": "schedule", "id": schedule_id, "name": "Lunch menu"}
+    # Old clients just see another playlist, in the unchanged shape.
+    assert body["playlist"]["name"] == "Lunch"
+    assert [i["url"] for i in body["items"]] == ["https://example.com/soup"]
+    assert all(set(i) == ITEM_KEYS for i in body["items"])
+    assert body["display"] == before["display"]
+    assert body["heartbeat_s"] == before["heartbeat_s"] and body["v"] == 1
+
+    with app.app_context():
+        db.session.get(Schedule, schedule_id).enabled = False
+        db.session.commit()
+    assert _manifest(client)["version"] == before["version"]  # back to the default
+
+
+def test_text_emergency_keeps_existing_keys(app, client, content):
+    before = _manifest(client)
+    with app.app_context():
+        em_id = _add_emergency(level="warning")
+    body = _manifest(client)
+    assert body["version"] != before["version"]
+    for key in OLD_KEYS - {"version", "server_time_ms"}:
+        assert body[key] == before[key], key  # an old client keeps playing its content
+    assert body["source"] == before["source"]
+    em = body["emergency"]
+    assert set(em) == {"id", "title", "message", "level", "background", "foreground",
+                       "layout", "since"}
+    assert em["id"] == em_id and em["title"] == "Fire drill"
+    assert em["message"] == "Leave by the nearest exit."
+    assert (em["level"], em["background"], em["foreground"]) == ("warning", "#e65100", "#ffffff")
+    assert em["layout"] == "fullscreen"
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", em["since"])
+
+    with app.app_context():
+        db.session.get(EmergencyMessage, em_id).cleared_at = utcnow()
+        db.session.commit()
+    after = _manifest(client)
+    assert after["emergency"] is None
+    assert after["version"] == before["version"]
+
+
+def test_emergency_playlist_replaces_items(app, client, content):
+    with app.app_context():
+        exit_list = Playlist(name="Exit")
+        exit_list.items.append(PlaylistItem(position=0, media=Media(
+            name="Map", media_type="web", url="https://example.com/exit", default_duration=5)))
+        db.session.add(exit_list)
+        db.session.flush()
+        em_id = _add_emergency(playlist_id=exit_list.id)
+    body = _manifest(client)
+    assert body["source"] == {"type": "emergency", "id": em_id, "name": "Fire drill"}
+    assert body["playlist"]["name"] == "Exit"
+    assert [i["url"] for i in body["items"]] == ["https://example.com/exit"]
+    assert (body["emergency"]["layout"], body["emergency"]["background"]) == ("banner",
+                                                                             "#b71c1c")
+
+
+def test_etag_304_with_schedule_and_emergency(app, client, content):
+    with app.app_context():
+        _add_schedule(content)
+        em_id = _add_emergency()
+    version = _version(client)
+    headers = {**bearer(content["token"]), "If-None-Match": f'"{version}"'}
+    resp = client.get(f"{API}/manifest", headers=headers)
+    assert resp.status_code == 304 and resp.headers["ETag"] == f'"{version}"'
+
+    with app.app_context():
+        db.session.get(EmergencyMessage, em_id).cleared_at = utcnow()
+        db.session.commit()
+    resp = client.get(f"{API}/manifest", headers=headers)
+    assert resp.status_code == 200
+    assert resp.get_json()["emergency"] is None
+    # The heartbeat reports the same version as the manifest.
+    beat = client.post(f"{API}/heartbeat", json={}, headers=bearer(content["token"]))
+    assert beat.get_json()["manifest_version"] == resp.get_json()["version"]
 
 
 # --- heartbeat --------------------------------------------------------------------------
@@ -534,10 +646,12 @@ def test_player_page(app, configured, client):
     assert "navbar" not in html
     assert f'data-api="{API}"' in html
     scripts = re.findall(r"<script([^>]*)>(.*?)</script>", html, re.S)
-    assert len(scripts) == 3
-    for attrs, body in scripts:
+    names = [re.search(r'src="/static/player/(\w+)\.js\?v=[^"]+"', attrs).group(1)
+             for attrs, _ in scripts]
+    assert names == ["net", "render", "emergency", "player"]
+    for _, body in scripts:
         assert body.strip() == ""  # no inline script
-        assert re.search(r'src="/static/player/(net|render|player)\.js\?v=[^"]+"', attrs)
+    assert re.search(r'<div id="emergency" hidden[ >]', html)  # overlay starts hidden
     assert "style=" not in html
     assert "<style" not in html
     # The page works without a credential and without login.

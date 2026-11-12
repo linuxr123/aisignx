@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}{{ "Edit schedule" if schedule else "New schedule" }}{% endblock %}
+{% macro errors(f) %}{% for e in f.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}{% endmacro %}
+{% block content %}
+<h1 class="h3 mb-4">{{ "Edit " ~ schedule.name if schedule else "New schedule" }}</h1>
+<div class="card" style="max-width: 44rem"><div class="card-body">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {{ field(form.name, autofocus=true) }}
+    {% if form.playlist.choices %}
+    {{ field(form.playlist) }}
+    {% else %}
+    <div class="alert alert-warning">There are no playlists yet. <a href="{{ url_for('playlists.create') }}">Create a playlist</a> first.</div>
+    {{ errors(form.playlist) }}
+    {% endif %}
+    {{ field(form.target) }}
+
+    <fieldset class="mb-3">
+      <legend class="form-label fs-6 mb-1">{{ form.days.label.text }}</legend>
+      {% for opt in form.days %}
+      <div class="form-check form-check-inline">
+        {{ opt(class_="form-check-input") }} {{ opt.label(class_="form-check-label") }}
+      </div>
+      {% endfor %}
+      {{ errors(form.days) }}
+    </fieldset>
+
+    {{ field(form.all_day) }}
+    <div class="row g-3">
+      <div class="col-sm-6">{{ field(form.start_time) }}</div>
+      <div class="col-sm-6">{{ field(form.end_time) }}</div>
+    </div>
+    <p class="form-text mt-n2">
+      Times are in {{ tz_name }}. The window includes the start and ends just before the end time.
+      An end before the start runs overnight into the next day{% if form.is_overnight %} <span class="badge text-bg-info">overnight</span>{% endif %}.
+      Ignored when All day is ticked.
+    </p>
+
+    <div class="row g-3">
+      <div class="col-sm-6">{{ field(form.start_date) }}</div>
+      <div class="col-sm-6">{{ field(form.end_date) }}</div>
+    </div>
+    <p class="form-text mt-n2">Optional. Days are checked against the day a window starts, so an overnight window that starts on the last day still runs into the next morning.</p>
+
+    {{ field(form.priority) }}
+    <p class="form-text mt-n2">0&ndash;100. When schedules overlap, the higher priority plays.</p>
+    {{ field(form.enabled) }}
+
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-link" href="{{ url_for('schedules.index') }}">Cancel</a>
+  </form>
+</div></div>
+{% endblock %}
