@@ -40,6 +40,16 @@ async function fakeUpstream(state) {
       state.sseRes = res;
       return;
     }
+    if (state.errorStatus && (req.url.startsWith('/player/') || req.url.startsWith('/static/player/'))) {
+      res.writeHead(state.errorStatus, { 'Content-Type': 'text/html' });
+      res.end('<h1>Server error</h1>');
+      return;
+    }
+    if (req.url.startsWith('/static/player/')) {
+      res.writeHead(200, { 'Content-Type': 'text/javascript' });
+      res.end('/* net */');
+      return;
+    }
     if (req.url.startsWith('/player/')) {
       res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Security-Policy': "default-src 'self'", 'X-Frame-Options': 'DENY' });
       res.end(PAGE);
@@ -159,6 +169,29 @@ test('page snapshot is served when upstream is down, offline page without one', 
   assert.equal(shell.status, 503);
   const js = await request(port, { path: '/__shell/offline.js' });
   assert.equal(js.status, 200);
+});
+
+test('any upstream 5xx falls back to the snapshot, or the offline page without one', async (t) => {
+  const { port, state, dir } = await setup(t);
+  assert.equal((await request(port, { path: '/player/' })).status, 200);
+  assert.equal((await request(port, { path: '/static/player/net.js?v=B1' })).status, 200);
+  for (const code of [500, 520, 530]) {
+    state.errorStatus = code;
+    const page = await request(port, { path: '/player/' });
+    assert.equal(page.status, 200, String(code));
+    assert.equal(page.headers['x-aisignx-shell-cache'], '1');
+    assert.equal(page.body.toString(), PAGE);
+    const js = await request(port, { path: '/static/player/net.js?v=B1' });
+    assert.equal(js.status, 200, String(code));
+    assert.equal(js.body.toString(), '/* net */');
+  }
+  for (const f of fs.readdirSync(path.join(dir, 'page-cache'))) fs.unlinkSync(path.join(dir, 'page-cache', f));
+  state.errorStatus = 500;
+  const offline = await request(port, { path: '/player/' });
+  assert.equal(offline.status, 503);
+  assert.match(offline.body.toString(), /data-reason="http"/);
+  state.errorStatus = 0;
+  assert.equal((await request(port, { path: '/player/' })).status, 200);
 });
 
 test('static snapshots not referenced by the newest page are pruned', async (t) => {

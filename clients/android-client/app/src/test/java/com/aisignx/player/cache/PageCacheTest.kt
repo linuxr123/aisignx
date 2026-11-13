@@ -75,14 +75,43 @@ class PageCacheTest {
         assertNull(c.fetch("/static/player/render.js?v=1"))
     }
 
-    @Test fun badGatewayServesSnapshot() {
+    private fun loadBuild(c: PageCache, build: String) {
+        server.enqueue(html(build)); server.enqueue(js("css$build")); server.enqueue(js("net-$build"))
+        c.fetch("/player/"); c.fetch("/static/player/player.css?v=$build"); c.fetch("/static/player/net.js?v=$build")
+    }
+
+    @Test fun anyServerErrorServesSnapshot() {
+        val c = cache()
+        loadBuild(c, "1")
+        for (code in listOf(500, 502, 503, 504, 520, 530)) {
+            server.enqueue(MockResponse().setResponseCode(code).setBody("error page"))
+            val s = c.fetch("/player/")!!
+            assertEquals("$code", 200, s.status)
+            assertEquals("1", s.headers[PageCache.CACHE_HEADER])
+            assertTrue(s.text().contains("net.js?v=1"))
+        }
+    }
+
+    @Test fun newPageIsServedOfflineOnlyOnceItsScriptsAreStored() {
+        val c = cache()
+        loadBuild(c, "1")
+        // A new build: the page is fetched, but net.js?v=2 never gets stored.
+        server.enqueue(html("2")); server.enqueue(js("css2"))
+        assertTrue(c.fetch("/player/")!!.text().contains("net.js?v=2"))
+        c.fetch("/static/player/player.css?v=2")
+        server.shutdown()
+        val snap = c.fetch("/player/")!!
+        assertEquals("1", snap.headers[PageCache.CACHE_HEADER])
+        assertTrue("the previous complete build is served", snap.text().contains("net.js?v=1"))
+        assertEquals("net-1", c.fetch("/static/player/net.js?v=1")!!.text())
+    }
+
+    @Test fun pageWithoutStoredScriptsIsNotServedOffline() {
         val c = cache()
         server.enqueue(html("1"))
         c.fetch("/player/")
-        server.enqueue(MockResponse().setResponseCode(502))
-        val s = c.fetch("/player/")!!
-        assertEquals(200, s.status)
-        assertEquals("1", s.headers[PageCache.CACHE_HEADER])
+        server.shutdown()
+        assertNull("no complete snapshot yet: let the WebView fail natively", c.fetch("/player/"))
     }
 
     @Test fun otherErrorsPassThroughAndAreNotStored() {

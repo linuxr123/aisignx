@@ -27,8 +27,10 @@ import com.aisignx.player.net.Tls
  * - shouldInterceptRequest: only GETs to the configured origin for the page/JS snapshot
  *   and the media cache. Everything else (POST, manifest, SSE, heartbeat, web items)
  *   returns null and the WebView handles it natively with its own cookie.
- * - Main-frame errors: 3 soft retries 2 s apart, then the offline page, with a /healthz
- *   probe every 10 s that reloads the player once the server answers.
+ * - Main-frame errors (network errors and any 5xx): 3 soft retries 2 s apart, then the
+ *   offline page, with a /healthz probe every 10 s that reloads the player once the server answers.
+ * - Liveness: a finished load only counts once player.js has set body[data-state];
+ *   an error page or a page whose scripts never ran is handled like a failed load.
  * - TLS: proceed() only for the configured host when the leaf matches the pin.
  */
 class PlayerWebClient(
@@ -51,6 +53,7 @@ class PlayerWebClient(
     private var loadFailed = false
     private var playerLoaded = false
     @Volatile private var disposed = false
+    private val livenessCheck = Runnable { checkLiveness() }
 
     fun start(view: WebView) {
         webView = view
@@ -78,11 +81,28 @@ class PlayerWebClient(
     }
 
     override fun onPageFinished(view: WebView, url: String?) {
-        if (url?.startsWith(playerUrl) == true && !loadFailed && !playerLoaded) {
+        if (url?.startsWith(playerUrl) != true || loadFailed) return
+        if (!playerLoaded) {
             playerLoaded = true
-            failures = 0
             main.removeCallbacksAndMessages(null)
             FileLog.i(TAG, "player page loaded")
+        }
+        // Also re-armed after the player's own reloads (new build, recovery).
+        main.removeCallbacks(livenessCheck)
+        main.postDelayed(livenessCheck, LIVENESS_MS)
+    }
+
+    /** The page loaded; make sure player.js actually started, otherwise retry. */
+    private fun checkLiveness() {
+        val view = webView ?: return
+        if (disposed || view.url?.startsWith(playerUrl) != true) return
+        view.evaluateJavascript(PlayerCheck.STATE_JS) { result ->
+            if (disposed || loadFailed) return@evaluateJavascript
+            if (PlayerCheck.isRunning(result)) {
+                failures = 0
+            } else {
+                onMainFrameFailed("player did not start")
+            }
         }
     }
 
@@ -92,7 +112,7 @@ class PlayerWebClient(
     }
 
     override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
-        if (request.isForMainFrame && isPlayerUrl(request.url) && response.statusCode in 502..504) {
+        if (request.isForMainFrame && isPlayerUrl(request.url) && PlayerCheck.isServerError(response.statusCode)) {
             onMainFrameFailed("HTTP ${response.statusCode}")
         }
     }
@@ -154,7 +174,8 @@ class PlayerWebClient(
 
     override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
         val pin = services.pin
-        val errHost = try { Uri.parse(error.url).host?.lowercase() } catch (_: Exception) { null }
+        // Same normalization as [host]: hostOf() strips IPv6 brackets, android.net.Uri.getHost() keeps them.
+        val errHost = ServerUrl.hostOf(error.url ?: "").ifEmpty { null }
         val der = leafDer(error.certificate)
         val ok = pin != null && der != null && errHost == host && Tls.fingerprint(der) == pin
         if (ok) {
@@ -220,5 +241,6 @@ class PlayerWebClient(
         private const val SOFT_RETRY_MS = 2_000L
         private const val OFFLINE_RETRY_MS = 10_000L
         private const val COLD_START_TIMEOUT_MS = 25_000L
+        private const val LIVENESS_MS = 10_000L
     }
 }

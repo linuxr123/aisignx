@@ -24,6 +24,15 @@ class ServerUrlTest {
         assertEquals("http://10.0.0.5:5000", ServerUrl.normalize("http://10.0.0.5:5000"))
     }
 
+    @Test fun hostOfStripsIpv6BracketsForPageUrls() {
+        // The WebView's TLS error URL must match the configured host for the pin to apply.
+        val origin = ServerUrl.normalize("https://[FD00::10]:5000")!!
+        assertEquals("fd00::10", ServerUrl.hostOf(origin))
+        assertEquals(ServerUrl.hostOf(origin), ServerUrl.hostOf("https://[fd00::10]:5000/player/"))
+        assertEquals("signage.example.lan", ServerUrl.hostOf("https://Signage.Example.LAN/player/"))
+        assertEquals("", ServerUrl.hostOf(""))
+    }
+
     @Test fun ipv6Literal() {
         assertEquals("http://[::1]:5000", ServerUrl.normalize("http://[::1]:5000"))
     }

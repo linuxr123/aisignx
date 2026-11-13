@@ -8,7 +8,7 @@
     'tls-pin-mismatch': 'Server certificate changed. Re-run setup (Ctrl+Alt+S).',
     'tls-untrusted': 'The server certificate is not trusted. Re-run setup (Ctrl+Alt+S).',
     'http': 'The server answered with an error.',
-    'port-in-use': 'Local port in use. Close the program using it, or re-run setup (Ctrl+Alt+S).',
+    'port-in-use': 'Local port in use. Close the program using it; the player retries on its own.',
     'proxy-down': 'The player is restarting its local connection.',
     'offline': 'The server cannot be reached.'
   };

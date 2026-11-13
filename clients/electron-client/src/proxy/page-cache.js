@@ -8,7 +8,12 @@ const log = require('../log');
 
 const TIMEOUT_MS = 5000;
 const MAX_BODY = 8 * 1024 * 1024;
-const FALLBACK_STATUS = new Set([502, 503, 504]);
+// Any upstream 5xx (Flask 500 during a restore, proxy/tunnel 52x, gateway 502-504) falls back to
+// the snapshot: a passed-through error page would leave the kiosk stuck with nothing to retry it.
+const GATEWAY_STATUS = new Set([502, 503, 504]);
+function isServerError(status) {
+  return status >= 500 && status <= 599;
+}
 const PAGE = '/player/';
 
 function keyOf(url) {
@@ -146,9 +151,9 @@ function createPageCache(opts) {
       fallback(req, res, err.kind === 'network' ? 'unreachable' : err.kind);
       return;
     }
-    if (FALLBACK_STATUS.has(up.statusCode)) {
+    if (isServerError(up.statusCode)) {
       up.resume();
-      fallback(req, res, 'unreachable');
+      fallback(req, res, GATEWAY_STATUS.has(up.statusCode) ? 'unreachable' : 'http');
       return;
     }
     let body;

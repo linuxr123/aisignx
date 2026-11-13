@@ -5,7 +5,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { app, ipcMain, session, shell, BrowserWindow } = require('electron');
+const { app, ipcMain, session, shell, BrowserWindow, Menu } = require('electron');
 const config = require('./config');
 const log = require('./log');
 const kiosk = require('./kiosk');
@@ -28,6 +28,9 @@ const userDataArg = argValue('user-data-dir');
 if (userDataArg) app.setPath('userData', path.resolve(userDataArg));
 else if (SMOKE) app.setPath('userData', tempProfile());
 else app.setPath('userData', path.join(app.getPath('appData'), 'AiSignX Player', 'v3'));
+// No application menu: Electron's default one (Reload, Toggle DevTools, Close) could be
+// reached with Alt on a kiosk that has a keyboard.
+Menu.setApplicationMenu(null);
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disk-cache-size', '67108864');
 

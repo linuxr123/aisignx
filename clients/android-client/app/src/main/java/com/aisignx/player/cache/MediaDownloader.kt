@@ -14,6 +14,8 @@ import java.util.concurrent.TimeUnit
  * up to [attempts] tries with exponential backoff. Each download sends the WebView's
  * cookie (the display credential), writes a .part file, hashes while writing and lets
  * MediaCache verify the exact size and SHA-256 before the file is renamed into place.
+ * A file that does not fit the cache budget or the free-space reserve is not downloaded
+ * (the WebView streams it), and a running download stops when the reserve is reached.
  */
 class MediaDownloader(
     private val cache: MediaCache,
@@ -88,6 +90,8 @@ class MediaDownloader(
 
     private fun download(path: String): Outcome {
         if (cache.isCached(path)) return Outcome.DONE
+        val expectedSize = cache.expectedFor(path)?.size
+        if (expectedSize != null && !cache.hasRoomFor(path, expectedSize)) return skipNoRoom(path, expectedSize)
         val url = origin + path
         // identity: the exact byte count is verified against the manifest size.
         val req = Request.Builder().url(url).get().header("Accept-Encoding", "identity").apply {
@@ -103,16 +107,27 @@ class MediaDownloader(
                     else Outcome.RETRY
                 }
                 val body = resp.body ?: return Outcome.RETRY
+                val size = expectedSize ?: body.contentLength().takeIf { it >= 0 }
+                if (size != null && !cache.hasRoomFor(path, size)) return skipNoRoom(path, size)
                 val digest = MessageDigest.getInstance("SHA-256")
                 body.byteStream().use { input ->
                     part.outputStream().use { out ->
                         val buf = ByteArray(64 * 1024)
+                        var written = 0L
+                        var sinceCheck = 0L
                         while (true) {
                             if (closed) throw IOException("shut down")
                             val n = input.read(buf)
                             if (n < 0) break
                             digest.update(buf, 0, n)
                             out.write(buf, 0, n)
+                            written += n
+                            sinceCheck += n
+                            if (size != null && written > size) throw IOException("longer than expected")
+                            if (sinceCheck >= SPACE_CHECK_BYTES) {
+                                sinceCheck = 0
+                                if (cache.isLowOnSpace()) throw NoRoom()
+                            }
                         }
                     }
                 }
@@ -122,6 +137,10 @@ class MediaDownloader(
                 if (ok) FileLog.i(TAG, "cached $path (${cache.expectedFor(path)?.size ?: length} bytes)")
                 return if (ok) Outcome.DONE else Outcome.RETRY
             }
+        } catch (e: NoRoom) {
+            part.delete()
+            FileLog.w(TAG, "download $path stopped: free space below the reserve")
+            return Outcome.GIVE_UP
         } catch (e: IOException) {
             part.delete()
             FileLog.w(TAG, "download $path failed: ${e.javaClass.simpleName}")
@@ -133,7 +152,15 @@ class MediaDownloader(
         }
     }
 
+    private fun skipNoRoom(path: String, size: Long): Outcome {
+        FileLog.w(TAG, "not caching $path ($size bytes): over the cache budget or free-space reserve; streaming it")
+        return Outcome.GIVE_UP
+    }
+
+    private class NoRoom : IOException("free space below the reserve")
+
     companion object {
         private const val TAG = "MediaDownloader"
+        private const val SPACE_CHECK_BYTES = 4L * 1024 * 1024
     }
 }

@@ -83,13 +83,11 @@ A screen asks for a new code only when the server rejects its credential (the di
 unpaired or deleted). App-side errors such as a lost network or a changed certificate never
 cause a new pairing.
 
-**Server address changes:**
-
-- **Electron:** Chromium talks to a local proxy (`http://127.0.0.1:<port>`), so the cookie does
-  not belong to the server's address. If the server moves to a new IP, enter the new address in
-  setup; the screen stays paired.
-- **Android:** the cookie belongs to the server's origin (scheme, host and port). A new address
-  means pairing again. Give the server a DHCP reservation or a DNS name.
+**Server address changes:** on both apps, saving a different server address in setup counts
+as changing the server (see **Back to setup**): the pairing cookie, local storage, both caches
+and the certificate pin are cleared, and the screen shows a new pairing code. Pair it again in
+the admin; the old display entry can then be deleted. To avoid this, give the server a DHCP
+reservation or a DNS name, so its address never changes.
 
 ## HTTPS and certificate pinning
 

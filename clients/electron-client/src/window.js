@@ -23,7 +23,7 @@ function createPlayerWindow(opts) {
     frame: smoke,
     width: 1280,
     height: 720,
-    autoHideMenuBar: true,
+    autoHideMenuBar: false,  // no menu at all (main.js sets a null application menu)
     title: 'AiSignX Player',
     webPreferences: {
       contextIsolation: true,
@@ -62,6 +62,7 @@ function createPlayerWindow(opts) {
     });
     kiosk.attachKeyBlock(wc);
   }
+  win.removeMenu();
   win.setMenuBarVisibility(false);
 
   wc.on('will-navigate', (event, url) => {

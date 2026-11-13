@@ -16,9 +16,13 @@ import java.util.concurrent.TimeUnit
  * (/static/player/...), so the player can cold-start while the server is down.
  *
  * A 200 response is stored as <sha1(path+query)>.body plus a .meta JSON with the
- * status, content type, CSP and X-Frame-Options. On a network error, a timeout or a
- * 502/503/504 the snapshot is served with "X-AiSignX-Shell-Cache: 1". Snapshots that
- * the newest /player/ snapshot no longer references (old ?v= builds) are pruned.
+ * status, content type, CSP and X-Frame-Options. On a network error, a timeout or any
+ * 5xx the snapshot is served with "X-AiSignX-Shell-Cache: 1".
+ *
+ * A new /player/ page is first stored as pending and becomes the served snapshot only
+ * once every /static/player/ file it references is stored too, so a cold start never
+ * gets a page whose scripts are missing. Snapshots that neither the served nor the
+ * pending page references (old ?v= builds) are pruned.
  *
  * These URLs carry no credential (the display cookie is scoped to /api/player), so
  * no cookie is sent or stored here.
@@ -51,7 +55,7 @@ class PageCache(
         val req = Request.Builder().url(origin + pathAndQuery).get().build()
         try {
             client.newCall(req).execute().use { resp ->
-                if (resp.code in SERVER_DOWN) {
+                if (resp.code >= 500) {
                     snapshot(key)?.let { return it }
                 }
                 val body = resp.body?.bytes() ?: ByteArray(0)
@@ -90,8 +94,11 @@ class PageCache(
                 .put("type", resp.header("Content-Type") ?: "application/octet-stream")
                 .put("csp", resp.header("Content-Security-Policy") ?: "")
                 .put("xfo", resp.header("X-Frame-Options") ?: "")
-            writeAtomic(File(dir, "$key.body"), body)
-            writeAtomic(File(dir, "$key.meta"), meta.toString().toByteArray(Charsets.UTF_8))
+            // The page waits as pending until its scripts and styles are stored.
+            val name = if (key == keyFor(PLAYER_PATH)) "$key$PENDING" else key
+            writeAtomic(File(dir, "$name.body"), body)
+            writeAtomic(File(dir, "$name.meta"), meta.toString().toByteArray(Charsets.UTF_8))
+            promote()
             prune()
         } catch (e: IOException) {
             FileLog.w(TAG, "snapshot write failed: ${e.message}")
@@ -116,19 +123,34 @@ class PageCache(
         }
     }
 
+    /** Keys of the files [pageFile] references, or null when it does not exist. */
+    private fun referencedKeys(pageFile: File): Set<String>? =
+        if (pageFile.isFile) referencedPaths(pageFile.readText(Charsets.UTF_8)).map { keyFor(it) }.toSet() else null
+
+    /** Make the pending page the served snapshot once everything it references is stored. */
+    private fun promote() {
+        val pageKey = keyFor(PLAYER_PATH)
+        val refs = referencedKeys(File(dir, "$pageKey$PENDING.body")) ?: return
+        if (refs.any { !File(dir, "$it.body").isFile }) return
+        File(dir, "$pageKey$PENDING.meta").let { if (it.isFile) writeAtomic(File(dir, "$pageKey.meta"), it.readBytes()) }
+        writeAtomic(File(dir, "$pageKey.body"), File(dir, "$pageKey$PENDING.body").readBytes())
+        File(dir, "$pageKey$PENDING.body").delete()
+        File(dir, "$pageKey$PENDING.meta").delete()
+    }
+
     /**
-     * Keep the /player/ snapshot and what it references. Prune only once every
-     * referenced file is cached, so an interrupted update never leaves the page
-     * without its scripts.
+     * Keep the served /player/ snapshot, the pending one and what both reference.
+     * Prune only once every file the served page references is cached, so an
+     * interrupted update never leaves the page without its scripts.
      */
     private fun prune() {
         val pageKey = keyFor(PLAYER_PATH)
-        val page = File(dir, "$pageKey.body")
-        if (!page.isFile) return
-        val html = page.readText(Charsets.UTF_8)
-        val keep = referencedPaths(html).map { keyFor(it) }.toMutableSet()
-        if (keep.any { !File(dir, "$it.body").isFile }) return
+        val served = referencedKeys(File(dir, "$pageKey.body")) ?: return
+        if (served.any { !File(dir, "$it.body").isFile }) return
+        val keep = served.toMutableSet()
+        referencedKeys(File(dir, "$pageKey$PENDING.body"))?.let { keep.addAll(it) }
         keep.add(pageKey)
+        keep.add("$pageKey$PENDING")
         dir.listFiles()?.forEach { f ->
             val k = f.name.substringBefore('.')
             if (k !in keep) f.delete()
@@ -142,7 +164,7 @@ class PageCache(
         const val CACHE_HEADER = "X-AiSignX-Shell-Cache"
         private const val TIMEOUT_S = 5L
         private const val OFFLINE_MEMO_MS = 10_000L
-        private val SERVER_DOWN = setOf(502, 503, 504)
+        private const val PENDING = "-pending"
         private val REF = Regex("""(?:src|href)\s*=\s*"([^"]+)"""")
 
         fun keyFor(pathAndQuery: String): String =

@@ -47,3 +47,18 @@ test('isPrivateHost tells LAN addresses from public ones', () => {
     assert.equal(isPrivateHost(h), false, h);
   }
 });
+
+// main.js and window.js need Electron at load time, so these are source checks.
+test('no application menu is installed on the kiosk', () => {
+  const src = (f) => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8');
+  assert.match(src('main.js'), /^Menu\.setApplicationMenu\(null\);/m);
+  assert.match(src('window.js'), /win\.removeMenu\(\);/);
+  assert.doesNotMatch(src('window.js'), /autoHideMenuBar:\s*true/);
+});
+
+test('the port-in-use screen does not send the technician to setup', () => {
+  const js = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'offline.js'), 'utf8');
+  const line = js.split(/\r?\n/).find((l) => l.includes("'port-in-use':"));
+  assert.ok(line);
+  assert.doesNotMatch(line, /setup/i);
+});

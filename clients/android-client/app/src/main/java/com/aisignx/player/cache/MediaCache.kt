@@ -20,11 +20,16 @@ import java.security.MessageDigest
  * queued in the background. Eviction is LRU, runs only above the budget and never
  * touches files in the current manifest; earlier schedules' media may play again,
  * so nothing is deleted just for being unreferenced.
+ *
+ * Downloads that would not fit (current manifest over budget, or the volume would drop
+ * below [reserve] free bytes) are skipped; the WebView streams those items instead.
  */
 class MediaCache(
     val dir: File,
     private val budget: (File) -> Long = ::defaultBudget,
     private val now: () -> Long = System::currentTimeMillis,
+    private val freeSpace: (File) -> Long = { it.usableSpace },
+    val reserve: Long = DEFAULT_RESERVE,
 ) {
     data class Entry(val size: Long, val sha256: String?, val mime: String, val lastUsed: Long)
 
@@ -160,6 +165,25 @@ class MediaCache(
     /** LRU eviction down to the budget, never evicting files in the current manifest. */
     @Synchronized fun evict() { evictLocked(); saveLocked() }
 
+    /**
+     * Whether a [size]-byte download of [path] fits: the current manifest's cached files
+     * plus this one stay within the budget, and the volume keeps [reserve] bytes free
+     * (counting space that evicting files outside the current manifest would free).
+     */
+    @Synchronized fun hasRoomFor(path: String, size: Long): Boolean {
+        var pinned = 0L
+        var evictable = 0L
+        for ((p, e) in index) {
+            if (p == path) continue
+            if (p in current) pinned += e.size else evictable += e.size
+        }
+        if (pinned + size > budget(dir)) return false
+        return freeSpace(dir) + evictable - size >= reserve
+    }
+
+    /** True once the cache's volume is below the free-space reserve. */
+    fun isLowOnSpace(): Boolean = freeSpace(dir) < reserve
+
     @Synchronized fun totalBytes(): Long = index.values.sumOf { it.size }
 
     /** Delete every cached file and the index (server changed or forgotten). */
@@ -240,6 +264,8 @@ class MediaCache(
         private const val INDEX = "index.json"
         private const val TOUCH_SAVE_MS = 60_000L
         private const val MAX_BUDGET = 4L * 1024 * 1024 * 1024
+        /** Free space always left on the volume for cookies, settings, logs and snapshots. */
+        const val DEFAULT_RESERVE = 256L * 1024 * 1024
         val MEDIA_PATH = Regex("^/api/player/v1/media/\\d+/[^/]+$")
         private val SHA_RE = Regex("^[0-9a-f]{64}$")
 

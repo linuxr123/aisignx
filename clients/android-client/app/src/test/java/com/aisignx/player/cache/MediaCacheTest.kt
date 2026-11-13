@@ -25,8 +25,11 @@ class MediaCacheTest {
     private fun sha(b: ByteArray) =
         MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
-    private fun cache(dir: File = tmp.root, budget: Long = Long.MAX_VALUE) =
-        MediaCache(dir, budget = { budget }, now = { clock })
+    private var free = Long.MAX_VALUE / 4
+    private var freeFn: () -> Long = { free }
+
+    private fun cache(dir: File = tmp.root, budget: Long = Long.MAX_VALUE, reserve: Long = 0) =
+        MediaCache(dir, budget = { budget }, now = { clock }, freeSpace = { freeFn() }, reserve = reserve)
 
     private fun path(id: Int, ext: String = "mp4") = "/api/player/v1/media/$id/f$id.$ext"
 
@@ -171,6 +174,67 @@ class MediaCacheTest {
             assertEquals("video is downloaded first", path(1), first.path)
             assertEquals("aisignx_display=secret", first.getHeader("Cookie"))
             assertNotNull(c.serve(path(1), null))
+            assertEquals(0, tmp.root.listFiles()!!.count { it.name.endsWith(".part") })
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test fun roomCountsOnlyCurrentManifestAgainstBudgetAndKeepsReserve() {
+        val c = cache(budget = 250, reserve = 100)
+        val a = ByteArray(100) { 1 }; val b = ByteArray(100) { 2 }
+        assertTrue(put(c, path(1), a))
+        assertTrue(put(c, path(2), b))
+        c.onManifest(manifest(Triple(path(1), a, "video"), Triple(path(3), ByteArray(200), "video")))
+        // Path 1 (100) is pinned; path 2 is evictable. 100 + 200 > 250.
+        assertFalse(c.hasRoomFor(path(3), 200))
+        assertTrue(c.hasRoomFor(path(3), 150))
+        // Free space: 120 free + 100 evictable - 150 = 70 < reserve 100.
+        free = 120
+        assertFalse(c.hasRoomFor(path(3), 150))
+        free = 160
+        assertTrue(c.hasRoomFor(path(3), 150))
+        free = 99
+        assertTrue(c.isLowOnSpace())
+    }
+
+    @Test fun downloaderSkipsFilesThatDoNotFit() {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val origin = server.url("/").toString().trimEnd('/')
+            val c = cache(budget = 1_000)
+            val dl = MediaDownloader(c, origin, OkHttpClient(), { null }, parallel = 1, attempts = 1, backoffMs = 1)
+            c.onMissing = { p, v -> dl.enqueue(p, v) }
+            c.onManifest(manifest(Triple(path(1), ByteArray(2_000), "video")))
+            assertTrue(dl.awaitIdle(10_000))
+            dl.shutdown()
+            assertFalse(c.isCached(path(1)))
+            assertEquals("nothing requested", 0, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test fun downloaderStopsWhenFreeSpaceRunsOut() {
+        val server = MockWebServer()
+        val big = ByteArray(9 * 1024 * 1024) { (it % 7).toByte() }
+        server.enqueue(MockResponse().setBody(Buffer().write(big)))
+        server.start()
+        try {
+            val origin = server.url("/").toString().trimEnd('/')
+            val c = cache(reserve = 1_000)
+            // The Content-Length check sees plenty of space; then the volume fills up.
+            var calls = 0
+            freeFn = { if (calls++ == 0) 10_000_000_000L else 500L }
+            val dl = MediaDownloader(c, origin, OkHttpClient(), { null }, parallel = 1, attempts = 1, backoffMs = 1)
+            c.onMissing = { p, v -> dl.enqueue(p, v) }
+            // No size in the manifest, so only the Content-Length is checked up front.
+            c.onManifest(manifest(Triple(path(1), null, "video")))
+            assertTrue(dl.awaitIdle(10_000))
+            dl.shutdown()
+            assertFalse(c.isCached(path(1)))
+            assertTrue("stopped at the reserve check", calls >= 2)
             assertEquals(0, tmp.root.listFiles()!!.count { it.name.endsWith(".part") })
         } finally {
             server.shutdown()
