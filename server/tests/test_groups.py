@@ -221,11 +221,12 @@ def test_display_form_group_select(configured, admin_client):
     html = admin_client.get(f"/displays/{display_id}/edit").get_data(as_text=True)
     assert 'name="group"' in html and "No group" in html and "Lobby" in html
     resp = admin_client.post(f"/displays/{display_id}/edit",
-                             data={"name": "Front desk", "playlist": 0, "group": group_id})
+                             data={"name": "Front desk", "playlist": 0, "group": group_id,
+                                   "volume": 100})
     assert resp.status_code == 302
     with configured.app_context():
         assert db.session.get(Display, display_id).group_id == group_id
     admin_client.post(f"/displays/{display_id}/edit",
-                      data={"name": "Front desk", "playlist": 0, "group": 0})
+                      data={"name": "Front desk", "playlist": 0, "group": 0, "volume": 100})
     with configured.app_context():
         assert db.session.get(Display, display_id).group_id is None

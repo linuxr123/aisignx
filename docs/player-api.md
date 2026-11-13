@@ -52,12 +52,15 @@ Decide on `error` (and the HTTP status), never on `message`, which is for people
 | HTTP | `error` | Meaning | What the client does |
 |---|---|---|---|
 | 400 | `bad_request` | Body is not a JSON object, or a field is invalid | Client bug. Log it; don't repeat the same request in a loop. |
+| 400 | `bad_image` | `POST /screenshot` body is not a readable JPEG or PNG, or is over 40 megapixels | Drop the screenshot. |
 | 401 | `unauthorized` | Token missing, wrong, unpaired or the display was deleted | Drop the token (and cached manifest), go back to pairing. |
 | 403 | `forbidden` | Not allowed | Client bug. |
 | 404 | `not_found` | Unknown path or media | Skip that item or request. |
 | 404 | `expired` | Pairing secret unknown, used or expired | Start pairing again with `POST /pair`. |
 | 405 | `method_not_allowed` | Wrong HTTP method | Client bug. |
-| 413 | `too_large` | Request body over 8 KB | Client bug. |
+| 409 | `stale_request` | `POST /screenshot` with a request id that is not (or no longer) open | Drop the screenshot. |
+| 413 | `too_large` | Request body over 8 KB (4 MB for `POST /screenshot`) | Client bug. |
+| 415 | `unsupported_type` | `POST /screenshot` body is not `image/jpeg` or `image/png` | Client bug. |
 | 429 | `too_many_pending` | Too many screens are waiting to pair | Wait `Retry-After` seconds (60), then try again. |
 | 503 | `busy` | Server is at its connection limit, or a pairing code collision | Wait `Retry-After` seconds, keep playing. |
 | 500 | `server_error` | Unexpected server fault | Retry later, keep playing. |
@@ -69,7 +72,8 @@ meanwhile. Use a request timeout of about 10 seconds.
 
 ## Request bodies
 
-- Send a JSON object with `Content-Type: application/json`. The body limit is 8 KB.
+- Send a JSON object with `Content-Type: application/json`. The body limit is 8 KB (the only
+  exception is the raw image body of `POST /screenshot`, up to 4 MB).
 - `client_id` must match `^[A-Za-z0-9_-]{1,64}$`. Make one random hex ID on first start and keep
   it forever (for example 16 random bytes as 32 hex characters).
 - `player_version` is cut to 32 characters and `device` to 120. Use a prefix that names the
@@ -155,7 +159,9 @@ Authenticated. Returns what the screen should play.
    "duration_ms": 20000, "media_duration_ms": null, "transition": "cut", "fit": "fit", "muted": true}
  ],
  "source": {"type": "schedule", "id": 7, "name": "Mornings"},
- "emergency": null}
+ "emergency": null,
+ "settings": {"orientation": 0, "volume": 100, "show_offline_banner": true,
+              "allow_input": false, "unlock": null}}
 ```
 
 | Field | Meaning |
@@ -172,7 +178,7 @@ Authenticated. Returns what the screen should play.
 | `duration_ms` | How long the item stays on screen. This is a hard limit. |
 | `media_duration_ms` | Length of the video file, or `null`. |
 | `transition` | How this item enters (see below). |
-| `fit` | How the item fills the screen (see below). |
+| `fit` | How the item fills the screen (see below). When the admin sets a fit for the whole display, every item carries that value. |
 | `muted` | Play the video's sound only when this is `false`. Always `true` for images and web pages. |
 
 **Video timing.** Stop the video at `duration_ms` at the latest. If the video ends earlier and
@@ -193,6 +199,28 @@ fails, show "no content" and fetch the manifest again after 30 seconds.
 **Transitions:** `cut` (no animation), `fade`, `crossfade`, `wipe`, `slide-left`, `slide-right`,
 `slide-up`, `slide-down`, `zoom` and `random`. For `random`, pick one of the eight that are not
 `cut`, per slide. A client may show any transition it doesn't support as `fade` or `cut`.
+
+### Display settings
+
+`settings` holds the options an admin sets per display. If the key is missing (an older
+server), keep today's behaviour: no rotation, full volume, input allowed, no PIN.
+
+| Field | Meaning |
+|---|---|
+| `orientation` | `0`, `90`, `180` or `270`: rotate the output clockwise by this many degrees. The browser player rotates with CSS unless the shell reports the `rotate` capability (it then rotates the device itself). |
+| `volume` | `0`-`100`. Applied to the player's own videos (not the OS volume, not inside web pages). `muted` items stay muted. |
+| `show_offline_banner` | Show a small "Offline" pill while the screen cannot reach the server. |
+| `allow_input` | `false`: touches, clicks, keys and the wheel are ignored, so web items cannot be used from the screen. |
+| `unlock` | `null`, or `{"alg": "pbkdf2-sha256", "iter": 200000, "salt": "<32 hex>", "hash": "<64 hex>"}`: the PIN that guards leaving the native apps. |
+
+`unlock` is for the native apps only. They check a PIN with PBKDF2-HMAC-SHA256
+(`iter` iterations, the hex-decoded `salt`, 32-byte output) and compare it to `hash` in
+constant time, with a growing wait after wrong PINs. The browser player never reads it and
+removes it before it stores the manifest in `localStorage`. A 4-8 digit PIN can be
+brute-forced offline by anyone who gets the manifest or the shell's config: it is a kiosk lock
+against passers-by, not an account password.
+
+Location and notes the admin enters are never sent to the screen.
 
 ### Source and emergency
 
@@ -272,6 +300,23 @@ and one when the screen wakes up.
 {"server_time_ms": 1731312000000, "manifest_version": "9f2c4e1a7b3d5f60", "heartbeat_s": 30}
 ```
 
+**Diagnostics.** Optionally add `"diag"`: on the first beat, every 10th beat, and right after a
+`diagnostics` command. The server keeps only these keys (others are dropped, strings cut,
+integers clamped to 0..2^53) and ignores the whole object when the result is over 4096
+characters; the heartbeat itself still succeeds.
+
+```json
+"diag": {"ua": "…", "build": "3.0.0-1a2b3c4d", "page_uptime_s": 3600,
+  "screen": {"w": 1920, "h": 1080, "dpr": 1}, "viewport": {"w": 1920, "h": 1080},
+  "shell": {"name": "electron", "version": "3.0.0", "uptime_s": 7200, "caps": ["capture"]},
+  "cache": {"files": 12, "bytes": 123456789}, "storage_free_bytes": 52000000000,
+  "errors": [{"t": 1731312000000, "msg": "video stalled"}]}
+```
+
+`ua` up to 300 characters, `build` 40, shell `name`/`version` 20, up to 8 `caps` of 20
+characters, up to 10 `errors` (`t` in Unix ms, `msg` up to 200 characters). Keep the whole
+heartbeat body under 8 KB: a `413` counts as a failed heartbeat.
+
 If `manifest_version` differs from the version you are playing, fetch the manifest. This is the
 safety net when the event stream is down. The admin shows a display as online while heartbeats
 arrive (offline after 90 seconds without one). On a JSON 401, go back to pairing; ignore network
@@ -300,6 +345,9 @@ Authenticated. A Server-Sent Events stream (`text/event-stream`). Every `data:` 
 | `hello` | `{"build": "3.0.0-1a2b3c4d", "manifest_version": "…", "server_time_ms": …, "heartbeat_s": 30, "display": {"id": 3, "name": "Lobby"}}` | Sent on every connect. If `manifest_version` differs from yours, fetch the manifest. `build` is for the browser player; native clients ignore it. There is no `Last-Event-ID` replay; `hello` carries the current state. |
 | `manifest` | `{}` | Something may have changed: fetch the manifest with `If-None-Match`. Several hints may arrive together. |
 | `command` | `{"action": "reload"}` | Restart the player (the browser reloads the page). Wait for the end of the current item, and only when the server is reachable. Ignore unknown actions. |
+| `command` | `{"action": "identify", "seconds": 15}` | Show the display name over the content for that many seconds (clamp to 3-60). |
+| `command` | `{"action": "screenshot", "request_id": "<16 hex>"}` | Capture the screen and send it with `POST /screenshot`. Also sent right after `hello` while a request made in the last 2 minutes is still open. |
+| `command` | `{"action": "diagnostics"}` | Send a heartbeat with `diag` now. |
 | `revoked` | `{}` | The token was revoked. Fetch the manifest; the 401 sends you back to pairing. |
 | `bye` | `{"reason": "max_age"}` or `{"reason": "replaced"}` | The stream is ending. Reconnect after a random 0-3 seconds. |
 | `ka` | `{}` | Keep-alive. Only resets your silence watchdog. |
@@ -313,6 +361,23 @@ Emergency events are never dropped when a screen's event queue is full.
 Live push reaches only screens connected to the same server process. That is why the heartbeat
 check above is required, not optional.
 
+## Screenshots
+
+### `POST /screenshot`
+
+Authenticated. Answers a `screenshot` command. The body is the raw image (not JSON), with
+`Content-Type: image/jpeg` or `image/png` and the header `X-Screenshot-Request: <request_id>`.
+Keep the longest side at 1920 pixels or less; the body limit is 4 MB.
+
+- `200 {"status": "saved"}`: stored. The server re-encodes it as a JPEG (EXIF dropped) and
+  keeps only the latest screenshot per display.
+- `409 stale_request`: the id is not the open request (wrong, already used, or older than
+  2 minutes). Each request id works once.
+- `415 unsupported_type`, `400 bad_image` (not a readable image, or over 40 megapixels),
+  `413 too_large`.
+
+A screen cannot upload an image nobody asked for. Uploading publishes nothing to other screens.
+
 ## Shell hook
 
 The kiosk clients (Electron and Android, see `docs/clients.md`) do not reimplement the player.
@@ -320,10 +385,11 @@ They load the browser player at `/player/` and talk to it through a small hook. 
 browser there is no hook and the player behaves exactly as before.
 
 `net.shell()` in `static/player/net.js` looks for one of two hosts and returns a normalized
-object `{info, onState(s), onManifest(json)}`, or `null`:
+object `{info, onState(s), onManifest(json), capture(), stats()}`, or `null`:
 
 - **Electron:** `window.AiSignXShell`, exposed by the preload with `contextBridge`, with
-  `info()` returning an object and the functions `onState(s)` and `onManifest(json)`.
+  `info()` returning an object and the functions `onState(s)`, `onManifest(json)`, `capture()`
+  and `stats()`.
 - **Android:** `window.AiSignXShellInfo.info()` (an `addJavascriptInterface` object) returns a
   JSON string. `onState` and `onManifest` post a JSON string through `window.AiSignXShellPort`
   (`addWebMessageListener`): `{"t":"state","s":"PAIRED"}` or `{"t":"manifest","m":"<manifest JSON
@@ -338,6 +404,17 @@ Every call into the shell is wrapped in `try/catch`; a broken shell never stops 
 | `device` | Device name sent with `POST /pair` (up to 120 characters), for example `HOSTNAME / Windows`. |
 | `client_id` | 32 lowercase hex characters. If valid, the player stores and uses it as its `client_id`. |
 | `admin_url` | The server URL configured in the client (`http(s)://host[:port]`). Used for the pairing hint `<admin_url>/displays/pair`, because behind the Electron proxy `location.origin` is a loopback address. |
+| `caps` | Optional list of capabilities: `capture` (the shell can take a real screenshot), `rotate` (the shell rotates the device itself, so the page does not rotate with CSS), `pin-exit` (leaving the app asks for the unlock PIN). Unknown values are ignored. |
+
+**Capture.** `capture()` resolves to a JPEG `Blob` of the real screen, or `null`; the page then
+falls back to drawing its own media on a canvas. Electron: `AiSignXShell.capture()` returns
+JPEG bytes. Android: the page posts `{"t":"capture","id":<n>}` through the port and the shell
+replies on the same port with `{"t":"capture","id":<n>,"ok":true,"jpeg":"<base64>"}` (or
+`"ok":false`); the page gives up after 10 seconds.
+
+**Stats.** `stats()` returns `{uptime_s, cache: {files, bytes}, storage_free_bytes}` or `null`
+(Electron `AiSignXShell.stats()`, Android `AiSignXShellInfo.stats()` as a JSON string). It goes
+into the heartbeat `diag`. It never holds secrets: on Android, iframes can call it too.
 
 `onState(s)` is called on every state change with one of `CONNECTING`, `SETUP_WAIT`, `PAIRING`,
 `PLAYING`, `NO_CONTENT`, plus `PAIRED` once when pairing succeeds (before the player boots).
@@ -345,11 +422,16 @@ Shells flush their cookie store to disk on `PAIRED`.
 
 `onManifest(json)` is called with the manifest as a JSON string after every `GET /manifest` that
 returned 200 (never on 304, and not for the copy restored from `localStorage`). Shells use it to
-prefetch and keep image and video files in their media cache.
+prefetch and keep image and video files in their media cache, and to keep the native part of
+`settings`: the unlock PIN hash (both apps) and, on Android, the orientation and input lock. They
+store these so an offline start still applies them. A manifest without `settings` changes
+nothing; one whose `settings` has `"unlock": null` removes the PIN.
 
 **No token or cookie ever reaches the hook.** The credential stays in the HttpOnly
-`aisignx_display` cookie, which JavaScript cannot read; the manifest holds no secret. The hook
-carries only device info, state names and the manifest.
+`aisignx_display` cookie, which JavaScript cannot read. The manifest carries only a salted
+PBKDF2 hash of the unlock PIN, for the native apps; the browser player never uses it and does
+not store it in `localStorage`. The hook carries only device info, capabilities, stats, state
+names, screenshots and the manifest.
 
 Clients check a server address with `GET /healthz` (no login, no cookie, works before setup).
 It answers `{"status": "ok", "app": "aisignx", "api": 1}`; `app` identifies an AiSignX server and

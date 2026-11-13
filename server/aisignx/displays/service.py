@@ -9,6 +9,7 @@ from ..models import Display, PairingCode, PlaylistItem
 from ..models.display import STATE_ONLINE
 from ..player.broker import get_broker
 from ..timeutil import iso_z, utcnow
+from . import screenshots
 
 STATE_LABELS = {
     "online": ("Online", "bg-success"),
@@ -43,7 +44,9 @@ def status_payload(now: datetime | None = None) -> dict:
     return {
         "server_time": iso_z(now),
         "displays": [{"id": d.id, "state": current[d.id], "last_seen": iso_z(d.last_seen_at),
-                      "live": is_live(d.id)} for d in displays],
+                      "live": is_live(d.id), "screenshot_at": iso_z(d.screenshot_at),
+                      "screenshot_pending": screenshots.pending(d, now) is not None,
+                      "diagnostics_at": iso_z(d.diagnostics_at)} for d in displays],
     }
 
 

@@ -62,7 +62,7 @@ def test_editor_and_admin_can_manage(configured, client, paired_display, playlis
     assert client.get(f"/displays/{display_id}/edit").status_code == 200
 
     resp = client.post(f"/displays/{display_id}/edit",
-                       data={"name": "Front desk", "playlist": playlist_id})
+                       data={"name": "Front desk", "playlist": playlist_id, "volume": 100})
     assert resp.status_code == 302
     with configured.app_context():
         display = db.session.get(Display, display_id)
@@ -90,10 +90,10 @@ def test_logged_out_redirects(configured, client, paired_display):
 
 def test_edit_clears_playlist_and_requires_name(app, admin_client, paired_display, playlist_id):
     display_id, _ = paired_display
-    admin_client.post(f"/displays/{display_id}/edit", data={"name": "Lobby", "playlist": playlist_id})
+    admin_client.post(f"/displays/{display_id}/edit", data={"name": "Lobby", "playlist": playlist_id, "volume": 100})
     resp = admin_client.post(f"/displays/{display_id}/edit", data={"name": "", "playlist": 0})
     assert resp.status_code == 200  # re-rendered with an error
-    admin_client.post(f"/displays/{display_id}/edit", data={"name": "Lobby", "playlist": 0})
+    admin_client.post(f"/displays/{display_id}/edit", data={"name": "Lobby", "playlist": 0, "volume": 100})
     with app.app_context():
         assert db.session.get(Display, display_id).playlist_id is None
 

@@ -98,6 +98,30 @@
     window.setInterval(refresh, 15000);
   }
 
+  // Display detail: while a screenshot is pending, poll status.json every 2 s (for up to
+  // 90 s) and reload once it arrives or the request is no longer open.
+  const shot = document.querySelector("[data-screenshot-pending]");
+  if (shot && shot.dataset.statusUrl) {
+    const id = Number(shot.dataset.screenshotPending);
+    const before = shot.dataset.screenshotAt || null;
+    const started = Date.now();
+    const poll = async () => {
+      try {
+        const response = await fetch(shot.dataset.statusUrl, { headers: { Accept: "application/json" } });
+        if (response.ok) {
+          const data = await response.json();
+          const d = data.displays.find((x) => x.id === id);
+          if (d && ((d.screenshot_at || null) !== before || !d.screenshot_pending)) {
+            window.location.reload();
+            return;
+          }
+        }
+      } catch (err) { /* try again */ }
+      if (Date.now() - started < 90000) window.setTimeout(poll, 2000);
+    };
+    window.setTimeout(poll, 2000);
+  }
+
   // Drag-and-drop reordering for playlist items.
   const list = document.getElementById("playlistItems");
   if (list && list.dataset.reorderUrl) {

@@ -41,8 +41,12 @@ v3 is a clean rewrite of AiSignX as a single-organization app.
 - Electron: loopback caching proxy, kiosk window with blocked keys and Ctrl+Alt admin shortcuts, single instance, keep-awake, crash and hang watchdogs, Windows login item, NSIS installer (`npm run dist:win`).
 - Android: full-screen WebView with immersive mode and keep-awake, remote keys blocked, hidden gesture back to setup, optional Home-app mode and a boot receiver, renderer-crash recovery. Release builds are signed only when `keystore.properties` exists.
 - Player shell hook (`docs/player-api.md`, "Shell hook"): the player reports `electron-<version>` or `android-<version>` and the device name, uses the app's client ID, shows the real server address in the pairing hint, and tells the app when it is paired and when a new manifest arrives. No credential passes through the hook.
+- Display options: location and notes (admin only, never sent to the screen), orientation (0/90/180/270), a fit mode for every item, video volume, an offline banner, and an input lock. Admins can also set a 4-8 digit unlock PIN that the Windows and Android apps ask for before leaving the player; it is stored and sent only as a salted PBKDF2 hash, with a growing lockout after 5 wrong PINs.
+- Display page: **Identify** shows the display name on the screen, **Screenshot** asks the screen for a picture (the apps capture the real screen, a browser draws its own media), and a **Diagnostics** card shows screen size, app version and capabilities, cache, free storage and recent player errors.
+- Player API: the manifest gains `settings`; new `command` actions `identify`, `screenshot` and `diagnostics`; `POST /screenshot`; an optional `diag` object in the heartbeat; shell `caps`, `capture()` and `stats()`. Existing keys are unchanged.
 
 ### Changed
+- **Input on screens is now off by default.** Touches, clicks, keys and the wheel are ignored, so web pages in playlists can no longer be used from the screen until an admin turns on **Allow touch, mouse and keyboard** for that display. Screens on an older server keep input on.
 - The install scripts now suggest `flask --app wsgi serve` to start the server.
 - SQLite uses WAL mode and a 15-second busy timeout, so screen heartbeats and admin edits don't block each other. Keep the database on a local disk.
 - API errors under `/api/` (404, 405, 413 and others) return JSON instead of HTML pages.

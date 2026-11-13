@@ -6,6 +6,7 @@
   var A = window.AiSignX = window.AiSignX || {};
   var API = document.body.getAttribute("data-api") || "/api/player/v1";
   var TIMEOUT_MS = 10000;
+  var UPLOAD_TIMEOUT_MS = 30000;
 
   // ---- Storage: every access is wrapped, because private modes and kiosk
   // profiles may throw or return nothing. Values are JSON.
@@ -36,12 +37,53 @@
 
   // ---- Shell hook: a kiosk client (Electron preload or Android WebView) may expose
   // device info and receive state/manifest notices. No credential ever passes here.
-  // Returns {info: {name, version, device, client_id, admin_url}, onState(s), onManifest(json)}
-  // or null in a plain browser. Every shell call is wrapped; a broken shell never stops playback.
+  // Returns {info: {name, version, device, client_id, admin_url, caps}, onState(s), onManifest(json),
+  // capture() -> Promise<Blob|null>, stats() -> object|null} or null in a plain browser.
+  // Every shell call is wrapped; a broken shell never stops playback.
   var shellCache;
+  var CAPS = { capture: 1, rotate: 1, "pin-exit": 1 };
+  var CAPTURE_TIMEOUT_MS = 10000;
   function str(v, max) { return typeof v === "string" ? v.slice(0, max) : ""; }
+  function withTimeout(promise, ms) {
+    var timer;
+    return Promise.race([promise, new Promise(function (resolve) { timer = setTimeout(resolve, ms, null); })])
+      .then(function (v) { clearTimeout(timer); return v; }, function () { clearTimeout(timer); return null; });
+  }
+  function b64Blob(b64, type) {
+    var bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: type });
+  }
+  // Android: capture requests go out through the port; replies come back on it, keyed by id.
+  function androidCapture() {
+    var pending = {}, seq = 0, listening = false;
+    function onReply(ev) {
+      var msg = null;
+      try { msg = JSON.parse(ev && ev.data); } catch (e) { return; }
+      if (!msg || msg.t !== "capture" || !pending[msg.id]) return;
+      var resolve = pending[msg.id];
+      delete pending[msg.id];
+      var blob = null;
+      try { if (msg.ok && typeof msg.jpeg === "string" && msg.jpeg) blob = b64Blob(msg.jpeg, "image/jpeg"); } catch (e) { blob = null; }
+      resolve(blob);
+    }
+    return function () {
+      var port = window.AiSignXShellPort;
+      if (!port || typeof port.postMessage !== "function") return Promise.resolve(null);
+      if (!listening) {
+        listening = true;
+        if (typeof port.addEventListener === "function") port.addEventListener("message", onReply);
+        else port.onmessage = onReply;
+      }
+      seq = seq % 1000000000 + 1;
+      var id = seq;
+      var p = new Promise(function (resolve) { pending[id] = resolve; });
+      port.postMessage(JSON.stringify({ t: "capture", id: id }));
+      return withTimeout(p, CAPTURE_TIMEOUT_MS).then(function (blob) { delete pending[id]; return blob; });
+    };
+  }
   function readShell() {
-    var raw = null, send = null;
+    var raw = null, send = null, capture = null, stats = null;
     try {
       if (window.AiSignXShell && typeof window.AiSignXShell.info === "function") {
         var es = window.AiSignXShell;
@@ -50,13 +92,23 @@
           var fn = kind === "state" ? es.onState : es.onManifest;
           if (typeof fn === "function") fn(value);
         };
+        capture = function () {
+          if (typeof es.capture !== "function") return Promise.resolve(null);
+          return withTimeout(Promise.resolve(es.capture()), CAPTURE_TIMEOUT_MS).then(function (bytes) {
+            return bytes && bytes.length ? new Blob([bytes], { type: "image/jpeg" }) : null;
+          });
+        };
+        stats = function () { return typeof es.stats === "function" ? es.stats() : null; };
       } else if (window.AiSignXShellInfo && typeof window.AiSignXShellInfo.info === "function") {
-        raw = JSON.parse(window.AiSignXShellInfo.info());
+        var si = window.AiSignXShellInfo;
+        raw = JSON.parse(si.info());
         send = function (kind, value) {
           var port = window.AiSignXShellPort;
           if (!port || typeof port.postMessage !== "function") return;
           port.postMessage(JSON.stringify(kind === "state" ? { t: "state", s: value } : { t: "manifest", m: value }));
         };
+        capture = androidCapture();
+        stats = function () { return typeof si.stats === "function" ? JSON.parse(si.stats()) : null; };
       }
     } catch (e) { raw = null; }
     if (!raw || typeof raw !== "object" || (raw.name !== "electron" && raw.name !== "android")) return null;
@@ -67,11 +119,24 @@
       device: str(raw.device, 120),
       client_id: str(raw.client_id, 32),
       admin_url: /^https?:\/\/[^\s]+$/i.test(admin) ? admin : "",
+      caps: (Array.isArray(raw.caps) ? raw.caps : []).filter(function (c) {
+        return typeof c === "string" && CAPS[c] === 1;
+      }),
     };
     function safe(kind) {
       return function (value) { try { send(kind, value); } catch (e) { /* ignore */ } };
     }
-    return { info: info, onState: safe("state"), onManifest: safe("manifest") };
+    return {
+      info: info,
+      onState: safe("state"),
+      onManifest: safe("manifest"),
+      capture: function () {
+        try { return Promise.resolve(capture()).then(null, function () { return null; }); } catch (e) { return Promise.resolve(null); }
+      },
+      stats: function () {
+        try { var s = stats(); return s && typeof s === "object" ? s : null; } catch (e) { return null; }
+      },
+    };
   }
   function shell() {
     if (shellCache === undefined) shellCache = readShell();
@@ -123,6 +188,18 @@
       init.body = JSON.stringify(opts.body);
     }
     if (opts.etag) headers["If-None-Match"] = '"' + opts.etag + '"';
+    return send(path, init, TIMEOUT_MS);
+  }
+
+  // upload(path, blob, headers) -> the same result shape as api(). POSTs the raw Blob.
+  function upload(path, blob, extra) {
+    var headers = { Accept: "application/json", "Content-Type": (blob && blob.type) || "application/octet-stream" };
+    Object.keys(extra || {}).forEach(function (k) { headers[k] = extra[k]; });
+    return send(path, { method: "POST", headers: headers, body: blob, credentials: "same-origin", cache: "no-store" },
+      UPLOAD_TIMEOUT_MS);
+  }
+
+  function send(path, init, ms) {
     var ctrl = typeof AbortController === "function" ? new AbortController() : null;
     if (ctrl) init.signal = ctrl.signal;
     var timer;
@@ -130,7 +207,7 @@
       timer = setTimeout(function () {
         if (ctrl) ctrl.abort();
         reject(new Error("timeout"));
-      }, TIMEOUT_MS);
+      }, ms);
     });
     var request = fetch(API + path, init).then(function (res) {
       var retryAfter = parseInt(res.headers.get("Retry-After") || "", 10) || 0;
@@ -247,7 +324,7 @@
   // ---- Heartbeat: POST /heartbeat every `seconds` +/-10%.
   // payload() builds the body; onResult(res) receives the api() result.
   function Heartbeat(payload, onResult) {
-    var self = { seconds: 30, lastAt: 0, lastKind: "" };
+    var self = { seconds: 30, lastAt: 0, lastKind: "", lastOkAt: 0 };
     var timer = null, running = false, inFlight = false;
 
     function schedule() {
@@ -262,6 +339,7 @@
         inFlight = false;
         self.lastAt = Date.now();
         self.lastKind = res.kind === "ok" ? "ok" : res.kind + " " + res.status;
+        if (res.kind === "ok") self.lastOkAt = self.lastAt;
         if (res.kind === "ok" && res.data.heartbeat_s > 0) self.seconds = res.data.heartbeat_s;
         schedule();
         if (running) onResult(res);
@@ -284,6 +362,7 @@
   A.net = {
     API: API,
     api: api,
+    upload: upload,
     store: store,
     clientId: clientId,
     shell: shell,

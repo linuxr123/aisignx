@@ -4,7 +4,7 @@
   "use strict";
 
   var A = window.AiSignX;
-  var net = A.net, R = A.render, EM = A.emergency, store = net.store, K = net.store.KEYS;
+  var net = A.net, R = A.render, EM = A.emergency, D = A.device, store = net.store, K = net.store.KEYS;
   var body = document.body, screenEl = document.getElementById("screen");
   var BUILD = body.getAttribute("data-build") || "";
   var ROOT = body.getAttribute("data-root") || "";
@@ -17,7 +17,7 @@
   var CLIENT_ID = net.clientId();
 
   var TICK_MS = 250, PRELOAD_MS = 3000, FAIL_DWELL_MS = 2000, DEFAULT_DURATION_MS = 10000;
-  var NO_CONTENT_RETRY_MS = 30000, SETUP_RETRY_MS = 10000, PAIRED_SHOW_MS = 2000;
+  var NO_CONTENT_RETRY_MS = 30000, SETUP_RETRY_MS = 10000, PAIRED_SHOW_MS = 2000, DIAG_EVERY = 10;
   var TYPES = { image: 1, video: 1, web: 1 };
 
   var S = {
@@ -30,9 +30,10 @@
   };
   var manifestBackoff = net.Backoff(2000, 30000);
   var pairBackoff = net.Backoff(2000, 30000);
+  var beats = 0, diagWanted = false;
 
   function now() { return window.performance && performance.now ? performance.now() : Date.now(); }
-  function note(msg) { S.note = msg; if (window.console) console.info("[player] " + msg); }
+  function note(msg) { S.note = msg; D.noteError(msg); if (window.console) console.info("[player] " + msg); }
   function durationOf(item) { var d = Number(item.duration_ms); return d > 0 ? Math.max(1000, d) : DEFAULT_DURATION_MS; }
 
   // ---- Timers. Mode timers die on any state-machine transition; slide timers on any slide change.
@@ -86,7 +87,11 @@
       if (d.manifest_version !== S.version) fetchManifest();
     },
     manifest: function () { fetchManifest(); },
-    command: function (d) { if (d.action === "reload") requestReload(); },
+    command: function (d) {
+      if (d.action === "reload") requestReload();
+      else if (d.action === "diagnostics") { diagWanted = true; hb.now(); }
+      else D.command(d);  // identify, screenshot
+    },
     revoked: function () { fetchManifest(); },  // the JSON 401 leads to PAIRING
     error: function () { fetchManifest(); },    // EventSource cannot see a 401 itself
     // Emergencies show at once; the manifest then confirms. Never cleared by a disconnect.
@@ -99,6 +104,12 @@
       screen_w: Math.round(window.screen.width * dpr), screen_h: Math.round(window.screen.height * dpr) };
     if (S.cur) b.current_item_id = S.cur.item.id;
     if (S.version) b.manifest_version = S.version;
+    beats++;
+    if (beats === 1 || beats % DIAG_EVERY === 0 || diagWanted) {
+      diagWanted = false;
+      var diag = D.diag();
+      if (diag) b.diag = diag;
+    }
     return b;
   }, function (res) {
     if (res.kind === "unauthorized") goPairing();
@@ -107,7 +118,7 @@
     // network errors: keep playing
   });
   function startLive() {
-    if (!S.live) { S.live = true; events.start(); hb.start(S.manifest && S.manifest.heartbeat_s); }
+    if (!S.live) { S.live = true; beats = 0; events.start(); hb.start(S.manifest && S.manifest.heartbeat_s); }
   }
   function stopLive() { S.live = false; events.stop(); hb.stop(); }
 
@@ -129,7 +140,7 @@
     if (res.kind === "setup") { goSetup(); return; }
     if (res.kind === "ok" && typeof res.data.version === "string") {
       manifestBackoff.reset();
-      store.local.set(K.manifest, res.data);
+      store.local.set(K.manifest, withoutUnlock(res.data));
       applyManifest(res.data);
       if (shell) shell.onManifest(JSON.stringify(res.data));
     } else if (res.kind === "not_modified") {
@@ -144,8 +155,17 @@
     }
     startLive();
   }
+  // The PIN hash is for the native apps; never keep it in localStorage.
+  function withoutUnlock(m) {
+    if (!m.settings || typeof m.settings !== "object") return m;
+    var copy = Object.assign({}, m);
+    copy.settings = Object.assign({}, m.settings);
+    delete copy.settings.unlock;
+    return copy;
+  }
   function applyManifest(m) {
     try { EM.apply(m); } catch (e) { if (window.console) console.error(e); }
+    try { D.applySettings(m.settings); } catch (e) { if (window.console) console.error(e); }
     S.manifest = m;
     S.version = typeof m.version === "string" ? m.version : null;
     S.items = (Array.isArray(m.items) ? m.items : []).filter(function (it) {
@@ -257,7 +277,7 @@
   function slideFailed(reason) {
     var cur = S.cur;
     if (!cur || cur.failed) return;
-    note("item " + cur.item.id + " failed: " + reason);
+    note("item " + cur.item.id + " failed: " + reason);  // note() also feeds the error ring
     cur.failed = true;
     if (countFailure()) return;
     cur.deadline = Math.min(cur.deadline, Math.max(now(), cur.shownAt + FAIL_DWELL_MS));
@@ -385,6 +405,7 @@
   var dbg = DEBUG ? body.appendChild(el("pre", "debug")) : null;
   function housekeeping() {
     if (S.reloadPending && S.state !== "PLAYING") guardedReload();
+    D.checkOffline(hb, events, S.state);
     if (!dbg) return;
     var age = hb.lastAt ? Math.round((Date.now() - hb.lastAt) / 1000) + "s ago (" + hb.lastKind + ")" : "never";
     dbg.textContent = "state      " + S.state + (S.reloadPending ? " (reload pending)" : "") +
@@ -402,6 +423,7 @@
   });
 
   EM.current = function () { return S.cur; };
+  D.init({ manifest: function () { return S.manifest; } });
   R.init(document.getElementById("stage"));
   setInterval(tick, TICK_MS);
   setInterval(housekeeping, 1000);

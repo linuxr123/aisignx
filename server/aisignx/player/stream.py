@@ -16,6 +16,7 @@ import time
 from flask import Response, current_app, g, request
 from sqlalchemy import update
 
+from ..displays import screenshots
 from ..extensions import db
 from ..models import Display
 from ..timeutil import utcnow
@@ -38,7 +39,8 @@ def frame(event: str, data: dict) -> str:
 
 def _stream(broker: Broker, sub: Subscriber, hello: dict, keepalive: float, max_age: float,
             initial: list | None = None):
-    """initial: (event, data) frames sent right after hello (the live emergency)."""
+    """initial: (event, data) frames sent right after hello (the live emergency and
+    an open screenshot request)."""
     try:
         yield ":" + " " * _PADDING + f"\nretry: {RETRY_MS}\n\n"
         yield frame("hello", hello)
@@ -76,6 +78,7 @@ def events():
                          retry_after=30)
     try:
         manifest = build_manifest(display)
+        screenshot_rid = screenshots.pending(display)  # read before the commit expires it
         db.session.execute(
             update(Display).where(Display.id == display_id).values(
                 last_seen_at=utcnow(), last_ip=(request.remote_addr or "")[:45] or None,
@@ -99,6 +102,9 @@ def events():
 
     # On every (re)connect, repeat the live emergency so a screen never misses one.
     initial = [("emergency", manifest["emergency"])] if manifest.get("emergency") else []
+    # A screen that reconnects within REQUEST_TTL_S still answers a screenshot request.
+    if screenshot_rid:
+        initial.append(("command", {"action": "screenshot", "request_id": screenshot_rid}))
 
     resp = Response(_stream(broker, sub, hello, keepalive, max_age, initial),
                     mimetype="text/event-stream")

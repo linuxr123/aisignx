@@ -16,6 +16,8 @@ const { createProxy, sendOffline } = require('./proxy/server');
 const { createPlayerWindow } = require('./window');
 const { createSetup } = require('./setup');
 const { runSmoke, tempProfile } = require('./smoke');
+const unlock = require('./unlock');
+const { createUnlockWindow } = require('./unlock-window');
 
 function argValue(name) {
   const hit = process.argv.find((a) => a.startsWith('--' + name + '='));
@@ -35,6 +37,7 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disk-cache-size', '67108864');
 
 const DATA = app.getPath('userData');
+const CAPTURE_MAX_SIDE = 1920;
 fs.mkdirSync(DATA, { recursive: true });
 log.init(path.join(DATA, 'aisignx-player.log'));
 
@@ -43,6 +46,7 @@ const S = {
   clientId: '',
   proxy: null, upstream: null, pageCache: null, mediaCache: null,
   player: null, setup: null, cookie: '', retryTimer: null, quitting: false,
+  gate: null, unlockWin: null,
 };
 
 function origin() {
@@ -56,6 +60,7 @@ function shellInfo() {
     device: (os.hostname() + ' / ' + os.version()).slice(0, 120),
     client_id: S.clientId,
     admin_url: S.cfg.serverUrl,
+    caps: ['capture', 'pin-exit'],
   };
 }
 
@@ -124,7 +129,10 @@ async function wipeServerData() {
 
 // ---- Setup callbacks.
 async function onSaved(cfg, { serverChanged }) {
-  if (serverChanged) await wipeServerData();
+  if (serverChanged) {
+    await wipeServerData();
+    S.gate.reset();
+  }
   S.cfg = cfg;
   kiosk.applyAutostart(cfg.autostart);
   await startPlayer();
@@ -134,7 +142,8 @@ async function onSaved(cfg, { serverChanged }) {
 async function onForget() {
   if (S.player && !S.player.win.isDestroyed()) S.player.win.destroy();
   await wipeServerData();
-  S.cfg = config.saveConfig(DATA, Object.assign({}, S.cfg, { serverUrl: '', certPin: null }));
+  S.cfg = config.saveConfig(DATA, Object.assign({}, S.cfg, { serverUrl: '', certPin: null, unlock: null }));
+  S.gate.reset();
   log.info('server forgotten');
 }
 
@@ -162,8 +171,56 @@ function registerIpc() {
     session.defaultSession.cookies.flushStore().catch((e) => log.warn('flushStore', e.message));
   });
   ipcMain.on('shell-manifest', (event, json) => {
-    if (fromPlayer(event) && S.mediaCache && typeof json === 'string') S.mediaCache.onManifest(json);
+    if (!fromPlayer(event) || typeof json !== 'string') return;
+    applySettings(json);
+    if (S.mediaCache) S.mediaCache.onManifest(json);
   });
+  ipcMain.handle('shell-capture', async (event) => (fromPlayer(event) ? capture() : null));
+  ipcMain.on('shell-stats', (event) => {
+    event.returnValue = fromPlayer(event) ? stats() : null;
+  });
+}
+
+// Keeps the unlock PIN hash from the manifest's `settings` in config.json, so the PIN still
+// guards the shortcuts when the app starts offline. An old server sends no `settings`: no change.
+function applySettings(json) {
+  if (SMOKE || !S.cfg.serverUrl) return;
+  let settings;
+  try { settings = JSON.parse(json).settings; } catch (e) { return; }
+  if (!settings || typeof settings !== 'object' || !('unlock' in settings)) return;
+  const next = unlock.sanitizeUnlock(settings.unlock);
+  if (JSON.stringify(next) === JSON.stringify(S.cfg.unlock)) return;
+  try {
+    S.cfg = config.saveConfig(DATA, Object.assign({}, S.cfg, { unlock: next }));
+    log.info(next ? 'unlock PIN set by the server' : 'unlock PIN removed by the server');
+  } catch (e) {
+    log.warn('could not save the unlock PIN', e.message);
+  }
+}
+
+// A JPEG of the player window (what the screen shows), longest side at most 1920, or null.
+async function capture() {
+  try {
+    if (!S.player || S.player.win.isDestroyed()) return null;
+    let img = await S.player.win.webContents.capturePage();
+    if (!img || img.isEmpty()) return null;
+    const { width, height } = img.getSize();
+    const scale = Math.min(1, CAPTURE_MAX_SIDE / Math.max(width, height));
+    if (scale < 1) img = img.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'good' });
+    return img.toJPEG(80);
+  } catch (e) {
+    log.warn('screen capture failed', e.message);
+    return null;
+  }
+}
+
+function stats() {
+  const out = { uptime_s: Math.floor(process.uptime()), cache: S.mediaCache ? S.mediaCache.stats() : null };
+  try {
+    const st = fs.statfsSync(DATA);
+    out.storage_free_bytes = st.bavail * st.bsize;
+  } catch (e) { /* not reported */ }
+  return out;
 }
 
 function lockDownSession() {
@@ -179,6 +236,8 @@ async function main() {
   lockDownSession();
   registerIpc();
   S.clientId = config.clientId(DATA);
+  S.gate = unlock.createGate({ dataDir: DATA });
+  S.unlockWin = createUnlockWindow({ getUnlock: () => S.cfg.unlock, gate: S.gate });
 
   if (SMOKE) {
     // --port=N keeps the loopback origin (and so localStorage) across smoke runs.
@@ -203,14 +262,16 @@ async function main() {
     onClosed: () => { if (!S.player && !S.quitting) app.quit(); },
     quit: () => app.quit(),
   });
+  // Every Ctrl+Alt shortcut asks for the unlock PIN when the server set one.
+  const guard = S.unlockWin.guard;
   kiosk.registerShortcuts({
-    setup: openSetup,
-    log: () => shell.openPath(log.file),
-    devtools: () => {
+    setup: guard('setup', openSetup),
+    log: guard('log', () => shell.openPath(log.file)),
+    devtools: guard('devtools', () => {
       const w = BrowserWindow.getFocusedWindow() || (S.player && S.player.win);
       if (w) w.webContents.openDevTools({ mode: 'detach' });
-    },
-    quit: () => app.quit(),
+    }),
+    quit: guard('quit', () => app.quit()),
   });
   kiosk.keepAwake();
 

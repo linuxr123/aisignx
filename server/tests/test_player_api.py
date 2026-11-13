@@ -149,7 +149,7 @@ def test_manifest_shape(app, client, content):
     assert resp.headers["Cache-Control"] == "no-cache"
     assert resp.headers["X-Content-Type-Options"] == "nosniff"
     body = resp.get_json()
-    assert set(body) == OLD_KEYS | {"source", "emergency"}
+    assert set(body) == OLD_KEYS | {"source", "emergency", "settings"}
     assert body["v"] == 1
     assert len(body["version"]) == 16 and int(body["version"], 16) >= 0
     assert abs(body["server_time_ms"] - utcnow().timestamp() * 1000) < 60_000
@@ -274,6 +274,18 @@ def _rename_display(content):
     db.session.get(Display, content["display_id"]).name = "Front desk"
 
 
+def _display_change(field, value):
+    def change(content):
+        setattr(db.session.get(Display, content["display_id"]), field, value)
+    return change
+
+
+def _set_pin(content):
+    from aisignx.displays.options import hash_pin
+    db.session.get(Display, content["display_id"]).unlock_pin_hash = hash_pin("2468",
+                                                                              iterations=1000)
+
+
 @pytest.mark.parametrize("change", [
     _item_change("transition", "zoom"),
     _item_change("duration", 45),
@@ -283,12 +295,29 @@ def _rename_display(content):
     _media_default_duration,
     _reassign_playlist,
     _rename_display,
+    _display_change("orientation", 90),
+    _display_change("volume", 40),
+    _display_change("show_offline_banner", False),
+    _display_change("allow_input", True),
+    _display_change("fit_override", "stretch"),
+    _set_pin,
 ], ids=["transition", "duration", "fit", "mute", "reorder", "media-duration", "reassign",
-        "rename"])
+        "rename", "orientation", "volume", "banner", "input", "fit-override", "pin-set"])
 def test_version_changes_with_content(app, client, content, change):
     before = _version(client)
     with app.app_context():
         change(content)
+        db.session.commit()
+    assert _version(client) != before
+
+
+def test_version_changes_when_pin_cleared(app, client, content):
+    with app.app_context():
+        _set_pin(content)
+        db.session.commit()
+    before = _version(client)
+    with app.app_context():
+        db.session.get(Display, content["display_id"]).unlock_pin_hash = None
         db.session.commit()
     assert _version(client) != before
 
@@ -342,7 +371,7 @@ def _add_emergency(**kw) -> int:
 
 def test_source_and_emergency_keys_without_playlist(app, configured, client, paired_display):
     body = _manifest(client)
-    assert set(body) == OLD_KEYS | {"source", "emergency"}
+    assert set(body) == OLD_KEYS | {"source", "emergency", "settings"}
     assert body["source"] == {"type": "none", "id": None, "name": None}
     assert body["emergency"] is None
 
@@ -648,10 +677,12 @@ def test_player_page(app, configured, client):
     scripts = re.findall(r"<script([^>]*)>(.*?)</script>", html, re.S)
     names = [re.search(r'src="/static/player/(\w+)\.js\?v=[^"]+"', attrs).group(1)
              for attrs, _ in scripts]
-    assert names == ["net", "render", "emergency", "player"]
+    assert names == ["net", "render", "emergency", "device", "player"]
     for _, body in scripts:
         assert body.strip() == ""  # no inline script
     assert re.search(r'<div id="emergency" hidden[ >]', html)  # overlay starts hidden
+    assert re.search(r'<div id="offline" hidden[ >]', html)
+    assert re.search(r'<div id="identify" hidden[ >]', html)
     assert "style=" not in html
     assert "<style" not in html
     # The page works without a credential and without login.

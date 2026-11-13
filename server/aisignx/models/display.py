@@ -1,6 +1,8 @@
 """Screens (displays) and their short-lived pairing codes."""
 from datetime import datetime, timedelta, timezone
 
+import sqlalchemy as sa
+
 from ..extensions import db
 from ..timeutil import as_utc
 
@@ -8,6 +10,9 @@ STATE_UNPAIRED = "unpaired"
 STATE_NEVER = "never"
 STATE_ONLINE = "online"
 STATE_OFFLINE = "offline"
+
+# Degrees the player rotates its output clockwise.
+ORIENTATIONS = (0, 90, 180, 270)
 
 
 def _utcnow():
@@ -46,6 +51,29 @@ class Display(db.Model):
     screen_width = db.Column(db.Integer, nullable=True)
     screen_height = db.Column(db.Integer, nullable=True)
     device_info = db.Column(db.String(120), nullable=True)
+
+    # Admin-only notes; never sent to the screen.
+    location = db.Column(db.String(100), nullable=True)
+    description = db.Column(db.Text, nullable=True)
+
+    # Per-display options, sent in the manifest's "settings" (see displays/options.py).
+    orientation = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    fit_override = db.Column(db.String(16), nullable=True)  # NULL: each item's own fit
+    volume = db.Column(db.Integer, nullable=False, default=100, server_default="100")
+    show_offline_banner = db.Column(db.Boolean, nullable=False, default=True,
+                                    server_default=sa.true())
+    allow_input = db.Column(db.Boolean, nullable=False, default=False,
+                            server_default=sa.false())
+    # pbkdf2-sha256$<iter>$<salt hex>$<hash hex>; guards leaving the native apps.
+    unlock_pin_hash = db.Column(db.String(200), nullable=True)
+
+    # Device-reported data and screenshot requests. These are written only with Core
+    # UPDATE; an ORM write broadcasts a manifest hint to every screen.
+    diagnostics = db.Column(db.Text, nullable=True)  # JSON, at most 4096 characters
+    diagnostics_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    screenshot_request = db.Column(db.String(32), nullable=True)
+    screenshot_requested_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    screenshot_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
 

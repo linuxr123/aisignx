@@ -18,6 +18,7 @@
   var stage = null;   // #stage element
   var active = null;  // slide on screen
   var exiting = [];   // slides animating out (normally zero or one)
+  var volume = 1;     // 0..1, the display's volume setting; applies to every <video> we create
 
   function init(el) { stage = el; }
 
@@ -83,6 +84,7 @@
     // muted must be a property (the attribute alone is not reliable) and set before src.
     v.muted = !!item.muted;
     v.defaultMuted = !!item.muted;
+    v.volume = volume;
     v.playsInline = true;
     v.setAttribute("playsinline", "");
     v.setAttribute("webkit-playsinline", "");
@@ -289,6 +291,18 @@
     }
   }
 
+  // setVolume(0..100): the display's volume for the player's own videos (on screen and
+  // being prepared). Muting is separate and unchanged; this never touches `muted`.
+  function setVolume(v) {
+    var n = Number(v);
+    volume = n >= 0 && n <= 100 ? n / 100 : (n > 100 ? 1 : (n < 0 ? 0 : 1));
+    if (!stage) return;
+    var vids = stage.querySelectorAll("video");
+    for (var i = 0; i < vids.length; i++) {
+      try { vids[i].volume = volume; } catch (e) { /* ignore */ }
+    }
+  }
+
   A.render = {
     init: init,
     prepare: prepare,
@@ -299,5 +313,6 @@
     resume: resume,
     isVideo: isVideo,
     pickTransition: pickTransition,
+    setVolume: setVolume,
   };
 })();

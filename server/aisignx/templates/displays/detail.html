@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "displays/_badge.html" import badge %}
 {% from "displays/_week.html" import now_playing, week_list %}
+{% from "displays/_device.html" import settings_card, screenshot_card, diagnostics_card %}
 {% block title %}{{ display.name }}{% endblock %}
 {% macro when(dt) %}{% if dt %}{{ dt|localtime }}{% else %}&mdash;{% endif %}{% endmacro %}
 {% macro text(value) %}{% if value %}{{ value }}{% else %}&mdash;{% endif %}{% endmacro %}
@@ -14,6 +15,12 @@
       {{ action_form.hidden_tag() }}<button class="btn btn-outline-secondary" type="submit">Reload</button>
     </form>
     {% if display.is_paired %}
+    <form class="d-inline" method="post" action="{{ url_for('displays.identify', display_id=display.id) }}">
+      {{ action_form.hidden_tag() }}<button class="btn btn-outline-secondary" type="submit" title="Show the display's name on the screen for 15 seconds">Identify</button>
+    </form>
+    <form class="d-inline" method="post" action="{{ url_for('displays.screenshot', display_id=display.id) }}">
+      {{ action_form.hidden_tag() }}<button class="btn btn-outline-secondary" type="submit">Screenshot</button>
+    </form>
     <form class="d-inline" method="post" action="{{ url_for('displays.unpair', display_id=display.id) }}"
           data-confirm="Unpair {{ display.name }}? The screen stops playing and shows a new pairing code.">
       {{ action_form.hidden_tag() }}<button class="btn btn-outline-warning" type="submit">Unpair</button>
@@ -70,6 +77,9 @@
     <dd class="col-sm-8">{% if display.client_id %}<code>{{ display.client_id[:8] }}</code>{% else %}&mdash;{% endif %}</dd>
   </dl>
 </div></div>
+{{ settings_card(display, pin_set) }}
+{% if display.is_paired or has_screenshot %}{{ screenshot_card(display, has_screenshot, screenshot_pending) }}{% endif %}
+{{ diagnostics_card(display, diag, current_user.can_edit, action_form) }}
 <div class="card" style="max-width: 48rem"><div class="card-body">
   <div class="d-flex justify-content-between align-items-center">
     <h2 class="h5 mb-0">Next 7 days</h2>

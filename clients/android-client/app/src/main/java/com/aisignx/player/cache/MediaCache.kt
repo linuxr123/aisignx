@@ -186,6 +186,8 @@ class MediaCache(
 
     @Synchronized fun totalBytes(): Long = index.values.sumOf { it.size }
 
+    @Synchronized fun fileCount(): Int = index.size
+
     /** Delete every cached file and the index (server changed or forgotten). */
     @Synchronized fun clear() {
         index.clear(); expected.clear(); current = emptySet()

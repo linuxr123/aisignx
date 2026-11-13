@@ -29,6 +29,11 @@
     <string name="exit_message">Open the AiSignX setup screen on this device?</string>
     <string name="exit_yes">Open setup</string>
     <string name="exit_no">Keep playing</string>
+    <string name="unlock_title">Enter the unlock PIN</string>
+    <string name="unlock_hint">PIN</string>
+    <string name="unlock_wrong">Wrong PIN</string>
+    <string name="unlock_wait">Too many wrong PINs. Try again in %1$s.</string>
+    <string name="unlock_ok">Unlock</string>
     <string name="reason_offline">Can\'t reach the server</string>
     <string name="reason_cert_changed">Server certificate changed. Re-run setup.</string>
 </resources>

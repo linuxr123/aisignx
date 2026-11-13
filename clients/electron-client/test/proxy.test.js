@@ -212,6 +212,7 @@ test('media: a miss passes through and downloads; a hit with the cookie returns 
   assert.equal(miss.status, 206);
   await mediaCache.whenIdle();
   assert.equal(mediaCache.index[MEDIA].size, VIDEO.length);
+  assert.deepEqual(mediaCache.stats(), { files: 1, bytes: VIDEO.length });
   const hitsBefore = state.mediaHits;
 
   const hit = await request(port, { path: MEDIA, headers: { ...cookie, range: 'bytes=100-199' } });

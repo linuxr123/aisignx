@@ -3,6 +3,8 @@ package com.aisignx.player
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
+import com.aisignx.player.shell.DisplaySettings
+import com.aisignx.player.shell.UnlockHash
 import java.security.SecureRandom
 
 /**
@@ -51,17 +53,57 @@ class Config(ctx: Context) {
         return id
     }
 
+    /** Hash of this display's unlock PIN from the last manifest, or null when none is set. */
+    val unlockHash: UnlockHash?
+        get() = UnlockHash.fromPref(prefs.getString(KEY_UNLOCK_HASH, null))
+
+    /** Configured orientation in degrees, or -1 before the first manifest with settings. */
+    val displayOrientation: Int
+        get() = prefs.getInt(KEY_ORIENTATION, -1).takeIf { it in DisplaySettings.ORIENTATIONS } ?: -1
+
+    /** True until settings arrive, which keeps the old behaviour with older servers. */
+    val allowInput: Boolean
+        get() = prefs.getBoolean(KEY_ALLOW_INPUT, true)
+
+    /** Wrong PINs in a row and the time (wall clock ms) until which the prompt is locked. */
+    val unlockFailures: Int get() = prefs.getInt(KEY_UNLOCK_FAILURES, 0)
+    val unlockLockedUntil: Long get() = prefs.getLong(KEY_UNLOCK_LOCKED_UNTIL, 0L)
+
+    @SuppressLint("ApplySharedPref") // kept across a power cut right after the change
+    fun saveDisplaySettings(s: DisplaySettings) {
+        val e = prefs.edit()
+            .putInt(KEY_ORIENTATION, s.orientation)
+            .putBoolean(KEY_ALLOW_INPUT, s.allowInput)
+        val old = prefs.getString(KEY_UNLOCK_HASH, null)
+        val new = s.unlock?.toPref()
+        if (new == null) e.remove(KEY_UNLOCK_HASH) else e.putString(KEY_UNLOCK_HASH, new)
+        if (old != new) e.remove(KEY_UNLOCK_FAILURES).remove(KEY_UNLOCK_LOCKED_UNTIL)
+        e.commit()
+    }
+
+    @SuppressLint("ApplySharedPref") // must survive a restart, or the backoff is bypassed
+    fun saveUnlockState(failures: Int, lockedUntil: Long) {
+        prefs.edit().putInt(KEY_UNLOCK_FAILURES, failures).putLong(KEY_UNLOCK_LOCKED_UNTIL, lockedUntil).commit()
+    }
+
     /** Store a new server (and its pin, if the user trusted one). Commits synchronously. */
     @SuppressLint("ApplySharedPref") // the player starts right after and must see it
     fun saveServer(url: String, pin: String?) {
-        prefs.edit().putString(KEY_SERVER, url).putString(KEY_PIN, pin).commit()
+        val e = prefs.edit()
+        // Another server's settings (and its unlock PIN) do not apply to this one.
+        if (prefs.getString(KEY_SERVER, null) != url) removeDisplaySettings(e)
+        e.putString(KEY_SERVER, url).putString(KEY_PIN, pin).commit()
     }
 
-    /** Forget the server and its pin. The client ID and home mode stay. */
+    /** Forget the server, its pin and the display settings. The client ID and home mode stay. */
     @SuppressLint("ApplySharedPref")
     fun forgetServer() {
-        prefs.edit().remove(KEY_SERVER).remove(KEY_PIN).commit()
+        removeDisplaySettings(prefs.edit().remove(KEY_SERVER).remove(KEY_PIN)).commit()
     }
+
+    private fun removeDisplaySettings(e: SharedPreferences.Editor): SharedPreferences.Editor =
+        e.remove(KEY_UNLOCK_HASH).remove(KEY_UNLOCK_FAILURES).remove(KEY_UNLOCK_LOCKED_UNTIL)
+            .remove(KEY_ORIENTATION).remove(KEY_ALLOW_INPUT)
 
     companion object {
         const val PREFS = "player_v3"
@@ -70,6 +112,11 @@ class Config(ctx: Context) {
         private const val KEY_CLIENT_ID = "client_id"
         private const val KEY_HOME = "home_mode"
         private const val KEY_V2_CLEANED = "v2_cleaned"
+        private const val KEY_UNLOCK_HASH = "unlock_hash"
+        private const val KEY_UNLOCK_FAILURES = "unlock_failures"
+        private const val KEY_UNLOCK_LOCKED_UNTIL = "unlock_locked_until"
+        private const val KEY_ORIENTATION = "display_orientation"
+        private const val KEY_ALLOW_INPUT = "allow_input"
 
         val CLIENT_ID_RE = Regex("^[0-9a-f]{32}$")
         val PIN_RE = Regex("^[0-9a-f]{64}$")

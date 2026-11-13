@@ -1,4 +1,7 @@
-from flask import abort, current_app, flash, jsonify, redirect, render_template, request, url_for
+from io import BytesIO
+
+from flask import (abort, current_app, flash, jsonify, redirect, render_template, request,
+                   send_file, url_for)
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
@@ -9,7 +12,7 @@ from ..models import Display, Schedule
 from ..player.broker import get_broker
 from ..player.manifest import build_manifest
 from ..schedules.resolve import load_context, resolve, split_by_day, week_segments
-from . import bp, pairing, service
+from . import bp, options, pairing, screenshots, service
 from .forms import ActionForm, DisplayForm, PairForm
 
 
@@ -104,6 +107,10 @@ def detail(display_id: int):
                            current_item=service.current_item_name(display),
                            awaiting=(not display.is_paired
                                      and pairing.awaiting_claim(display)),
+                           diag=options.parse_diag(display.diagnostics),
+                           pin_set=bool(display.unlock_pin_hash),
+                           screenshot_pending=bool(screenshots.pending(display)),
+                           has_screenshot=screenshots.exists(display.id),
                            action_form=ActionForm())
 
 
@@ -111,19 +118,51 @@ def detail(display_id: int):
 @editor_required
 def edit(display_id: int):
     display = _get_display_or_404(display_id)
-    form = DisplayForm()  # not obj=: "playlist"/"group" would read the relationships
+    # not obj=: "playlist"/"group" would read the relationships
+    form = DisplayForm(admin=current_user.is_admin)
     if request.method == "GET":
-        form.name.data = display.name
-        form.playlist.data = display.playlist_id or 0
-        form.group.data = display.group_id or 0
+        _prefill(form, display)
     if form.validate_on_submit():
         display.name = form.name.data.strip()
         display.playlist_id = form.playlist.data or None
         display.group_id = form.group.data or None
-        db.session.commit()
+        display.location = (form.location.data or "").strip() or None
+        display.description = (form.description.data or "").strip() or None
+        display.orientation = form.orientation.data
+        display.fit_override = form.fit_override.data or None
+        display.volume = form.volume.data
+        display.show_offline_banner = bool(form.show_offline_banner.data)
+        pin_changed = False
+        if form.is_admin_form:
+            display.allow_input = bool(form.allow_input.data)
+            if form.clear_pin.data:
+                pin_changed = display.unlock_pin_hash is not None
+                options.clear_unlock_pin(display)
+            elif form.unlock_pin.data:
+                options.set_unlock_pin(display, form.unlock_pin.data)
+                pin_changed = True
+        db.session.commit()  # an ORM write: the screen gets the new settings at once
+        if pin_changed:  # never the PIN itself
+            current_app.logger.info("unlock PIN changed for display %s by user %s",
+                                    display.id, current_user.id)
         flash("Display saved.", "success")
         return _detail(display)
-    return render_template("displays/form.html", form=form, display=display)
+    return render_template("displays/form.html", form=form, display=display,
+                           pin_set=bool(display.unlock_pin_hash))
+
+
+def _prefill(form: DisplayForm, display: Display) -> None:
+    form.name.data = display.name
+    form.playlist.data = display.playlist_id or 0
+    form.group.data = display.group_id or 0
+    form.location.data = display.location
+    form.description.data = display.description
+    form.orientation.data = display.orientation
+    form.fit_override.data = display.fit_override or ""
+    form.volume.data = display.volume
+    form.show_offline_banner.data = display.show_offline_banner
+    if form.is_admin_form:
+        form.allow_input.data = display.allow_input  # the PIN is never prefilled
 
 
 @bp.route("/<int:display_id>/reload", methods=["POST"])
@@ -140,12 +179,79 @@ def reload(display_id: int):
     return _back(display)
 
 
+def _publish(display: Display, data: dict, force: bool = False) -> int:
+    broker = get_broker()
+    return broker.publish(display.id, "command", data, force=force) if broker else 0
+
+
+@bp.route("/<int:display_id>/identify", methods=["POST"])
+@editor_required
+def identify(display_id: int):
+    _require_action_form()
+    display = _get_display_or_404(display_id)
+    if _publish(display, {"action": "identify", "seconds": 15}):
+        flash("The screen shows its name for 15 seconds.", "success")
+    else:
+        flash("The display is not connected right now.", "warning")
+    return _back(display)
+
+
+@bp.route("/<int:display_id>/screenshot", methods=["POST"])
+@editor_required
+def screenshot(display_id: int):
+    _require_action_form()
+    display = _get_display_or_404(display_id)
+    if not display.is_paired:
+        flash("This display is not paired.", "warning")
+        return _back(display)
+    rid = screenshots.request(display)
+    if rid is None:
+        flash("A screenshot was just requested.", "info")
+        return _back(display)
+    db.session.commit()
+    if _publish(display, {"action": "screenshot", "request_id": rid}, force=True):
+        flash("Screenshot requested. It appears here in a few seconds.", "success")
+    else:
+        flash("Not connected; the request stays open for 2 minutes.", "warning")
+    return _back(display)
+
+
+@bp.route("/<int:display_id>/screenshot.jpg")
+@login_required
+def screenshot_image(display_id: int):
+    display = _get_display_or_404(display_id)
+    try:
+        # Read into memory (a few hundred KB): an open file handle would block the
+        # next upload's os.replace, and deleting the display, on Windows.
+        data = screenshots.path_for(display.id).read_bytes()
+    except FileNotFoundError:
+        abort(404)
+    resp = send_file(BytesIO(data), mimetype="image/jpeg", max_age=0)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/<int:display_id>/diagnostics/refresh", methods=["POST"])
+@editor_required
+def refresh_diagnostics(display_id: int):
+    _require_action_form()
+    display = _get_display_or_404(display_id)
+    if _publish(display, {"action": "diagnostics"}):
+        flash("Asked the screen for fresh diagnostics. Reload in a few seconds.", "success")
+    else:
+        flash("The display is not connected right now.", "warning")
+    return _back(display)
+
+
 @bp.route("/<int:display_id>/unpair", methods=["POST"])
 @editor_required
 def unpair(display_id: int):
     _require_action_form()
     display = _get_display_or_404(display_id)
     service.unpair(display)
+    # ORM writes are fine here: unpairing changes the display row and pushes anyway.
+    display.screenshot_request = None
+    display.screenshot_requested_at = None
     db.session.commit()
     _close_streams(display.id)
     current_app.logger.info("display %s (%s) unpaired by user %s",
@@ -164,6 +270,7 @@ def delete(display_id: int):
     db.session.delete(display)  # the DB cascade removes its display-scoped schedules
     db.session.commit()
     _close_streams(ident)
+    screenshots.remove(ident)
     current_app.logger.info("display %s (%s) deleted by user %s", ident, name, current_user.id)
     flash(f"Deleted display {name}.", "success")
     return redirect(url_for("displays.index"))

@@ -1,0 +1,16 @@
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: #f4f5f7; color: #1d2330; display: flex; align-items: center; justify-content: center;
+  font: 15px/1.45 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+form { width: 320px; }
+label { display: block; font-weight: 600; margin: 0 0 8px; }
+/* Fixed width and no placeholder: the field never hints at the PIN length. */
+input { width: 100%; padding: 9px 11px; border: 1px solid #c4cad4; border-radius: 6px; font: inherit;
+  letter-spacing: 0.2em; }
+input:focus { outline: 2px solid #2f6fde; border-color: #2f6fde; }
+.msg { min-height: 2.9em; margin: 8px 0; color: #b42318; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; }
+button { padding: 8px 16px; border-radius: 6px; border: 1px solid #2f6fde; background: #2f6fde; color: #fff;
+  font: inherit; cursor: pointer; }
+button.secondary { background: #fff; color: #1d2330; border-color: #c4cad4; }
+button:disabled { opacity: 0.55; cursor: default; }

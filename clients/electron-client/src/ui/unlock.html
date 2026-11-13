@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AiSignX Player</title>
+  <link rel="stylesheet" href="unlock.css">
+</head>
+<body>
+  <form id="form" autocomplete="off" novalidate>
+    <label for="pin" id="label">Enter the unlock PIN</label>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="12">
+    <p id="msg" class="msg" role="status" aria-live="polite"></p>
+    <div class="actions">
+      <button id="cancel" type="button" class="secondary">Cancel</button>
+      <button id="ok" type="submit">Unlock</button>
+    </div>
+  </form>
+  <script src="unlock.js"></script>
+</body>
+</html>

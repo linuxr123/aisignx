@@ -11,6 +11,29 @@
     <p class="form-text mt-n2">{{ form.playlist.description }} The screen switches within a few seconds.</p>
     {{ field(form.group) }}
     <p class="form-text mt-n2">Schedules and emergency messages can target a whole group.</p>
+    {{ field(form.location) }}
+    {{ field(form.description) }}
+    <p class="form-text mt-n2">Location and notes are for the admin only; the screen never receives them.</p>
+
+    <h2 class="h6 mt-4 mb-3 border-bottom pb-1">Screen</h2>
+    {{ field(form.orientation) }}
+    <p class="form-text mt-n2">Rotation is for screens whose device cannot rotate its own output.</p>
+    {{ field(form.fit_override) }}
+    <p class="form-text mt-n2">Overrides how every item fills the screen.</p>
+    {{ field(form.volume) }}
+    {{ field(form.show_offline_banner) }}
+
+    <h2 class="h6 mt-4 mb-3 border-bottom pb-1">Kiosk lock</h2>
+    {% if form.is_admin_form %}
+    {{ field(form.allow_input) }}
+    <p class="form-text mt-n2">Off: touches, clicks and keys are ignored, so web pages cannot be used from the screen.</p>
+    {{ field(form.unlock_pin) }}
+    <p class="form-text mt-n2">The PIN guards leaving the Windows and Android apps. Blank keeps the current PIN ({{ "set" if pin_set else "none set" }}).</p>
+    {% if pin_set %}{{ field(form.clear_pin) }}{% endif %}
+    {% else %}
+    <p class="text-body-secondary">Input: {{ "on" if display.allow_input else "off" }} &middot; Unlock PIN: {{ "set" if pin_set else "not set" }} &middot; admins only</p>
+    {% endif %}
+
     <button class="btn btn-primary" type="submit">Save</button>
     <a class="btn btn-link" href="{{ url_for('displays.detail', display_id=display.id) }}">Cancel</a>
   </form>

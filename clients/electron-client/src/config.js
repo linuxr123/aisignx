@@ -5,16 +5,18 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { sanitizeUnlock } = require('./unlock');
 
 const CONFIG_FILE = 'config.json';
 const CLIENT_ID_FILE = 'client_id.txt';
 const PORT_MIN = 47800;
 const PORT_MAX = 47899;
-const PIN_RE = /^[0-9A-F]{2}(:[0-9A-F]{2}){31}$/;
+const PIN_RE = /^[0-9A-F]{2}(:[0-9A-F]{2}){31}$/; // TLS certificate pin, not the unlock PIN
 const CLIENT_ID_RE = /^[0-9a-f]{32}$/;
 
 function defaults() {
-  return { serverUrl: '', port: 0, certPin: null, autostart: true };
+  // unlock: the PBKDF2 hash of the display's unlock PIN, copied from the manifest (see unlock.js).
+  return { serverUrl: '', port: 0, certPin: null, autostart: true, unlock: null };
 }
 
 // Throws an Error with a user-facing message when the address is not acceptable.
@@ -76,6 +78,7 @@ function sanitize(raw) {
     cfg.certPin = { sha256: raw.certPin.sha256, caPem: raw.certPin.caPem };
   }
   if (raw.autostart !== undefined) cfg.autostart = raw.autostart !== false;
+  cfg.unlock = sanitizeUnlock(raw.unlock); // a bad value is dropped, never thrown
   return cfg;
 }
 

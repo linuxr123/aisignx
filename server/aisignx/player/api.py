@@ -12,19 +12,22 @@ from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import HTTPException, NotFound
 
-from ..displays import pairing
+from ..displays import pairing, screenshots
 from ..extensions import db
 from ..media import storage
 from ..models import Display, Media
 from ..models.media import MEDIA_IMAGE, MEDIA_VIDEO
 from ..setup.service import setup_required
 from ..timeutil import utcnow
-from . import api_bp
+from . import api_bp, diag
 from .auth import display_required, set_display_cookie
 from .manifest import build_manifest
 from .ticker import ensure_started
 
 MAX_BODY = 8192
+SCREENSHOT_MAX = 4 * 1024 * 1024  # POST /screenshot only
+_SCREENSHOT_TYPES = ("image/jpeg", "image/png")
+_REQUEST_ID = re.compile(r"^[0-9a-f]{16}$")
 POLL_AFTER_S = 3
 _CLIENT_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _MAX_SCREEN = 16384
@@ -32,8 +35,8 @@ _MAX_ID = 2**31 - 1
 
 # HTTP status -> error code for exceptions that escape a view (and for routing errors).
 _HTTP_CODES = {400: "bad_request", 401: "unauthorized", 403: "forbidden", 404: "not_found",
-               405: "method_not_allowed", 413: "too_large", 429: "too_many_pending",
-               503: "busy"}
+               405: "method_not_allowed", 409: "conflict", 413: "too_large",
+               415: "unsupported_type", 429: "too_many_pending", 503: "busy"}
 
 
 def api_error(status: int, code: str, message: str, retry_after: int | None = None):
@@ -58,7 +61,8 @@ def http_error_response(e: HTTPException):
 
 @api_bp.before_request
 def _before():
-    request.max_content_length = MAX_BODY
+    request.max_content_length = (SCREENSHOT_MAX if request.endpoint == "player_api.screenshot"
+                                  else MAX_BODY)
     if setup_required():
         return api_error(503, "setup_required",
                          "AiSignX is not set up yet. Finish the setup wizard in the admin.",
@@ -216,18 +220,25 @@ def heartbeat():
         return _bad("Invalid client_id.")
 
     version = build_manifest(g.display)["version"]
+    now = utcnow()
+    values = {
+        "last_seen_at": now,
+        "last_ip": (request.remote_addr or "")[:45] or None,
+        "client_id": client_id,
+        "player_version": _text(body.get("player_version"), 32),
+        "reported_version": _text(body.get("manifest_version"), 16),
+        "current_item_id": _int(body.get("current_item_id"), _MAX_ID),
+        "screen_width": _int(body.get("screen_w"), _MAX_SCREEN),
+        "screen_height": _int(body.get("screen_h"), _MAX_SCREEN),
+    }
+    if "diag" in body:  # sent every few beats; a bad or oversized one is just dropped
+        text = diag.clean(body["diag"])
+        if text is not None:
+            values.update(diagnostics=text, diagnostics_at=now)
     # A Core UPDATE: no ORM flush, so heartbeats never trigger a manifest broadcast.
     db.session.execute(
-        update(Display).where(Display.id == g.display.id).values(
-            last_seen_at=utcnow(),
-            last_ip=(request.remote_addr or "")[:45] or None,
-            client_id=client_id,
-            player_version=_text(body.get("player_version"), 32),
-            reported_version=_text(body.get("manifest_version"), 16),
-            current_item_id=_int(body.get("current_item_id"), _MAX_ID),
-            screen_width=_int(body.get("screen_w"), _MAX_SCREEN),
-            screen_height=_int(body.get("screen_h"), _MAX_SCREEN),
-        ).execution_options(synchronize_session=False)
+        update(Display).where(Display.id == g.display.id).values(**values)
+        .execution_options(synchronize_session=False)
     )
     db.session.commit()
     return jsonify(server_time_ms=int(time.time() * 1000), manifest_version=version,
@@ -254,3 +265,30 @@ def media_file(media_id: int, name: str):
     resp.cache_control.max_age = 31536000
     resp.cache_control.immutable = True
     return resp
+
+
+@api_bp.post("/screenshot")
+@display_required
+def screenshot():
+    """Raw JPEG/PNG body answering an open screenshot request (X-Screenshot-Request)."""
+    if request.mimetype not in _SCREENSHOT_TYPES:
+        return api_error(415, "unsupported_type", "Send image/jpeg or image/png.")
+    rid = request.headers.get("X-Screenshot-Request", "")
+    if not _REQUEST_ID.match(rid) or rid != screenshots.pending(g.display):
+        return api_error(409, "stale_request", "No open screenshot request with this id.")
+    try:
+        jpeg = screenshots.process(request.get_data())
+    except ValueError:
+        return api_error(400, "bad_image", "The image could not be read.")
+    try:
+        saved = screenshots.store(g.display.id, rid, jpeg)
+    except OSError as exc:
+        db.session.rollback()
+        current_app.logger.warning("could not save screenshot of display %s: %s",
+                                   g.display.id, exc)
+        return api_error(500, "server_error", "Could not save the screenshot.")
+    if not saved:
+        db.session.rollback()
+        return api_error(409, "stale_request", "No open screenshot request with this id.")
+    db.session.commit()
+    return jsonify(status="saved")

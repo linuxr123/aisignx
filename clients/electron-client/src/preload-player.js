@@ -19,5 +19,9 @@ if (shell && shell.port && location.origin === 'http://127.0.0.1:' + shell.port)
     onManifest: (json) => {
       if (typeof json === 'string' && json.length < 4 * 1024 * 1024) ipcRenderer.send('shell-manifest', json);
     },
+    // JPEG bytes (Uint8Array) of the real window, or null.
+    capture: () => ipcRenderer.invoke('shell-capture').catch(() => null),
+    // {uptime_s, cache: {files, bytes}, storage_free_bytes} or null.
+    stats: () => { try { return ipcRenderer.sendSync('shell-stats'); } catch (e) { return null; } },
   });
 }

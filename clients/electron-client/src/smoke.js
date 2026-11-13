@@ -44,17 +44,27 @@ async function runSmoke({ getWindow, getOrigin, log }) {
     const win = getWindow();
     const hasShell = await win.webContents.executeJavaScript(
       'typeof window.AiSignXShell === "object" && window.AiSignXShell.info().name', true);
+    const native = await win.webContents.executeJavaScript(`(async () => {
+      const s = window.AiSignXShell;
+      const jpeg = await s.capture();
+      const st = s.stats();
+      return { caps: s.info().caps, jpeg: !!jpeg && jpeg.length > 100 && jpeg[0] === 0xff && jpeg[1] === 0xd8,
+        stats: !!st && Number.isInteger(st.uptime_s) };
+    })()`, true);
     const offline = await get(getOrigin() + '/__shell/offline');
     const health = await get(getOrigin() + '/healthz');
     const problems = [];
     if (hasShell !== 'electron') problems.push('window.AiSignXShell missing');
+    if (!native.jpeg) problems.push('capture() returned no JPEG');
+    if (!native.stats) problems.push('stats() returned nothing');
+    if (String(native.caps) !== 'capture,pin-exit') problems.push('caps ' + JSON.stringify(native.caps));
     if (offline !== 503) problems.push('/__shell/offline returned ' + offline);
     if (health !== 200) problems.push('/healthz returned ' + health);
     if (problems.length) {
       out('SMOKE FAIL: state=' + state + '; ' + problems.join('; '));
       return 1;
     }
-    out('SMOKE OK: state=' + state + ' origin=' + getOrigin() + ' shell=electron offline=503 healthz=200');
+    out('SMOKE OK: state=' + state + ' origin=' + getOrigin() + ' shell=electron capture=jpeg stats=ok offline=503 healthz=200');
     return 0;
   } catch (e) {
     out('SMOKE FAIL: ' + e.message);

@@ -15,6 +15,14 @@ async function firstFreePort() {
   throw new Error('No free local port in ' + config.PORT_MIN + '-' + config.PORT_MAX);
 }
 
+// The saved config keeps every other field (the unlock PIN hash); a new server drops the PIN,
+// which belongs to a display on the old server.
+function nextConfig(prev, fields, serverChanged) {
+  const next = Object.assign({}, prev, fields);
+  if (serverChanged) next.unlock = null;
+  return next;
+}
+
 // opts: {dataDir, getConfig(), clientId, version, onSaved(cfg, {serverChanged}), onForget(), onClosed(), quit()}
 function createSetup(opts) {
   let win = null;
@@ -71,7 +79,7 @@ function createSetup(opts) {
     } catch (e) {
       return { ok: false, message: e.message };
     }
-    const next = { serverUrl, port, certPin, autostart: !!input.autostart };
+    const next = nextConfig(prev, { serverUrl, port, certPin, autostart: !!input.autostart }, serverChanged);
     try {
       const saved = config.saveConfig(opts.dataDir, next);
       log.info('setup saved', serverUrl, 'pinned:', !!certPin, 'server changed:', serverChanged);
@@ -129,4 +137,4 @@ function createSetup(opts) {
   return { open, close, get window() { return win; } };
 }
 
-module.exports = { createSetup, firstFreePort };
+module.exports = { createSetup, firstFreePort, nextConfig };

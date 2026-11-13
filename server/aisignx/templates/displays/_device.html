@@ -1,0 +1,106 @@
+{# Detail-page cards for per-display options, screenshots and diagnostics. #}
+{% macro dash(value) %}{% if value is not none and value != "" %}{{ value }}{% else %}&mdash;{% endif %}{% endmacro %}
+
+{% macro uptime(seconds) -%}
+{%- if seconds is number -%}
+{%- set s = seconds|int -%}
+{%- if s >= 86400 %}{{ s // 86400 }} d {{ (s % 86400) // 3600 }} h
+{%- elif s >= 3600 %}{{ s // 3600 }} h {{ (s % 3600) // 60 }} min
+{%- elif s >= 60 %}{{ s // 60 }} min
+{%- else %}{{ s }} s{% endif -%}
+{%- else %}&mdash;{% endif -%}
+{%- endmacro %}
+
+{% macro settings_card(display, pin_set) %}
+{% set orientations = {0: "Landscape", 90: "Portrait (90°)", 180: "Landscape upside down", 270: "Portrait (270°)"} %}
+{% set fits = {"fit": "Fit (letterbox)", "fill": "Fill (crop)", "stretch": "Stretch"} %}
+<div class="card mb-4" style="max-width: 48rem"><div class="card-body">
+  <h2 class="h5">Settings</h2>
+  <dl class="row mb-0">
+    <dt class="col-sm-4">Location</dt>
+    <dd class="col-sm-8">{{ dash(display.location) }}</dd>
+    <dt class="col-sm-4">Notes</dt>
+    <dd class="col-sm-8 text-break" style="white-space: pre-line">{{ dash(display.description) }}</dd>
+    <dt class="col-sm-4">Orientation</dt>
+    <dd class="col-sm-8">{{ orientations.get(display.orientation, "Landscape") }}</dd>
+    <dt class="col-sm-4">Fit</dt>
+    <dd class="col-sm-8">{{ fits.get(display.fit_override, "Per item") }}</dd>
+    <dt class="col-sm-4">Volume</dt>
+    <dd class="col-sm-8">{{ display.volume }}%</dd>
+    <dt class="col-sm-4">Offline banner</dt>
+    <dd class="col-sm-8">{{ "Shown" if display.show_offline_banner else "Hidden" }}</dd>
+    <dt class="col-sm-4">Touch, mouse, keyboard</dt>
+    <dd class="col-sm-8">{{ "Allowed" if display.allow_input else "Blocked" }}</dd>
+    <dt class="col-sm-4">Unlock PIN</dt>
+    <dd class="col-sm-8">{{ "Set" if pin_set else "Not set" }}</dd>
+  </dl>
+</div></div>
+{% endmacro %}
+
+{% macro screenshot_card(display, has_screenshot, pending) %}
+<div class="card mb-4" style="max-width: 48rem"{% if pending %} data-screenshot-pending="{{ display.id }}" data-status-url="{{ url_for('displays.status') }}" data-screenshot-at="{{ display.screenshot_at|iso_z if display.screenshot_at else '' }}"{% endif %}><div class="card-body">
+  <h2 class="h5">Screenshot</h2>
+  {% if pending %}
+  <p class="text-body-secondary"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Waiting for the screen&hellip;</p>
+  {% endif %}
+  {% if has_screenshot %}
+  <img class="img-fluid border rounded" alt="Screenshot of {{ display.name }}"
+       src="{{ url_for('displays.screenshot_image', display_id=display.id) }}?t={{ (display.screenshot_at.timestamp()|int) if display.screenshot_at else 0 }}">
+  <p class="small text-body-secondary mt-2 mb-1">Taken {% if display.screenshot_at %}<time>{{ display.screenshot_at|localtime }}</time>{% else %}&mdash;{% endif %}</p>
+  {% elif not pending %}
+  <p class="text-body-secondary mb-1">No screenshot yet.</p>
+  {% endif %}
+  <p class="small text-body-secondary mb-0">The browser player captures only its own media; the Windows and Android apps capture the real screen.</p>
+</div></div>
+{% endmacro %}
+
+{% macro diagnostics_card(display, diag, can_edit, action_form) %}
+<div class="card mb-4" style="max-width: 48rem"><div class="card-body">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="h5 mb-0">Diagnostics</h2>
+    {% if can_edit and display.is_paired %}
+    <form method="post" action="{{ url_for('displays.refresh_diagnostics', display_id=display.id) }}">
+      {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit">Refresh</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if diag %}
+  {% set screen = diag.screen if diag.screen is mapping else {} %}
+  {% set viewport = diag.viewport if diag.viewport is mapping else {} %}
+  {% set shell = diag.shell if diag.shell is mapping else {} %}
+  {% set cache = diag.cache if diag.cache is mapping else {} %}
+  <dl class="row mb-0">
+    <dt class="col-sm-4">Last reported</dt>
+    <dd class="col-sm-8">{{ display.diagnostics_at|localtime if display.diagnostics_at else "—" }}</dd>
+    <dt class="col-sm-4">Screen</dt>
+    <dd class="col-sm-8">{% if screen.w and screen.h %}{{ screen.w }} &times; {{ screen.h }}{% if screen.dpr %} @ {{ screen.dpr }}x{% endif %}{% else %}&mdash;{% endif %}</dd>
+    <dt class="col-sm-4">Viewport</dt>
+    <dd class="col-sm-8">{% if viewport.w and viewport.h %}{{ viewport.w }} &times; {{ viewport.h }}{% else %}&mdash;{% endif %}</dd>
+    <dt class="col-sm-4">Shell</dt>
+    <dd class="col-sm-8">{% if shell.name %}{{ shell.name }} {{ shell.version or "" }}{% if shell.caps %} <span class="text-body-secondary">({{ shell.caps|join(", ") }})</span>{% endif %}{% else %}Browser{% endif %}</dd>
+    <dt class="col-sm-4">Uptime</dt>
+    <dd class="col-sm-8">app {{ uptime(shell.uptime_s) }} &middot; page {{ uptime(diag.page_uptime_s) }}</dd>
+    <dt class="col-sm-4">Media cache</dt>
+    <dd class="col-sm-8">{% if cache.files is number %}{{ cache.files }} files{% if cache.bytes is number %}, {{ cache.bytes|filesize }}{% endif %}{% else %}&mdash;{% endif %}</dd>
+    <dt class="col-sm-4">Free storage</dt>
+    <dd class="col-sm-8">{{ diag.storage_free_bytes|filesize if diag.storage_free_bytes is number else "—" }}</dd>
+    <dt class="col-sm-4">Player build</dt>
+    <dd class="col-sm-8">{{ dash(diag.build) }}</dd>
+    <dt class="col-sm-4">User agent</dt>
+    <dd class="col-sm-8 small text-break">{{ dash(diag.ua) }}</dd>
+  </dl>
+  {% if diag.errors and diag.errors is iterable and diag.errors is not string %}
+  <h3 class="h6 mt-3">Recent errors</h3>
+  <ul class="list-unstyled small mb-0">
+    {% for e in diag.errors|reverse if e is mapping %}
+    <li class="text-break"><span class="text-body-secondary">{{ e.t|ms_time }}</span> {{ e.msg }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% elif display.diagnostics_at %}
+  <p class="text-body-secondary mb-0">The last report could not be read.</p>
+  {% else %}
+  <p class="text-body-secondary mb-0">No diagnostics reported yet.</p>
+  {% endif %}
+</div></div>
+{% endmacro %}

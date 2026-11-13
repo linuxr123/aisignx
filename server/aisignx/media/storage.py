@@ -3,6 +3,7 @@
 Layout under UPLOAD_FOLDER:
     media/<random>.<ext>     original uploads
     thumbs/<random>.jpg      thumbnails
+    screenshots/<id>.jpg     latest screenshot of each display (path chosen by the server)
 Stored names are random, so user-supplied filenames never touch the filesystem.
 """
 import hashlib
@@ -54,6 +55,10 @@ def media_dir() -> Path:
 
 def thumbs_dir() -> Path:
     return _folder("thumbs")
+
+
+def screenshots_dir() -> Path:
+    return _folder("screenshots")
 
 
 def work_dir() -> Path:

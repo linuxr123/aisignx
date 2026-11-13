@@ -1,5 +1,7 @@
 """Jinja filters used across templates."""
-from .timeutil import to_local
+from datetime import datetime, timezone
+
+from .timeutil import iso_z, to_local
 
 
 def filesize(num_bytes) -> str:
@@ -34,7 +36,20 @@ def localtime(dt, fmt: str = "%Y-%m-%d %H:%M") -> str:
     return f"{local.strftime(fmt)} {local.tzname()}"
 
 
+def ms_time(ms, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+    """Format a Unix time in milliseconds (as players report it) like localtime."""
+    if isinstance(ms, bool) or not isinstance(ms, (int, float)) or ms <= 0:
+        return "—"
+    try:
+        dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return "—"
+    return localtime(dt, fmt)
+
+
 def register(app) -> None:
     app.add_template_filter(filesize, "filesize")
     app.add_template_filter(duration, "duration")
     app.add_template_filter(localtime, "localtime")
+    app.add_template_filter(ms_time, "ms_time")
+    app.add_template_filter(iso_z, "iso_z")

@@ -36,7 +36,7 @@ test('saveConfig writes atomically and loadConfig reads it back', () => {
   assert.ok(!fs.existsSync(path.join(dir, 'config.json.tmp')));
   const { config: cfg, status } = config.loadConfig(dir);
   assert.equal(status, 'ok');
-  assert.deepEqual(cfg, { serverUrl: 'http://10.0.0.5:5000', port: 47800, certPin: pin, autostart: false });
+  assert.deepEqual(cfg, { serverUrl: 'http://10.0.0.5:5000', port: 47800, certPin: pin, autostart: false, unlock: null });
   assert.ok(!JSON.stringify(cfg).toLowerCase().includes('token'));
 });
 
@@ -68,4 +68,26 @@ test('client_id is 32 hex characters and stable', () => {
   const b = config.clientId(dir);
   assert.match(b, /^[0-9a-f]{32}$/);
   assert.notEqual(b, 'garbage');
+});
+
+const UNLOCK = { alg: 'pbkdf2-sha256', iter: 200000, salt: '000102030405060708090a0b0c0d0e0f',
+  hash: '37cff31b6ad22b037e276408739e6702ab1a83eca9924fef485e1089b3c3ce2d' };
+
+test('the unlock PIN hash is saved and read back', () => {
+  const dir = tmp();
+  config.saveConfig(dir, { serverUrl: 'http://h:5000', port: 47801, unlock: UNLOCK });
+  assert.deepEqual(config.loadConfig(dir).config.unlock, UNLOCK);
+  assert.equal(config.defaults().unlock, null);
+});
+
+test('a bad unlock value is dropped without renaming the config', () => {
+  const dir = tmp();
+  for (const bad of [{ alg: 'md5' }, 'x', Object.assign({}, UNLOCK, { iter: 5 }), [UNLOCK]]) {
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ serverUrl: 'http://h:5000', port: 47801, unlock: bad }));
+    const r = config.loadConfig(dir);
+    assert.equal(r.status, 'ok');
+    assert.equal(r.config.unlock, null);
+    assert.equal(r.config.serverUrl, 'http://h:5000');
+    assert.ok(!fs.existsSync(path.join(dir, 'config.json.bad')));
+  }
 });

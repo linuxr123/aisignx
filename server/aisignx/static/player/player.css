@@ -156,7 +156,7 @@ video::-webkit-media-controls-overlay-play-button { display: none !important; -w
 .pair-url { color: #fff; font-weight: 600; word-break: break-all; }
 .screen-paired .screen-text { font-size: clamp(1.4rem, 4vmin, 3rem); color: #fff; }
 
-/* ---- Emergency overlay (emergency.js): above the stage and screens (10), below debug (20).
+/* ---- Emergency overlay (emergency.js): above the stage and screens (10), below the offline pill (18).
    Colours are set per message via CSSOM; these are the fallbacks. */
 #emergency {
   position: fixed;
@@ -184,12 +184,69 @@ video::-webkit-media-controls-overlay-play-button { display: none !important; -w
 @keyframes em-pulse { 50% { border-color: rgba(255, 255, 255, .15); } }
 @media (prefers-reduced-motion: reduce) { #emergency.level-critical { animation: none; } }
 
+/* ---- Offline pill (device.js): above the emergency overlay (15), below identify (20). */
+#offline {
+  position: fixed;
+  left: 2vmin;
+  bottom: 2vmin;
+  z-index: 18;
+  padding: .4em .9em;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .7);
+  color: #ffcc80;
+  font-size: clamp(.75rem, 1.6vmin, 1.2rem);
+  pointer-events: none;
+}
+
+/* ---- Identify overlay (device.js): the display name over everything for a few seconds. */
+#identify {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 6vmin;
+  background: rgba(0, 0, 0, .65);
+  color: #fff;
+  border: 1.5vmin solid #ffd54f;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  animation: id-pulse 1s ease-in-out infinite;
+}
+.id-name { font-size: clamp(2rem, 12vmin, 12rem); font-weight: 700; line-height: 1.1; }
+.id-sub { font-size: clamp(1rem, 4vmin, 3.5rem); color: #ddd; margin-top: 3vmin; }
+@keyframes id-pulse { 50% { border-color: rgba(255, 213, 79, .2); } }
+@media (prefers-reduced-motion: reduce) { #identify { animation: none; } }
+
+/* ---- Rotation (device.js) for screens whose device cannot rotate its own output. The body is
+   turned as a whole; being transformed, it is the containing block of every fixed overlay, so
+   the stage, screens, emergency, offline pill and identify overlay all turn with it. */
+body.rot-90, body.rot-270 {
+  position: fixed;
+  top: 50%; left: 50%;
+  width: 100vh; height: 100vw;
+}
+body.rot-90 { transform: translate(-50%, -50%) rotate(90deg); }
+body.rot-270 { transform: translate(-50%, -50%) rotate(270deg); }
+body.rot-180 { transform: rotate(180deg); }
+/* Sizes in vh/vw follow the physical screen; swap them where it matters when sideways. */
+body.rot-90 .screen-box, body.rot-270 .screen-box { max-width: 90vh; }
+body.rot-90 #emergency.layout-fullscreen .em-msg, body.rot-270 #emergency.layout-fullscreen .em-msg { max-width: 90vh; }
+body.rot-90 #emergency.layout-banner, body.rot-270 #emergency.layout-banner { max-height: 25vw; padding: 2vw 4vh; }
+
+/* ---- Input lock (device.js): web items cannot be touched or clicked; input-on shows a cursor. */
+body.no-input .slide.active { pointer-events: none; }
+body.input-on, body.input-on * { cursor: auto; }
+
 /* ---- ?debug=1 overlay. */
 .debug {
   position: fixed;
   left: 1vmin;
   bottom: 1vmin;
-  z-index: 20;
+  z-index: 21;
   max-width: 96vw;
   padding: .6em .8em;
   background: rgba(0, 0, 0, .75);

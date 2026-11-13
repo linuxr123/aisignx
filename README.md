@@ -88,6 +88,13 @@ Changes to playlists and media reach the screens within about a second. A screen
 what it has if the server goes offline, and catches up when the server is back. Use **Reload** on
 a display to refresh its page, and **Unpair** to make it show a new pairing code.
 
+Each display has its own options under **Edit**: location and notes, orientation (for screens
+mounted on their side), one fit mode for every item, video volume, an "offline" banner, and,
+for admins, whether touch, mouse and keyboard work on the screen (off by default) and an unlock
+PIN for the player apps. On the display page, **Identify** shows the name on the screen,
+**Screenshot** shows what the screen is showing, and **Diagnostics** shows its screen size,
+app version, cache and recent errors.
+
 Each connected screen keeps one server thread busy. `flask --app wsgi serve` sizes the threads
 from `AISIGNX_MAX_STREAMS` (default 50 screens), so raise that setting if you have more screens.
 Run a single server process. For kiosk browser settings, reverse proxies and HTTPS, see
@@ -98,7 +105,8 @@ Run a single server process. For kiosk browser settings, reverse proxies and HTT
 
 Instead of a browser, a screen can run one of the AiSignX player apps. They show the same
 player and add a setup screen, offline start-up from a saved copy of the player, a media cache,
-certificate pinning for self-signed HTTPS, kiosk mode and autostart.
+certificate pinning for self-signed HTTPS, kiosk mode with an optional unlock PIN, real-screen
+screenshots and autostart.
 
 - **Windows** (Electron): `clients/electron-client`, built with `npm run dist:win`.
 - **Android** 8.0 or newer, including Android TV boxes: `clients/android-client`, built with

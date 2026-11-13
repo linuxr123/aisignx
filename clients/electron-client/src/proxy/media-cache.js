@@ -230,6 +230,10 @@ function createMediaCache(opts) {
   function used() {
     return Object.values(index).reduce((n, e) => n + e.size, 0);
   }
+  // For the heartbeat diagnostics: what the cache holds right now.
+  function stats() {
+    return { files: Object.keys(index).length, bytes: used() };
+  }
   async function evict() {
     const limit = await budget();
     let total = used();
@@ -272,7 +276,7 @@ function createMediaCache(opts) {
   }
 
   return {
-    handle, onManifest, evict, whenIdle, stop, clear, flush: saveIndex,
+    handle, onManifest, evict, whenIdle, stop, clear, stats, flush: saveIndex,
     get index() { return index; },
     setLastUsed(p, t) { if (index[p]) index[p].lastUsed = t; },
   };

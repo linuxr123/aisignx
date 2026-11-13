@@ -3,6 +3,7 @@ package com.aisignx.player.shell
 import com.aisignx.player.Config
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,7 +18,35 @@ class ShellInfoTest {
         assertEquals("Sony BRAVIA / Android 12", json.getString("device"))
         assertEquals(id, json.getString("client_id"))
         assertEquals("https://signage.lan", json.getString("admin_url"))
-        assertEquals(setOf("name", "version", "device", "client_id", "admin_url"), json.keySet())
+        assertEquals(setOf("name", "version", "device", "client_id", "admin_url", "caps"), json.keySet())
+        assertEquals(0, json.getJSONArray("caps").length())
+    }
+
+    @Test fun capsList() {
+        assertEquals(listOf("pin-exit", "capture", "rotate"), ShellInfo.caps(portAttached = true, isTv = false))
+        assertEquals(listOf("pin-exit", "capture"), ShellInfo.caps(portAttached = true, isTv = true))
+        assertEquals(emptyList<String>(), ShellInfo.caps(portAttached = false, isTv = false))
+        val caps = ShellInfo.caps(portAttached = true, isTv = false)
+        val json = JSONObject(ShellInfo("3.0.0", "d", Config.newClientId(), "https://s", caps).info())
+        val arr = json.getJSONArray("caps")
+        assertEquals(caps, List(arr.length()) { arr.getString(it) })
+    }
+
+    @Test fun statsJson() {
+        val o = JSONObject(ShellInfo.statsJson(3600, 12, 123_456_789L, 52_000_000_000L))
+        assertEquals(3600L, o.getLong("uptime_s"))
+        assertEquals(12, o.getJSONObject("cache").getInt("files"))
+        assertEquals(123_456_789L, o.getJSONObject("cache").getLong("bytes"))
+        assertEquals(52_000_000_000L, o.getLong("storage_free_bytes"))
+        assertEquals(setOf("uptime_s", "cache", "storage_free_bytes"), o.keySet())
+        assertFalse(JSONObject(ShellInfo.statsJson(-1, -1, -1, -1)).has("storage_free_bytes"))
+    }
+
+    @Test fun statsNeverThrows() {
+        val info = ShellInfo("3.0.0", "d", Config.newClientId(), "https://s", stats = { error("boom") })
+        assertEquals("{}", info.stats())
+        val ok = ShellInfo("3.0.0", "d", Config.newClientId(), "https://s", stats = { """{"a":1}""" })
+        assertEquals("""{"a":1}""", ok.stats())
     }
 
     @Test fun clientIdFormat() {

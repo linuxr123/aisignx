@@ -2,6 +2,8 @@
 
 Fields may only ever be added; clients ignore keys they don't know. Phase 4 added
 `source` (why this playlist plays) and `emergency` (the overlay to show, or null).
+Display options added `settings` (orientation, volume, offline banner, input, unlock
+hash; see displays/options.py); a display's fit override replaces every item's `fit`.
 
 `fit` keeps the domain vocabulary; the browser player maps it to CSS object-fit:
     fit -> contain, fill -> cover, stretch -> fill
@@ -15,6 +17,7 @@ from flask import current_app, url_for
 
 from ..models import Display, Playlist
 from ..models.media import MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB
+from ..models.playlist import FIT_MODES
 
 MANIFEST_SCHEMA = 1
 _FILE_TYPES = (MEDIA_IMAGE, MEDIA_VIDEO)
@@ -40,7 +43,8 @@ def is_playable(item) -> bool:
     return False
 
 
-def _item_entry(item) -> dict | None:
+def _item_entry(item, fit: str | None = None) -> dict | None:
+    """One manifest item. fit: the display's override for every item, if any."""
     if not is_playable(item):
         return None
     media = item.media
@@ -69,7 +73,7 @@ def _item_entry(item) -> dict | None:
         "duration_ms": item.effective_duration * 1000,
         "media_duration_ms": media_ms,
         "transition": item.effective_transition,  # may be "random"
-        "fit": item.fit_mode,
+        "fit": fit or item.fit_mode,
         "muted": bool(item.mute) if is_video else True,
     }
 
@@ -95,14 +99,16 @@ def build_manifest(display: Display, now: datetime | None = None, ctx=None) -> d
 
     ctx: an optional resolve.Context shared across several displays.
     """
+    from ..displays.options import settings_payload
     from ..schedules.resolve import resolve  # resolve imports is_playable from here
 
     res = resolve(display, now, ctx)
     playlist = res.playlist
     items = []
+    fit = display.fit_override if display.fit_override in FIT_MODES else None
     if playlist is not None:
         for item in sorted(playlist.items, key=lambda i: (i.position, i.id)):
-            entry = _item_entry(item)
+            entry = _item_entry(item, fit)
             if entry is not None:
                 items.append(entry)
 
@@ -114,6 +120,7 @@ def build_manifest(display: Display, now: datetime | None = None, ctx=None) -> d
         "items": items,
         "source": dict(res.source),
         "emergency": _emergency_entry(res),
+        "settings": settings_payload(display),
     }
     body["version"] = manifest_version(body)
     body["server_time_ms"] = int(time.time() * 1000)

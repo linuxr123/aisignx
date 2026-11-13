@@ -3,21 +3,25 @@ package com.aisignx.player.shell
 import android.os.Build
 import android.webkit.JavascriptInterface
 import com.aisignx.player.BuildConfig
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
  * Exposed to the player page as window.AiSignXShellInfo (addJavascriptInterface).
  * The page's net.shell() adapter reads info() to report "android-<version>", a
- * readable device name and the shell's client ID.
+ * readable device name, the shell's client ID and its capabilities, and stats() for
+ * the heartbeat diagnostics.
  *
- * Read-only and holds no secrets (no cookie, no token), so it does no harm if a
- * web item in an iframe calls it.
+ * Read-only and holds no secrets (no cookie, no token, no unlock hash), so it does
+ * no harm if a web item in an iframe calls it.
  */
 class ShellInfo(
     private val version: String,
     private val device: String,
     private val clientId: String,
     private val adminUrl: String,
+    private val caps: List<String> = emptyList(),
+    private val stats: () -> String = { "{}" },
 ) {
     @JavascriptInterface
     fun info(): String = JSONObject()
@@ -26,7 +30,12 @@ class ShellInfo(
         .put("device", device)
         .put("client_id", clientId)
         .put("admin_url", adminUrl)
+        .put("caps", JSONArray(caps))
         .toString()
+
+    /** {uptime_s, cache: {files, bytes}, storage_free_bytes} as JSON; "{}" on error. */
+    @JavascriptInterface
+    fun stats(): String = try { stats.invoke() } catch (_: Exception) { "{}" }
 
     companion object {
         const val NAME = "android"
@@ -44,11 +53,43 @@ class ShellInfo(
             return "$name / Android ${release?.trim().orEmpty().ifEmpty { "?" }}".take(120)
         }
 
-        fun forThisDevice(clientId: String, adminUrl: String): ShellInfo = ShellInfo(
+        const val CAP_CAPTURE = "capture"
+        const val CAP_ROTATE = "rotate"
+        const val CAP_PIN_EXIT = "pin-exit"
+
+        /**
+         * Capabilities: settings and capture requests arrive through the port, so
+         * without it the shell can do neither. TVs never rotate natively; the page
+         * rotates with CSS there.
+         */
+        fun caps(portAttached: Boolean, isTv: Boolean): List<String> = buildList {
+            if (portAttached) {
+                add(CAP_PIN_EXIT)
+                add(CAP_CAPTURE)
+                if (!isTv) add(CAP_ROTATE)
+            }
+        }
+
+        /** The JSON returned by stats(). Negative values are left out. */
+        fun statsJson(uptimeS: Long, cacheFiles: Int, cacheBytes: Long, freeBytes: Long): String {
+            val o = JSONObject().put("uptime_s", maxOf(0L, uptimeS))
+                .put("cache", JSONObject().put("files", maxOf(0, cacheFiles)).put("bytes", maxOf(0L, cacheBytes)))
+            if (freeBytes >= 0) o.put("storage_free_bytes", freeBytes)
+            return o.toString()
+        }
+
+        fun forThisDevice(
+            clientId: String,
+            adminUrl: String,
+            caps: List<String>,
+            stats: () -> String,
+        ): ShellInfo = ShellInfo(
             version = BuildConfig.VERSION_NAME,
             device = deviceName(Build.MANUFACTURER, Build.MODEL, Build.VERSION.RELEASE),
             clientId = clientId,
             adminUrl = adminUrl,
+            caps = caps,
+            stats = stats,
         )
     }
 }

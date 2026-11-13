@@ -20,6 +20,9 @@ behaves the same in a browser and in an app. The apps add what a browser can't d
 | Starts by itself | Windows login item, XDG autostart for the Linux AppImage | Home-app mode, or a boot receiver |
 | Restarts after a crash | renderer crash and hang watchdogs | WebView renderer crash handler |
 | Reported to the admin as | `electron-3.0.0` and the PC name | `android-3.0.0` and the device model |
+| Unlock PIN to leave the player | all Ctrl+Alt shortcuts | the hidden exit gesture |
+| Screen rotation | page (CSS) | the device itself; page (CSS) on TV boxes |
+| Screenshot of the real screen | yes | yes |
 
 You can still use a plain browser in kiosk mode (see [deployment.md](deployment.md#kiosk-browser-on-the-screen)).
 The apps are better when screens restart while the network is down, or when the server uses a
@@ -62,8 +65,11 @@ No password, token or code is ever typed on the device.
 - **Android:** hold OK (D-pad center) or Menu on the remote for 1.5 seconds, or tap the top-left
   corner of a touch screen 7 times within 3 seconds, then confirm.
 
+When an admin set an unlock PIN for the display, these ask for it first (see
+[Display options](#display-options)).
+
 Changing the server, or **Forget server**, clears the pairing cookie, the player's local
-storage, both caches and the certificate pin. The client ID stays, so the screen keeps its
+storage, both caches, the certificate pin and the unlock PIN. The client ID stays, so the screen keeps its
 identity on the device.
 
 ## Pairing
@@ -144,7 +150,8 @@ schedule that hasn't played since the screen went offline is not cached.
 ### Electron (Windows)
 
 - The player window is full screen, frameless and always in kiosk mode.
-- Reload, DevTools, close, zoom and back-navigation keys are blocked. Admin keys:
+- Reload, DevTools, close, zoom and back-navigation keys are blocked. Admin keys (each asks for
+  the unlock PIN first when one is set):
 
   | Keys | Action |
   |---|---|
@@ -179,8 +186,40 @@ Data lives in `%APPDATA%\AiSignX Player\v3`: `config.json`, `client_id.txt`, the
 - The log is in `Android/data/com.aisignx.player/files/logs/` (1 MB, one rotation, never contains
   cookies).
 
-Device Owner (lock task) mode, a PIN to leave the player, and automatic app updates are planned
-for a later version.
+Device Owner (lock task) mode and automatic app updates are planned for a later version.
+
+## Display options
+
+An admin or editor sets these per display under **Displays > Edit**. They reach the screen with
+the next manifest, within about a second.
+
+- **Orientation** (0, 90, 180 or 270 degrees) is for screens mounted on their side or upside
+  down whose device cannot rotate its own output. Android phones and tablets rotate natively;
+  Android TV boxes and Electron rotate the page with CSS.
+- **Volume** (0-100) applies to the player's own videos. It does not change the OS volume.
+- **Input** (admins only) is off by default: touches, clicks, keys and the mouse wheel are
+  ignored, so nobody can use a web page in a playlist from the screen. Android still counts the
+  7 corner taps for the hidden exit.
+- **Unlock PIN** (admins only, 4-8 digits) guards leaving the app:
+  - **Electron:** every Ctrl+Alt shortcut (setup, log, DevTools, quit) asks for it.
+  - **Android:** the hidden exit (long press or 7 taps) asks for it instead of yes/no.
+
+  After 5 wrong PINs the prompt locks for 60 seconds, then twice as long after each further
+  wrong PIN, up to 15 minutes. The lock survives a restart of the app. The app keeps only a
+  salted PBKDF2 hash of the PIN, saved so an offline start still asks for it. A 4-8 digit PIN can
+  be guessed offline by someone who copies that hash from the device or the manifest, so treat it
+  as a lock against passers-by, not as a password.
+- **Screenshot:** on the display page, **Screenshot** asks the screen for a picture. The apps
+  capture the real screen (Electron `capturePage`, Android `PixelCopy`); a video on a hardware
+  overlay may still come out black. A plain browser draws only its own media (no web page
+  content). The picture appears on the display page within a few seconds.
+- **Identify** shows the display name on the screen for 15 seconds. **Diagnostics** on the
+  display page shows the screen size, the app version and capabilities, cache size, free
+  storage and the last player errors.
+
+Known limit on Android: the setup screen is the app's launcher activity, so anyone who can send
+intents to the device (adb, or another installed app) can open it without the PIN. Someone
+standing at the screen cannot.
 
 ## Build
 
@@ -222,6 +261,6 @@ installed app. Never commit the keystore or `keystore.properties`.
 ## For developers
 
 The apps talk to the page through a small hook, described in
-[player-api.md](player-api.md#shell-hook). It passes device information in and state and
-manifest notices out. No token or cookie ever passes through it. Each client folder has a
+[player-api.md](player-api.md#shell-hook). It passes device information, capabilities, stats and
+screenshots in, and state and manifest notices out. No token or cookie ever passes through it. Each client folder has a
 README with its internal layout and security notes.
