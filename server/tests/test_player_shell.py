@@ -1,5 +1,10 @@
 """Phase 5 server side: /healthz JSON for client setup and the player shell hook."""
+import json
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 HEALTHZ = {"status": "ok", "app": "aisignx", "api": 1}
 STATIC = Path(__file__).resolve().parents[1] / "aisignx" / "static" / "player"
@@ -61,3 +66,32 @@ def test_static_scripts_served(configured, client):
         assert resp.status_code == 200
         assert "AiSignXShell" in resp.get_data(as_text=True)
         resp.close()
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js")
+def test_shell_gets_full_manifest_once_per_page_load():
+    """A cached, current manifest must not hide settings from a (new) shell behind a 304."""
+    script = Path(__file__).resolve().parent / "js" / "player_shell_manifest.js"
+    out = subprocess.run(["node", str(script), str(STATIC / "player.js")], capture_output=True,
+                         text=True, timeout=30, check=True).stdout
+    result = json.loads(out)
+    shell = result["withShell"]
+    assert shell["etags"] == [None, "v1"]  # first fetch skips the ETag, later ones use it
+    assert len(shell["fed"]) == 1 and shell["fed"][0]["settings"]["unlock"] == {"hash": "h"}
+    assert result["browser"]["etags"] == ["v1", "v1"]  # plain browsers keep the 304 path
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js")
+def test_shell_screenshot_of_css_rotated_screen_is_turned_upright():
+    script = Path(__file__).resolve().parent / "js" / "device_capture.js"
+    out = subprocess.run(["node", str(script), str(STATIC / "device.js")], capture_output=True,
+                         text=True, timeout=30, check=True).stdout
+    r90, r180, r270, r0, native = json.loads(out)
+    for result, deg in ((r90, 90), (r180, 180), (r270, 270)):
+        assert result["blob"] == "rotated"
+        [canvas] = result["drawn"]
+        assert ["rotate", -deg] in canvas["ops"]  # counter-clockwise by the CSS rotation
+        sideways = deg in (90, 270)
+        assert (canvas["w"], canvas["h"]) == ((1080, 1920) if sideways else (1920, 1080))
+    # Unrotated screens and shells that rotate the device natively upload the capture as is.
+    assert r0 == {"blob": "raw", "drawn": []} and native == {"blob": "raw", "drawn": []}

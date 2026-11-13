@@ -192,6 +192,9 @@ def test_admin_sets_options_and_pin(app, admin_client, paired_display, listener)
 
 @pytest.mark.parametrize("field,value", [
     ("unlock_pin", "12a4"), ("unlock_pin", "123"), ("unlock_pin", "123456789"),
+    # Arabic-Indic and Bengali digits match \d but no kiosk keypad can type them.
+    ("unlock_pin", "١٢٣٤"), ("unlock_pin", "১২৩৪"),
+    ("unlock_pin", "1234\n5"),
     ("orientation", 45), ("volume", 101), ("volume", -1), ("volume", ""),
     ("fit_override", "zoom"),
 ])
@@ -203,6 +206,23 @@ def test_edit_rejects_bad_values(app, admin_client, paired_display, field, value
     assert "is-invalid" in resp.get_data(as_text=True)
     display = _display(app, display_id)
     assert display.name == "Lobby" and display.unlock_pin_hash is None
+
+
+@pytest.mark.parametrize("typed", ["２４６８", " 2468 ", "2468\n"])
+def test_pin_folded_to_ascii_digits(app, admin_client, paired_display, typed):
+    # Full-width IME digits and stray whitespace end up as the ASCII PIN the keypads send.
+    display_id = paired_display[0]
+    resp = admin_client.post(f"/displays/{display_id}/edit", data=_form(unlock_pin=typed))
+    assert resp.status_code == 302
+    assert options.verify_pin(_display(app, display_id).unlock_pin_hash, "2468")
+
+
+@pytest.mark.parametrize("pin", ["١٢٣٤", "1234\n", "123", None])
+def test_set_unlock_pin_rejects_non_ascii_digits(pin):
+    display = Display()
+    with pytest.raises(ValueError):
+        options.set_unlock_pin(display, pin)
+    assert display.unlock_pin_hash is None
 
 
 def test_editor_cannot_touch_kiosk_lock(app, configured, client, paired_display):

@@ -35,11 +35,17 @@ data class DisplaySettings(val orientation: Int, val allowInput: Boolean, val un
             return UnlockHash.of(iter, salt, hash)
         }
 
-        /** Degrees the content is turned to the activity's requested orientation. */
+        /**
+         * Degrees the content is turned clockwise (as with the page's CSS rotation) to the
+         * activity's requested orientation. Android maps PORTRAIT on a landscape panel to
+         * Surface.ROTATION_270, which draws the content counter-clockwise, so a clockwise
+         * quarter turn is REVERSE_PORTRAIT (ROTATION_90). On a portrait-natural panel the
+         * same flags are again one clockwise step from LANDSCAPE.
+         */
         fun orientationFlag(deg: Int): Int = when (deg) {
-            90 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            90 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
             180 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-            270 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+            270 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         }
     }

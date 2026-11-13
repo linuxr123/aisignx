@@ -10,12 +10,14 @@ import hmac
 import json
 import re
 import secrets
+import unicodedata
 
 from ..models import Display
 from ..models.display import ORIENTATIONS
 
 ALG = "pbkdf2-sha256"
 PBKDF2_ITER = 200_000
+_PIN_RE = re.compile(r"[0-9]{4,8}")
 _HASH_RE = re.compile(r"^pbkdf2-sha256\$(\d{1,7})\$([0-9a-f]{32})\$([0-9a-f]{64})$")
 
 
@@ -29,8 +31,22 @@ def hash_pin(pin: str, salt: bytes | None = None, iterations: int = PBKDF2_ITER)
     return f"{ALG}${iterations}${salt.hex()}${_derive(pin, salt, iterations)}"
 
 
+def normalize_pin(pin):
+    """Fold full-width digits (from an IME) to ASCII and trim whitespace; None stays None."""
+    if not isinstance(pin, str):
+        return pin
+    return unicodedata.normalize("NFKC", pin).strip()
+
+
+def is_valid_pin(pin) -> bool:
+    """4-8 ASCII digits: the only thing the native unlock keypads can type."""
+    return isinstance(pin, str) and _PIN_RE.fullmatch(pin) is not None
+
+
 def set_unlock_pin(display: Display, pin: str) -> None:
     """ORM write, so the commit pushes the new manifest. The caller commits."""
+    if not is_valid_pin(pin):
+        raise ValueError("unlock PIN must be 4 to 8 ASCII digits")
     display.unlock_pin_hash = hash_pin(pin)
 
 

@@ -31,6 +31,10 @@
   var manifestBackoff = net.Backoff(2000, 30000);
   var pairBackoff = net.Backoff(2000, 30000);
   var beats = 0, diagWanted = false;
+  // A kiosk shell gets one full manifest per page load: the cached copy has no unlock hash,
+  // and a 304 never reaches shell.onManifest, so a freshly started (or upgraded) shell
+  // would otherwise lack its PIN, orientation and input lock until the content changes.
+  var shellFed = false;
 
   function now() { return window.performance && performance.now ? performance.now() : Date.now(); }
   function note(msg) { S.note = msg; D.noteError(msg); if (window.console) console.info("[player] " + msg); }
@@ -129,7 +133,7 @@
     S.refetch = false;
     clearTimeout(S.retryTimer);
     var m = S.mode;
-    net.api("/manifest", { etag: S.version }).then(function (res) {
+    net.api("/manifest", { etag: shell && !shellFed ? null : S.version }).then(function (res) {
       S.fetching = false;
       if (m === S.mode) onManifestResult(res);
       if (S.refetch) fetchManifest();
@@ -142,7 +146,7 @@
       manifestBackoff.reset();
       store.local.set(K.manifest, withoutUnlock(res.data));
       applyManifest(res.data);
-      if (shell) shell.onManifest(JSON.stringify(res.data));
+      if (shell) { shell.onManifest(JSON.stringify(res.data)); shellFed = true; }
     } else if (res.kind === "not_modified") {
       manifestBackoff.reset();
       if (S.state === "NO_CONTENT" && S.items.length) startPlaying();

@@ -5,6 +5,7 @@ from wtforms.fields.choices import SelectChoice
 from wtforms.validators import DataRequired, InputRequired, Length, NumberRange, Optional, Regexp
 
 from ..models import Display, DisplayGroup, Playlist
+from .options import normalize_pin
 
 NO_PLAYLIST = SelectChoice(0, "No playlist")
 NEW_DISPLAY = SelectChoice(0, "New display")
@@ -88,7 +89,11 @@ class DisplayForm(FlaskForm):
     allow_input = BooleanField("Allow touch, mouse and keyboard")
     unlock_pin = PasswordField(
         "New unlock PIN",
-        validators=[Optional(), Regexp(r"^\d{4,8}$", message="4 to 8 digits")],
+        # ASCII digits only (\d would accept e.g. Arabic-Indic digits the kiosk keypads
+        # cannot type) and \Z, since $ also matches before a trailing newline.
+        # Full-width digits from an IME are folded to ASCII first.
+        filters=[normalize_pin],
+        validators=[Optional(), Regexp(r"^[0-9]{4,8}\Z", message="4 to 8 digits")],
         render_kw={"autocomplete": "new-password", "inputmode": "numeric"})
     clear_pin = BooleanField("Remove the unlock PIN")
 

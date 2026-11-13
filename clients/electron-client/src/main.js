@@ -267,10 +267,10 @@ async function main() {
   kiosk.registerShortcuts({
     setup: guard('setup', openSetup),
     log: guard('log', () => shell.openPath(log.file)),
-    devtools: guard('devtools', () => {
-      const w = BrowserWindow.getFocusedWindow() || (S.player && S.player.win);
-      if (w) w.webContents.openDevTools({ mode: 'detach' });
-    }),
+    devtools: S.unlockWin.guardWindow('devtools', {
+      focused: () => BrowserWindow.getFocusedWindow(),
+      fallback: () => S.player && S.player.win,
+    }, (w) => w.webContents.openDevTools({ mode: 'detach' })),
     quit: guard('quit', () => app.quit()),
   });
   kiosk.keepAwake();

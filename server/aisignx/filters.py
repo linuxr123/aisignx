@@ -40,11 +40,12 @@ def ms_time(ms, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
     """Format a Unix time in milliseconds (as players report it) like localtime."""
     if isinstance(ms, bool) or not isinstance(ms, (int, float)) or ms <= 0:
         return "—"
+    # Device-reported times can be anything; a value near year 9999 converts to UTC
+    # but overflows when shifted to a zone ahead of UTC, so convert inside the try.
     try:
-        dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+        return localtime(datetime.fromtimestamp(ms / 1000, tz=timezone.utc), fmt)
     except (OverflowError, OSError, ValueError):
         return "—"
-    return localtime(dt, fmt)
 
 
 def register(app) -> None:

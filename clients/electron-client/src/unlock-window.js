@@ -9,12 +9,26 @@ const log = require('./log');
 const ACTIONS = new Set(['setup', 'log', 'devtools', 'quit']);
 const PIN_MAX = 12;
 
+function alive(w) {
+  return w && !(typeof w.isDestroyed === 'function' && w.isDestroyed()) ? w : null;
+}
+
+// The window a "current window" shortcut acts on: the focused one, never the PIN prompt.
+// When the shortcut is pressed again while the prompt has focus, keep the window picked
+// when the prompt opened; otherwise fall back (the player window).
+function pickTarget(focused, prompt, previous, fallback) {
+  if (alive(focused) && focused !== prompt) return focused;
+  if (focused && focused === prompt && alive(previous)) return previous;
+  return alive(fallback);
+}
+
 // opts: {getUnlock: () => cfg.unlock | null, gate: createGate(...)}
 function createUnlockWindow(opts) {
   let win = null;
   let pending = null;   // the action to run after a correct PIN
   let shown = '';       // the action name the prompt shows
   let ipcReady = false;
+  let lastTarget = null; // the window picked by the last guardWindow shortcut
 
   function fromUnlock(event) {
     return !!win && !win.isDestroyed() && event.sender === win.webContents;
@@ -119,7 +133,19 @@ function createUnlockWindow(opts) {
     return () => requirePin(name, action);
   }
 
-  return { requirePin, guard, close, get window() { return win; } };
+  // Like guard(), for an action on the current window (devtools). The window is picked
+  // when the shortcut fires, before the prompt takes focus: by the time a correct PIN runs
+  // the action, the prompt is closing and may still be the focused window.
+  // windows: {focused: () => BrowserWindow | null, fallback: () => BrowserWindow | null}
+  function guardWindow(name, windows, action) {
+    return () => {
+      const target = pickTarget(windows.focused(), win, lastTarget, windows.fallback());
+      lastTarget = target;
+      requirePin(name, () => { if (alive(target)) action(target); });
+    };
+  }
+
+  return { requirePin, guard, guardWindow, close, get window() { return win; } };
 }
 
-module.exports = { createUnlockWindow };
+module.exports = { createUnlockWindow, pickTarget };

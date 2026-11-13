@@ -10,6 +10,9 @@ MAX_LEN = 4096
 MAX_INT = 2**53
 MAX_ERRORS = 10
 MAX_CAPS = 8
+# Upper bound for device timestamps in ms (1 Jan 3000 UTC): anything later cannot be a
+# real clock reading and could not be rendered in every time zone.
+MAX_TIME_MS = 32_503_680_000_000
 
 
 def _int(value) -> int | None:
@@ -58,7 +61,8 @@ def _errors(value) -> list | None:
     out = []
     for entry in value[-MAX_ERRORS:]:
         if isinstance(entry, dict) and isinstance(entry.get("msg"), str):
-            out.append({"t": _int(entry.get("t")) or 0, "msg": entry["msg"][:200]})
+            t = _int(entry.get("t")) or 0
+            out.append({"t": t if t <= MAX_TIME_MS else 0, "msg": entry["msg"][:200]})
     return out
 
 

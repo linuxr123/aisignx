@@ -65,10 +65,12 @@ class DisplaySettingsTest {
     }
 
     @Test fun orientationMapping() {
+        // Clockwise like the CSS rotation: on a landscape panel REVERSE_PORTRAIT is
+        // Surface.ROTATION_90 and PORTRAIT is ROTATION_270 (counter-clockwise).
         assertEquals(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE, DisplaySettings.orientationFlag(0))
-        assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, DisplaySettings.orientationFlag(90))
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT, DisplaySettings.orientationFlag(90))
         assertEquals(ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE, DisplaySettings.orientationFlag(180))
-        assertEquals(ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT, DisplaySettings.orientationFlag(270))
+        assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, DisplaySettings.orientationFlag(270))
         assertEquals(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE, DisplaySettings.orientationFlag(42))
     }
 }

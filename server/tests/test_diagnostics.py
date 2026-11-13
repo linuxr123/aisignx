@@ -127,3 +127,32 @@ def test_status_json_new_fields(app, admin_client, paired_display):
     assert {"screenshot_at", "screenshot_pending", "diagnostics_at"} <= set(entry)
     assert entry["screenshot_at"] is None and entry["screenshot_pending"] is False
     assert entry["diagnostics_at"].endswith("Z")
+
+
+def test_clean_drops_unrenderable_error_times():
+    # Year 9999 overflows when shifted to a zone ahead of UTC (Linux), so it never gets stored.
+    data = json.loads(diag.clean({"errors": [{"t": 253_402_300_799_000, "msg": "late"},
+                                             {"t": diag.MAX_TIME_MS, "msg": "edge"}]}))
+    assert [e["t"] for e in data["errors"]] == [0, diag.MAX_TIME_MS]
+
+
+def test_ms_time_survives_overflow_in_zone_conversion(app, monkeypatch):
+    from aisignx import filters
+
+    def boom(*_args, **_kwargs):
+        raise OverflowError("date value out of range")
+
+    monkeypatch.setattr(filters, "localtime", boom)
+    assert filters.ms_time(253_402_300_799_000) == "—"
+
+
+def test_detail_page_survives_far_future_error_time(app, admin_client, paired_display):
+    with app.app_context():
+        from aisignx.models import Setting
+        Setting.set("timezone", "Europe/Berlin")
+        db.session.commit()
+    display_id = paired_display[0]
+    # Stored raw (as a pre-fix server could have), bypassing clean().
+    _set_diag(app, display_id, json.dumps({"errors": [{"t": 253_402_300_799_000, "msg": "x"},
+                                                      {"t": 2**53, "msg": "y"}]}))
+    assert admin_client.get(f"/displays/{display_id}").status_code == 200

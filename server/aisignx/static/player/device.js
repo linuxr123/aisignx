@@ -25,6 +25,7 @@
   var ctx = { manifest: function () { return null; } };
   var errors = [];
   var idTimer = null, shotRid = null;
+  var cssRot = 0;  // degrees the page itself turns the output clockwise (body.rot-*)
 
   var offlineEl = document.getElementById("offline");
   var idEl = document.getElementById("identify");
@@ -47,6 +48,7 @@
       allow_input: isBool(s.allow_input) ? s.allow_input : d.allow_input,
     };
     var rot = hasCap("rotate") ? 0 : cfg.orientation;  // the shell rotates the device itself
+    cssRot = rot;
     [90, 180, 270].forEach(function (deg) { body.classList.toggle("rot-" + deg, rot === deg); });
     R.setVolume(cfg.volume);
     body.classList.toggle("no-input", !cfg.allow_input);
@@ -195,9 +197,34 @@
       return null;
     });
   }
+  // A shell grabs the raw window, which the CSS rotation has turned clockwise by `deg`:
+  // turn it back so the admin sees the screen upright, like the canvas capture draws it.
+  // createImageBitmap, because the player CSP has no blob: in img-src. Keeps the raw blob
+  // if the image cannot be decoded or redrawn.
+  function unrotate(blob, deg) {
+    if (!blob || !deg || typeof window.createImageBitmap !== "function") return Promise.resolve(blob);
+    return window.createImageBitmap(blob).then(function (img) {
+      var sideways = deg === 90 || deg === 270;
+      var c = document.createElement("canvas");
+      c.width = sideways ? img.height : img.width;
+      c.height = sideways ? img.width : img.height;
+      var g = c.getContext("2d");
+      if (!g) return blob;
+      g.translate(c.width / 2, c.height / 2);
+      g.rotate(-deg * Math.PI / 180);
+      g.drawImage(img, -img.width / 2, -img.height / 2);
+      if (img.close) img.close();
+      return new Promise(function (resolve) {
+        c.toBlob(function (b) { resolve(b || blob); }, "image/jpeg", JPEG_QUALITY);
+      });
+    }).then(null, function () { return blob; });
+  }
   function capture() {
     var native = hasCap("capture") ? shell.capture() : Promise.resolve(null);
-    return native.then(function (blob) { return blob || canvasCapture(); }, canvasCapture);
+    var deg = cssRot;
+    return native.then(function (blob) {
+      return blob ? unrotate(blob, deg) : canvasCapture();
+    }, canvasCapture);
   }
   function screenshot(rid) {
     // The same request can arrive twice (it is re-sent when the event stream reconnects).
@@ -268,6 +295,7 @@
     command: command,
     identify: identify,
     capture: capture,
+    unrotate: unrotate,
     screenshot: screenshot,
     noteError: noteError,
     diag: diag,
