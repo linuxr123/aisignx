@@ -102,6 +102,8 @@ def detail(display_id: int):
                            week=week, tz_name=ctx.tz.key,
                            schedule_count=_schedule_counts().get(display.id, 0),
                            current_item=service.current_item_name(display),
+                           awaiting=(not display.is_paired
+                                     and pairing.awaiting_claim(display)),
                            action_form=ActionForm())
 
 

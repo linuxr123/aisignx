@@ -26,7 +26,12 @@
   </div>
   {% endif %}
 </div>
-{% if not display.is_paired %}
+{% if awaiting %}
+<div class="alert alert-info" data-reload-after="4">
+  <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+  Code accepted. Waiting for the screen to connect; this usually takes a few seconds.
+</div>
+{% elif not display.is_paired %}
 <div class="alert alert-warning">This display is not paired.{% if current_user.can_edit %} Open <code>{{ request.host_url }}player/</code> on the screen, then <a href="{{ url_for('displays.pair') }}">pair it</a> as {{ display.name }}.{% endif %}</div>
 {% endif %}
 {% if res.emergency %}

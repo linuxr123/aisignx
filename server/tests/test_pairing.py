@@ -470,6 +470,19 @@ def test_double_submit_reports_already_paired(app, admin_client):
         assert Display.query.count() == 1
 
 
+def test_detail_page_waits_for_screen_after_pairing(app, admin_client):
+    """Between approval and the screen's claim, the page must not say 'not paired'."""
+    player = app.test_client()
+    data = _start(player)
+    resp = _admin_pair(admin_client, data["code"], name="Lobby")
+    page = admin_client.get(resp.headers["Location"]).get_data(as_text=True)
+    assert "Waiting for the screen to connect" in page
+    assert "This display is not paired" not in page
+    assert _status(player, data["pairing_secret"]).get_json()["status"] == "paired"
+    page = admin_client.get(resp.headers["Location"]).get_data(as_text=True)
+    assert "Waiting for the screen" not in page and "This display is not paired" not in page
+
+
 def test_expired_code_generic_flash_via_admin_route(app, admin_client):
     data = _start(app.test_client())
     _expire(app, data["code"])

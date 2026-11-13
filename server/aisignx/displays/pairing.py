@@ -156,6 +156,13 @@ def recently_approved(code: str | None) -> Display | None:
     return db.session.get(Display, row.display_id)
 
 
+def awaiting_claim(display: Display) -> bool:
+    """True while an approved code for this display waits for the screen to collect it."""
+    rows = PairingCode.query.filter(PairingCode.display_id == display.id).all()
+    now = utcnow()
+    return any(as_utc(r.expires_at) > now for r in rows)
+
+
 def claim(secret: str):
     """Device poll. Returns (PENDING, expires_in), (EXPIRED, None) or (PAIRED, (display, raw))."""
     row = PairingCode.query.filter_by(secret_hash=hash_secret(secret)).first()

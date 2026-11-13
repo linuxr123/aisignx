@@ -18,6 +18,13 @@
     setTimeout(() => form.querySelectorAll("button[type=submit], input[type=submit]")
       .forEach((b) => { b.disabled = true; }), 0);
   });
+  // <div data-reload-after="4"> reloads the page after N seconds (e.g. waiting for a screen).
+  const reloadEl = document.querySelector("[data-reload-after]");
+  if (reloadEl) {
+    const seconds = Math.max(2, Number(reloadEl.dataset.reloadAfter) || 4);
+    setTimeout(() => window.location.reload(), seconds * 1000);
+  }
+
   // Coming back via the browser's Back button restores a page whose forms were sent.
   window.addEventListener("pageshow", (event) => {
     if (!event.persisted) return;
