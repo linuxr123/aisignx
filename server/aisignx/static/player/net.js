@@ -38,10 +38,12 @@
   // ---- Shell hook: a kiosk client (Electron preload or Android WebView) may expose
   // device info and receive state/manifest notices. No credential ever passes here.
   // Returns {info: {name, version, device, client_id, admin_url, caps}, onState(s), onManifest(json),
-  // capture() -> Promise<Blob|null>, stats() -> object|null} or null in a plain browser.
+  // capture() -> Promise<Blob|null>, stats() -> object|null, onCommand(obj), onControl(fn(action, repeat))}
+  // or null in a plain browser.
   // Every shell call is wrapped; a broken shell never stops playback.
   var shellCache;
-  var CAPS = { capture: 1, rotate: 1, "pin-exit": 1 };
+  var CAPS = { capture: 1, rotate: 1, "pin-exit": 1, controls: 1, "kiosk-lock": 1 };
+  var ACTIONS = { toggle: 1, play: 1, pause: 1, forward: 1, back: 1, next: 1, prev: 1 };
   var CAPTURE_TIMEOUT_MS = 10000;
   function str(v, max) { return typeof v === "string" ? v.slice(0, max) : ""; }
   function withTimeout(promise, ms) {
@@ -54,13 +56,32 @@
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return new Blob([bytes], { type: type });
   }
-  // Android: capture requests go out through the port; replies come back on it, keyed by id.
+  // Android: one listener on the shell port dispatches replies by msg.t (capture replies,
+  // control actions), so several features can share the port.
+  var portHandlers = {}, portListening = false;
+  function androidPort() {
+    var port = window.AiSignXShellPort;
+    return port && typeof port.postMessage === "function" ? port : null;
+  }
+  function onPortMessage(ev) {
+    var msg = null;
+    try { msg = JSON.parse(ev && ev.data); } catch (e) { return; }
+    if (!msg || typeof msg !== "object" || typeof msg.t !== "string") return;
+    var fn = portHandlers[msg.t];
+    if (typeof fn === "function") fn(msg);
+  }
+  function portListen(port, t, fn) {
+    portHandlers[t] = fn;
+    if (portListening) return;
+    portListening = true;
+    if (typeof port.addEventListener === "function") port.addEventListener("message", onPortMessage);
+    else port.onmessage = onPortMessage;
+  }
+  // Capture requests go out through the port; replies come back on it, keyed by id.
   function androidCapture() {
-    var pending = {}, seq = 0, listening = false;
-    function onReply(ev) {
-      var msg = null;
-      try { msg = JSON.parse(ev && ev.data); } catch (e) { return; }
-      if (!msg || msg.t !== "capture" || !pending[msg.id]) return;
+    var pending = {}, seq = 0;
+    function onReply(msg) {
+      if (!pending[msg.id]) return;
       var resolve = pending[msg.id];
       delete pending[msg.id];
       var blob = null;
@@ -68,13 +89,9 @@
       resolve(blob);
     }
     return function () {
-      var port = window.AiSignXShellPort;
-      if (!port || typeof port.postMessage !== "function") return Promise.resolve(null);
-      if (!listening) {
-        listening = true;
-        if (typeof port.addEventListener === "function") port.addEventListener("message", onReply);
-        else port.onmessage = onReply;
-      }
+      var port = androidPort();
+      if (!port) return Promise.resolve(null);
+      portListen(port, "capture", onReply);
       seq = seq % 1000000000 + 1;
       var id = seq;
       var p = new Promise(function (resolve) { pending[id] = resolve; });
@@ -82,8 +99,12 @@
       return withTimeout(p, CAPTURE_TIMEOUT_MS).then(function (blob) { delete pending[id]; return blob; });
     };
   }
+  // fn(action, repeat) receives only the known control actions.
+  function controlCallback(fn) {
+    return function (a, r) { if (typeof a === "string" && ACTIONS[a] === 1) fn(a, !!r); };
+  }
   function readShell() {
-    var raw = null, send = null, capture = null, stats = null;
+    var raw = null, send = null, capture = null, stats = null, command = null, control = null;
     try {
       if (window.AiSignXShell && typeof window.AiSignXShell.info === "function") {
         var es = window.AiSignXShell;
@@ -99,6 +120,8 @@
           });
         };
         stats = function () { return typeof es.stats === "function" ? es.stats() : null; };
+        command = function (o) { if (typeof es.onCommand === "function") es.onCommand(JSON.stringify(o)); };
+        control = function (fn) { if (typeof es.onControl === "function") es.onControl(controlCallback(fn)); };
       } else if (window.AiSignXShellInfo && typeof window.AiSignXShellInfo.info === "function") {
         var si = window.AiSignXShellInfo;
         raw = JSON.parse(si.info());
@@ -109,6 +132,17 @@
         };
         capture = androidCapture();
         stats = function () { return typeof si.stats === "function" ? JSON.parse(si.stats()) : null; };
+        command = function (o) {
+          var port = androidPort();
+          if (port) port.postMessage(JSON.stringify({ t: "command", c: o }));
+        };
+        control = function (fn) {
+          var port = androidPort();
+          if (!port) return;
+          var cb = controlCallback(fn);
+          portListen(port, "control", function (msg) { cb(msg.a, msg.r); });
+          port.postMessage(JSON.stringify({ t: "controls" }));
+        };
       }
     } catch (e) { raw = null; }
     if (!raw || typeof raw !== "object" || (raw.name !== "electron" && raw.name !== "android")) return null;
@@ -135,6 +169,13 @@
       },
       stats: function () {
         try { var s = stats(); return s && typeof s === "object" ? s : null; } catch (e) { return null; }
+      },
+      // Admin commands for the shell itself (unlock, lock). A no-op for an old shell.
+      onCommand: function (obj) { try { if (command) command(obj); } catch (e) { /* ignore */ } },
+      // Keys and remote buttons the shell turns into control actions.
+      onControl: function (fn) {
+        if (typeof fn !== "function") return;
+        try { if (control) control(fn); } catch (e) { /* ignore */ }
       },
     };
   }

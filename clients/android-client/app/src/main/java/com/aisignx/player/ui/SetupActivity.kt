@@ -1,8 +1,6 @@
 package com.aisignx.player.ui
 
-import android.content.ComponentName
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -74,6 +72,8 @@ class SetupActivity : AppCompatActivity() {
         }
         b.saveButton.setOnClickListener { save() }
         b.forgetButton.setOnClickListener { forget() }
+        b.removeOwnerButton.setOnClickListener { removeOwner() }
+        b.ownerCard.visibility = if (LockTask.isDeviceOwner(this)) View.VISIBLE else View.GONE
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (config.isConfigured) startPlayer() else finish()
@@ -188,15 +188,16 @@ class SetupActivity : AppCompatActivity() {
 
     private fun applyHomeMode(enabled: Boolean) {
         config.homeMode = enabled
-        val state = if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-        else PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-        try {
-            packageManager.setComponentEnabledSetting(
-                ComponentName(this, HOME_ALIAS), state, PackageManager.DONT_KILL_APP,
-            )
-        } catch (e: Exception) {
-            FileLog.w(TAG, "home alias toggle failed: ${e.message}")
-        }
+        // As Device Owner with Lock player on, the alias stays enabled as the persistent
+        // Home; the player sets it again on its next start.
+        LockTask.setHomeAlias(this, enabled)
+    }
+
+    /** Reached only through the PIN-gated exit, so a viewer cannot do this. */
+    private fun removeOwner() {
+        val ok = LockTask.removeOwner(this, config.homeMode)
+        if (ok) b.ownerCard.visibility = View.GONE
+        showResult(getString(if (ok) R.string.owner_removed else R.string.owner_remove_failed), if (ok) R.color.ok else R.color.error)
     }
 
     private fun startPlayer() {
@@ -207,7 +208,5 @@ class SetupActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "Setup"
         const val EXTRA_RECONFIGURE = "com.aisignx.player.RECONFIGURE"
-        /** Class name stays com.aisignx.player.* even with the .debug applicationId suffix. */
-        private const val HOME_ALIAS = "com.aisignx.player.HomeAlias"
     }
 }

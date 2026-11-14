@@ -1,7 +1,9 @@
 """Backup and restore (Phase 6, WP4)."""
+import errno
 import hashlib
 import io
 import json
+import os
 import threading
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -14,7 +16,7 @@ from aisignx.backup import restore as restore_mod
 from aisignx.backup import service
 from aisignx.extensions import db
 from aisignx.models import AuditLog, Media, Setting, User
-from .conftest import login, make_user, png_bytes, run_job, upload
+from .conftest import PASSWORD, login, make_user, png_bytes, run_job, upload
 
 
 @pytest.fixture(autouse=True)
@@ -253,6 +255,143 @@ def test_failure_after_db_write_puts_safety_backup_back(admin_client, app, monke
     with app.app_context():
         assert User.query.filter_by(username="after").count() == 1
     assert maintenance.active() is None
+
+
+def test_restore_signs_out_every_session_even_when_ids_are_reused(configured, app):
+    alice = make_user(app, "alice", "admin")
+    path = make_backup(app, include_uploads=False)
+    with app.app_context():
+        db.session.delete(db.session.get(User, alice))
+        db.session.commit()
+    assert make_user(app, "carol", "viewer") == alice  # SQLite hands out the same id
+    carol, remembered = app.test_client(), app.test_client()
+    login(carol, "carol")
+    remembered.post("/login", data={"username": "carol", "password": PASSWORD,
+                                    "remember": "y"})
+    cookie = remembered.get_cookie("remember_token")
+    assert cookie is not None
+    remember_only = app.test_client()
+    remember_only.set_cookie("remember_token", cookie.value)
+    assert carol.get("/admin/backups/").status_code == 403
+    assert remember_only.get("/admin/backups/").status_code == 403  # signed in as carol
+
+    with app.app_context():
+        restore_mod.restore(path, actor_via="cli", skip_snapshot=True)
+    # Without the session epoch both would now load alice (an admin) from the old id.
+    for c in (carol, remember_only):
+        resp = c.get("/admin/backups/")
+        assert resp.status_code == 302 and "/login" in resp.headers["Location"]
+
+
+def test_sessions_from_before_the_epoch_format_do_not_load(app, configured):
+    from aisignx.models.user import load_user, session_epoch
+
+    with app.app_context():
+        uid = User.query.filter_by(username="admin").one().id
+        assert load_user(str(uid)) is None  # a bare id
+        assert load_user(f"{uid}:stale") is None
+        assert load_user(f"{uid}:{session_epoch()}").id == uid
+
+
+def test_db_only_restore_takes_a_safety_backup_with_uploads(admin_client, app):
+    upload(admin_client, ("a.png", png_bytes()))
+    path = make_backup(app, include_uploads=False)
+    upload(admin_client, ("b.png", png_bytes(color=(1, 2, 3))))  # after the backup
+    files = media_files(app)
+    with app.app_context():
+        result = restore_mod.restore(path, actor_via="cli")
+        pre = service.backup_dir() / result["pre_restore"]
+    with zipfile.ZipFile(pre) as zf:
+        assert {n.rsplit("/", 1)[1] for n in zf.namelist()
+                if n.startswith("uploads/media/")} == files
+    # The restored database knows only a.png; the orphan job keeps b.png after a restore.
+    for name in files:
+        old = datetime.now().timestamp() - 7200
+        os.utime(uploads_root(app) / "media" / name, (old, old))
+    assert "media kept" in run_job(app, "media.orphans")
+    assert media_files(app) == files
+    with app.app_context():  # a day later the job cleans up again
+        Setting.set_datetime(restore_mod.RESTORED_AT_KEY,
+                             datetime.now(timezone.utc) - timedelta(hours=25))
+        db.session.commit()
+    run_job(app, "media.orphans")
+    assert len(media_files(app)) == 1
+    # Undoing the restore with the safety backup brings b.png back.
+    with app.app_context():
+        restore_mod.restore(pre, actor_via="cli", skip_snapshot=True)
+        assert Media.query.count() == 2
+    assert media_files(app) == files
+
+
+def test_disk_full_while_writing_uploads_rolls_back_and_deletes_nothing(admin_client, app,
+                                                                        monkeypatch):
+    upload(admin_client, ("a.png", png_bytes()))
+    path = make_backup(app)
+    make_user(app, "after", "viewer")
+    extra = uploads_root(app) / "media" / "extra.png"
+    extra.write_bytes(png_bytes())
+    (uploads_root(app) / "media" / sorted(media_files(app) - {"extra.png"})[0]).unlink()
+    real, calls = restore_mod.os.replace, []
+
+    def full(src, dst):
+        if Path(dst).parent.name == "media" and not calls:
+            calls.append(dst)
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return real(src, dst)
+
+    monkeypatch.setattr(restore_mod.os, "replace", full)
+    with app.app_context():
+        with pytest.raises(restore_mod.RestoreError, match="previous data was put back"):
+            restore_mod.restore(path)
+        assert User.query.filter_by(username="after").count() == 1
+    assert calls and extra.exists()
+
+
+def test_locked_upload_is_reported_and_extra_files_are_kept(admin_client, app, monkeypatch):
+    upload(admin_client, ("a.png", png_bytes()))
+    path = make_backup(app)
+    extra = uploads_root(app) / "media" / "extra.png"
+    extra.write_bytes(png_bytes())
+    target = uploads_root(app) / "media" / sorted(media_files(app) - {"extra.png"})[0]
+    target.write_bytes(b"changed")
+    real = restore_mod.os.replace
+
+    def locked(src, dst):
+        if Path(dst) == target:
+            raise PermissionError(13, "The process cannot access the file")
+        return real(src, dst)
+
+    monkeypatch.setattr(restore_mod.os, "replace", locked)
+    with app.app_context():
+        result = restore_mod.restore(path, skip_snapshot=True)
+    assert len(result["skipped"]) == 1 and target.name in result["skipped"][0]
+    assert extra.exists()
+
+
+def test_restore_refuses_when_the_uploads_volume_is_full(admin_client, app, monkeypatch):
+    upload(admin_client, ("a.png", png_bytes()))
+    path = make_backup(app)
+    make_user(app, "after", "viewer")
+    for p in (uploads_root(app) / "media").iterdir():
+        p.unlink()
+    monkeypatch.setattr(restore_mod, "_free", lambda folder: 10)
+    with app.app_context():
+        with pytest.raises(restore_mod.RestoreError, match="not enough free disk space"):
+            restore_mod.restore(path)
+        assert User.query.filter_by(username="after").count() == 1
+    assert maintenance.active() is None
+
+
+def test_no_job_runs_in_maintenance(app, monkeypatch):
+    from aisignx import jobs
+
+    monkeypatch.setattr(jobs, "JOBS", (jobs.Job("t.noop", 60, "aisignx.jobs:status"),))
+    maintenance.begin("restore")
+    try:
+        assert jobs.run_due(app) == []
+    finally:
+        maintenance.end()
+    assert jobs.run_due(app) == ["t.noop"]
 
 
 # --- Prune and schedule ----------------------------------------------------------------

@@ -25,13 +25,25 @@ class DisplaySettingsTest {
         )!!
         assertEquals(270, s.orientation)
         assertTrue(s.allowInput)
+        assertFalse(s.kioskLock)
         assertEquals(UnlockHash(200_000, salt, hash), s.unlock)
+    }
+
+    @Test fun kioskLock() {
+        assertTrue(DisplaySettings.parse(manifest("""{"kiosk_lock":true}"""))!!.kioskLock)
+        assertFalse(DisplaySettings.parse(manifest("""{"kiosk_lock":false}"""))!!.kioskLock)
+        // Missing (an older server) or not a boolean: off.
+        assertFalse(DisplaySettings.parse(manifest("""{"allow_input":true}"""))!!.kioskLock)
+        for (bad in listOf("1", "\"true\"", "null", "{}", "[true]")) {
+            assertFalse(bad, DisplaySettings.parse(manifest("""{"kiosk_lock":$bad}"""))!!.kioskLock)
+        }
     }
 
     @Test fun defaults() {
         val s = DisplaySettings.parse(manifest("""{"unlock":null}"""))!!
         assertEquals(0, s.orientation)
         assertFalse(s.allowInput)
+        assertFalse(s.kioskLock)
         assertNull(s.unlock)
     }
 

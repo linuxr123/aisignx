@@ -75,10 +75,12 @@ def create():
 @bp.route("/status")
 def status():
     """Progress of the background run, polled by the page. Exempt from maintenance mode.
-    After a successful restore it signs the admin out once (the users table changed)."""
+    After a successful restore it tells a signed-in browser once that it was signed out
+    (the restore invalidates every session, so current_user is anonymous by then)."""
     state = service.status()
     if state["op"] == "restore" and not state["running"] and state["ok"]:
-        if session.get(_SEEN_KEY) != state["id"] and current_user.is_authenticated:
+        had_session = current_user.is_authenticated or session.get("_user_id") is not None
+        if session.get(_SEEN_KEY) != state["id"] and had_session:
             logout_user()
             session[_SEEN_KEY] = state["id"]
             return jsonify(running=False, op="restore", ok=True, signed_out=True,

@@ -4,9 +4,13 @@ The SMTP settings live in Settings (smtp.*); the password comes from the environ
 only (AISIGNX_SMTP_PASSWORD -> config SMTP_PASSWORD). Each recipient gets a separate
 message, so no recipient sees the other addresses.
 
-mail_job() sends one notice when an alert opens and one when it resolves. The sent
-time is stored only after a successful send, so a failure is retried with backoff
-(the backoff clock is per process: after a restart the next attempt comes at once).
+mail_job() sends one notice when an alert opens and one when it resolves, over one
+connection per run. A notice counts as sent once any recipient accepted it (the other
+addresses' errors are kept in last_notify_error), so one bad address never makes the
+others get the same mail again. A notice that no recipient accepted is retried with
+backoff (the backoff clock is per process: after a restart the next attempt comes at
+once), unless every address was refused permanently (5xx). When the server cannot be
+reached or drops the connection, the run stops and every remaining notice backs off.
 """
 import logging
 import re
@@ -126,6 +130,53 @@ def _message(cfg: SmtpSettings, to: str, subject: str, body: str) -> EmailMessag
     return msg
 
 
+class ConnectionLost(Exception):
+    """The connection failed while sending; `delivered` lists who got the message."""
+
+    def __init__(self, cause: BaseException, delivered: list[str], failed: list):
+        super().__init__(_describe(cause))
+        self.cause, self.delivered, self.failed = cause, delivered, failed
+
+
+def _connection_error(exc: BaseException) -> bool:
+    """A failure of the connection itself (not of one message or one address)."""
+    if isinstance(exc, smtplib.SMTPServerDisconnected):
+        return True
+    if isinstance(exc, smtplib.SMTPResponseException) and exc.smtp_code == 421:
+        return True  # service not available, closing the channel
+    # smtplib.SMTPException subclasses OSError; plain OSErrors are socket/TLS errors.
+    return isinstance(exc, OSError) and not isinstance(exc, smtplib.SMTPException)
+
+
+def _permanent(exc: BaseException) -> bool:
+    """Every address in a recipient refusal got a 5xx: retrying cannot help."""
+    refused = getattr(exc, "recipients", None)
+    return (isinstance(exc, smtplib.SMTPRecipientsRefused) and bool(refused)
+            and all(isinstance(v, tuple) and int(v[0]) >= 500 for v in refused.values()))
+
+
+def _deliver(conn, cfg: SmtpSettings, subject: str, body: str,
+             to: list[str]) -> tuple[list[str], list[tuple[str, Exception]]]:
+    """Send one message per address. Returns (delivered, [(address, error)]); raises
+    ConnectionLost on a connection-level failure."""
+    delivered, failed = [], []
+    for address in to:
+        try:
+            conn.send_message(_message(cfg, address, subject, body),
+                              from_addr=cfg.sender, to_addrs=[address])
+        except Exception as exc:
+            if _connection_error(exc):
+                raise ConnectionLost(exc, delivered, failed) from exc
+            failed.append((address, exc))
+        else:
+            delivered.append(address)
+    return delivered, failed
+
+
+def _errors_text(failed) -> str:
+    return "; ".join(f"{address}: {_describe(exc)}" for address, exc in failed)[:255]
+
+
 def send(subject: str, body: str, to: list[str], cfg: SmtpSettings | None = None) -> None:
     """Send one message per recipient over one connection. Raises when any recipient
     failed (after trying all of them)."""
@@ -134,21 +185,16 @@ def send(subject: str, body: str, to: list[str], cfg: SmtpSettings | None = None
         raise RuntimeError("SMTP is not configured")
     if not to:
         raise RuntimeError("no recipients")
-    errors = []
     conn = _connect(cfg)
     try:
-        for address in to:
-            try:
-                conn.send_message(_message(cfg, address, subject, body),
-                                  from_addr=cfg.sender, to_addrs=[address])
-            except smtplib.SMTPServerDisconnected:
-                raise
-            except Exception as exc:
-                errors.append(f"{address}: {type(exc).__name__}: {exc}")
+        try:
+            _delivered, failed = _deliver(conn, cfg, subject, body, to)
+        except ConnectionLost as lost:
+            raise lost.cause
     finally:
         _close(conn)
-    if errors:
-        raise RuntimeError("; ".join(errors))
+    if failed:
+        raise RuntimeError(_errors_text(failed))
 
 
 def check_connection() -> tuple[bool, str]:
@@ -229,6 +275,14 @@ def _mark_done(alert: Alert, phase: str, now, error: str | None) -> None:
     _last_attempt.pop((alert.id, phase), None)
 
 
+def _mark_failed(alert: Alert, phase: str, error: str) -> None:
+    """Count a failed attempt; the notice is retried after the backoff."""
+    log.warning("Alert mail for %s %s failed: %s", alert.kind, alert.key, error)
+    alert.notify_attempts = (alert.notify_attempts or 0) + 1
+    alert.last_notify_error = error[:255]
+    _last_attempt[(alert.id, phase)] = time.monotonic()
+
+
 def mail_job() -> str:
     """Job: mail new and resolved alerts to alerts.email_to."""
     if not Setting.get_bool("alerts.email_enabled"):
@@ -238,29 +292,56 @@ def mail_job() -> str:
         return "SMTP not configured"
     now = utcnow()
     sent = skipped = failed = 0
+    todo = []
     for alert, phase in _pending():
         reason = _skip_reason(alert, phase, now)
         if reason:
             _mark_done(alert, phase, now, reason)
             db.session.commit()
             skipped += 1
-            continue
-        if not _backoff_over(alert, phase):
-            continue
-        resolved = phase == "resolve"
-        try:
-            send(_subject(alert, resolved), _body(alert, resolved), cfg.recipients, cfg)
-        except Exception as exc:
-            log.warning("Alert mail for %s %s failed: %s", alert.kind, alert.key, exc)
-            alert.notify_attempts = (alert.notify_attempts or 0) + 1
-            alert.last_notify_error = _describe(exc)
-            _last_attempt[(alert.id, phase)] = time.monotonic()
-            db.session.commit()
-            failed += 1
-            continue
-        _mark_done(alert, phase, utcnow(), None)
+        elif _backoff_over(alert, phase):
+            todo.append((alert, phase))
+    if not todo:
+        return f"sent 0, skipped {skipped}, failed 0"
+    try:
+        conn = _connect(cfg)
+    except Exception as exc:
+        for alert, phase in todo:
+            _mark_failed(alert, phase, _describe(exc))
         db.session.commit()
-        sent += 1
+        raise RuntimeError(f"cannot reach the SMTP server: {_describe(exc)}") from exc
+    try:
+        for index, (alert, phase) in enumerate(todo):
+            resolved = phase == "resolve"
+            try:
+                delivered, errors = _deliver(conn, cfg, _subject(alert, resolved),
+                                             _body(alert, resolved), cfg.recipients)
+            except ConnectionLost as lost:
+                if lost.delivered:  # partly sent: never send it to those addresses again
+                    rest = [a for a in cfg.recipients if a not in lost.delivered]
+                    _mark_done(alert, phase, utcnow(),
+                               f"not sent to {', '.join(rest)}: {lost}"[:255])
+                    sent += 1
+                    remaining = todo[index + 1:]
+                else:
+                    remaining = todo[index:]
+                for other, other_phase in remaining:  # stop the run; all of them back off
+                    _mark_failed(other, other_phase, str(lost))
+                    failed += 1
+                db.session.commit()
+                break
+            if delivered:
+                _mark_done(alert, phase, utcnow(), _errors_text(errors) or None)
+                sent += 1
+            elif all(_permanent(exc) for _, exc in errors):
+                _mark_done(alert, phase, utcnow(), ("refused: " + _errors_text(errors))[:255])
+                failed += 1
+            else:
+                _mark_failed(alert, phase, _errors_text(errors))
+                failed += 1
+            db.session.commit()
+    finally:
+        _close(conn)
     if failed and not sent:
         raise RuntimeError(f"{failed} alert e-mail(s) failed; last error kept on the alert")
     return f"sent {sent}, skipped {skipped}, failed {failed}"

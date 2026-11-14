@@ -22,7 +22,7 @@ VECTORS = [
     ("12345678", 1000, "42b99a197a7d9cafa9fa5b60091da410edb6f3c1cc4e159a5f901b5348abb716"),
 ]
 DEFAULTS = {"orientation": 0, "volume": 100, "show_offline_banner": True,
-            "allow_input": False, "unlock": None}
+            "allow_input": False, "kiosk_lock": False, "resume_after_s": 300, "unlock": None}
 
 
 def _form(**overrides) -> dict:
@@ -70,7 +70,8 @@ def test_malformed_hash_gives_no_unlock(stored):
 def test_settings_payload_defaults_and_clamps():
     assert options.settings_payload(Display(orientation=0, volume=100,
                                             show_offline_banner=True,
-                                            allow_input=False)) == DEFAULTS
+                                            allow_input=False, kiosk_lock=False,
+                                            resume_after_s=300)) == DEFAULTS
     odd = options.settings_payload(Display(orientation=45, volume=250,
                                            show_offline_banner=False, allow_input=True))
     assert (odd["orientation"], odd["volume"]) == (0, 100)
@@ -79,6 +80,15 @@ def test_settings_payload_defaults_and_clamps():
     unlock = options.settings_payload(Display(unlock_pin_hash=stored))["unlock"]
     assert unlock == {"alg": "pbkdf2-sha256", "iter": 1000, "salt": SALT.hex(),
                       "hash": stored.rsplit("$", 1)[1]}
+
+
+@pytest.mark.parametrize("stored,sent", [
+    (59, 60), (60, 60), (600, 600), (3600, 3600), (99999, 3600), (-5, 60),
+    (None, 300), ("300", 300), (True, 300),
+])
+def test_settings_payload_clamps_resume(stored, sent):
+    payload = options.settings_payload(Display(resume_after_s=stored, kiosk_lock=True))
+    assert payload["resume_after_s"] == sent and payload["kiosk_lock"] is True
 
 
 def test_parse_diag():
@@ -238,13 +248,16 @@ def test_editor_cannot_touch_kiosk_lock(app, configured, client, paired_display)
     assert 'name="unlock_pin"' not in page and 'name="allow_input"' not in page
     assert "Unlock PIN: set" in page and "admins only" in page
 
+    assert 'name="kiosk_lock"' not in page and 'name="resume_after_min"' not in page
+
     resp = client.post(f"/displays/{display_id}/edit",
                        data=_form(volume=50, allow_input="y", unlock_pin="1111",
-                                  clear_pin="y"))
+                                  clear_pin="y", kiosk_lock="y", resume_after_min=30))
     assert resp.status_code == 302
     display = _display(app, display_id)
     assert display.volume == 50
     assert display.allow_input is False and display.unlock_pin_hash == stored
+    assert display.kiosk_lock is False and display.resume_after_s == 300
 
 
 def test_detail_shows_settings_card(app, admin_client, paired_display):

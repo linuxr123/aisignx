@@ -87,3 +87,36 @@ test('devtools without a PIN runs at once on the focused window', () => {
   w.guardWindow('devtools', { focused: () => null, fallback: () => player }, (t) => opened.push(t))();
   assert.deepEqual(opened, [player]);
 });
+
+test('a remote unlock skips the PIN; the prompt reports open and close', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aisignx-unlockwin-'));
+  let remote = true;
+  const events = [];
+  const w = createUnlockWindow({ getUnlock: () => V1K, gate: unlock.createGate({ dataDir }),
+    isRemoteUnlocked: () => remote, onOpen: () => events.push('open'), onClose: () => events.push('close') });
+  const ran = [];
+  w.guard('quit', () => ran.push('quit'))();
+  assert.deepEqual(ran, ['quit']);
+  assert.equal(w.window, null);
+
+  remote = false;
+  w.guard('quit', () => ran.push('quit2'))();
+  assert.deepEqual(ran, ['quit']);
+  assert.ok(w.window instanceof FakeWindow);
+  assert.deepEqual(events, ['open']);
+  await handlers['unlock:cancel']({ sender: w.window.webContents });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(events, ['open', 'close']);
+  assert.deepEqual(ran, ['quit']);
+});
+
+test('a throwing isRemoteUnlocked still asks for the PIN', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aisignx-unlockwin-'));
+  const w = createUnlockWindow({ getUnlock: () => V1K, gate: unlock.createGate({ dataDir }),
+    isRemoteUnlocked: () => { throw new Error('x'); } });
+  const ran = [];
+  w.guard('setup', () => ran.push('setup'))();
+  assert.deepEqual(ran, []);
+  assert.ok(w.window instanceof FakeWindow);
+  w.close();
+});

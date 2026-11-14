@@ -4,6 +4,8 @@ Fields may only ever be added; clients ignore keys they don't know. Phase 4 adde
 `source` (why this playlist plays) and `emergency` (the overlay to show, or null).
 Display options added `settings` (orientation, volume, offline banner, input, unlock
 hash; see displays/options.py); a display's fit override replaces every item's `fit`.
+Player controls added `settings.kiosk_lock` (lock the native apps) and
+`settings.resume_after_s` (auto-resume after a pause).
 
 `fit` keeps the domain vocabulary; the browser player maps it to CSS object-fit:
     fit -> contain, fill -> cover, stretch -> fill

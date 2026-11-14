@@ -36,7 +36,8 @@ test('saveConfig writes atomically and loadConfig reads it back', () => {
   assert.ok(!fs.existsSync(path.join(dir, 'config.json.tmp')));
   const { config: cfg, status } = config.loadConfig(dir);
   assert.equal(status, 'ok');
-  assert.deepEqual(cfg, { serverUrl: 'http://10.0.0.5:5000', port: 47800, certPin: pin, autostart: false, unlock: null });
+  assert.deepEqual(cfg, { serverUrl: 'http://10.0.0.5:5000', port: 47800, certPin: pin, autostart: false, unlock: null,
+    allowInput: true, kioskLock: false });
   assert.ok(!JSON.stringify(cfg).toLowerCase().includes('token'));
 });
 
@@ -90,4 +91,32 @@ test('a bad unlock value is dropped without renaming the config', () => {
     assert.equal(r.config.serverUrl, 'http://h:5000');
     assert.ok(!fs.existsSync(path.join(dir, 'config.json.bad')));
   }
+});
+
+test('allowInput and kioskLock are saved; non-boolean values fall back to the defaults', () => {
+  const dir = tmp();
+  config.saveConfig(dir, { serverUrl: 'http://h:5000', port: 47801, allowInput: false, kioskLock: true });
+  const c = config.loadConfig(dir).config;
+  assert.equal(c.allowInput, false);
+  assert.equal(c.kioskLock, true);
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ serverUrl: 'http://h:5000', port: 47801, allowInput: 'no', kioskLock: 1 }));
+  const r = config.loadConfig(dir);
+  assert.equal(r.status, 'ok');
+  assert.equal(r.config.allowInput, true);
+  assert.equal(r.config.kioskLock, false);
+});
+
+test('settingsPatch follows the manifest settings', () => {
+  const cfg = Object.assign(config.defaults(), { serverUrl: 'http://h:5000', port: 47801 });
+  const p = config.settingsPatch;
+  assert.deepEqual(p(cfg, undefined), {});                 // old server: no settings
+  assert.deepEqual(p(cfg, null), {});
+  assert.deepEqual(p(cfg, { orientation: 0 }), {});       // nothing that differs
+  assert.deepEqual(p(cfg, { allow_input: false, kiosk_lock: true, unlock: UNLOCK }),
+    { allowInput: false, kioskLock: true, unlock: UNLOCK });
+  const locked = Object.assign({}, cfg, { kioskLock: true, unlock: UNLOCK, allowInput: false });
+  assert.deepEqual(p(locked, { allow_input: false, unlock: UNLOCK }), { kioskLock: false }); // no kiosk_lock: off
+  assert.deepEqual(p(locked, { kiosk_lock: 'yes', unlock: UNLOCK, allow_input: false }), { kioskLock: false });
+  assert.deepEqual(p(locked, { kiosk_lock: true, allow_input: 'x' }), {});  // bad allow_input, no unlock: kept
+  assert.deepEqual(p(locked, { kiosk_lock: true, unlock: null }), { unlock: null });
 });

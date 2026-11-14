@@ -163,7 +163,8 @@ Authenticated. Returns what the screen should play.
  "source": {"type": "schedule", "id": 7, "name": "Mornings"},
  "emergency": null,
  "settings": {"orientation": 0, "volume": 100, "show_offline_banner": true,
-              "allow_input": false, "unlock": null}}
+              "allow_input": false, "kiosk_lock": false, "resume_after_s": 300,
+              "unlock": null}}
 ```
 
 | Field | Meaning |
@@ -205,14 +206,17 @@ fails, show "no content" and fetch the manifest again after 30 seconds.
 ### Display settings
 
 `settings` holds the options an admin sets per display. If the key is missing (an older
-server), keep today's behaviour: no rotation, full volume, input allowed, no PIN.
+server), keep today's behaviour: no rotation, full volume, input allowed, no PIN, no lock,
+auto-resume after 300 seconds. Clients ignore keys they don't know.
 
 | Field | Meaning |
 |---|---|
 | `orientation` | `0`, `90`, `180` or `270`: rotate the output clockwise by this many degrees. The browser player rotates with CSS unless the shell reports the `rotate` capability (it then rotates the device itself). |
 | `volume` | `0`-`100`. Applied to the player's own videos (not the OS volume, not inside web pages). `muted` items stay muted. |
 | `show_offline_banner` | Show a small "Offline" pill while the screen cannot reach the server. |
-| `allow_input` | `false`: touches, clicks, keys and the wheel are ignored, so web items cannot be used from the screen. |
+| `allow_input` | `false`: touches, clicks, keys and the wheel are ignored. `true`: they become player controls (see [Player controls](#player-controls)); a transparent overlay covers every item, so web items cannot be clicked or scrolled either way. |
+| `kiosk_lock` | `true`: the native apps cannot be left without the unlock PIN (window close and minimize blocked; Android lock task). The server only allows it while a PIN is set. A shell that sees `true` with no valid `unlock` hash stays locked but lets its admin exit through without a PIN, so a bad hash never bricks a screen. Missing (older server): `false`. The browser player never reads it. |
+| `resume_after_s` | `60`-`3600`: a paused player resumes on its own after this many seconds. A missing or bad value means `300`; clamp anything else to the range. |
 | `unlock` | `null`, or `{"alg": "pbkdf2-sha256", "iter": 200000, "salt": "<32 hex>", "hash": "<64 hex>"}`: the PIN that guards leaving the native apps. |
 
 `unlock` is for the native apps only. They check a PIN with PBKDF2-HMAC-SHA256
@@ -398,6 +402,8 @@ Authenticated. A Server-Sent Events stream (`text/event-stream`). Every `data:` 
 | `command` | `{"action": "identify", "seconds": 15}` | Show the display name over the content for that many seconds (clamp to 3-60). |
 | `command` | `{"action": "screenshot", "request_id": "<16 hex>"}` | Capture the screen and send it with `POST /screenshot`. Also sent right after `hello` while a request made in the last 2 minutes is still open. |
 | `command` | `{"action": "diagnostics"}` | Send a heartbeat with `diag` now. |
+| `command` | `{"action": "unlock", "minutes": 15, "request_id": "<16 hex>"}` | Lift the Lock player for `minutes` (clamp to 1-240), measured on a monotonic clock and kept in memory only, so a restart locks again. While unlocked, the app can be closed and its admin exit skips the PIN. Ignore a `request_id` you have already seen. The browser player forwards it to the shell (`onCommand`) and, when the shell reports the `kiosk-lock` cap, shows "Unlocked for 15 min" (with no such shell, "No app to unlock" in debug mode only). Never stored and not re-sent after a reconnect. |
+| `command` | `{"action": "lock", "request_id": "<16 hex>"}` | End a remote unlock now. Forwarded to the shell like `unlock`. |
 | `revoked` | `{}` | The token was revoked. Fetch the manifest; the 401 sends you back to pairing. |
 | `bye` | `{"reason": "max_age"}` or `{"reason": "replaced"}` | The stream is ending. Reconnect after a random 0-3 seconds. |
 | `ka` | `{}` | Keep-alive. Only resets your silence watchdog. |
@@ -410,6 +416,52 @@ Emergency events are never dropped when a screen's event queue is full.
 
 Live push reaches only screens connected to the same server process. That is why the heartbeat
 check above is required, not optional.
+
+## Player controls
+
+With `settings.allow_input` on, the browser player turns touch, mouse, keyboard and remote
+input into seven control actions. Only while the player is `PLAYING` and no emergency shows;
+an emergency also ends any pause.
+
+| Action | Video item | Image / web item |
+|---|---|---|
+| `toggle` | Pause/resume | Pause/resume (freezes the item's timer) |
+| `play` / `pause` | Explicit | Explicit |
+| `forward` | +10 s (at the end: next item) | Next item |
+| `back` | -10 s (stops at 0 s) | Previous item |
+| `next` / `prev` | Next/previous item | Same |
+
+In a one-item playlist, `next` and `prev` restart the item. A paused player resumes on its own
+after `settings.resume_after_s`, and at once when a manifest turns `allow_input` off. The mouse
+does not drag; it uses click, double-click, wheel and its side buttons.
+
+| Input | Action |
+|---|---|
+| Space, Enter | `toggle` |
+| ArrowRight / ArrowLeft | `forward` / `back` |
+| ArrowUp / ArrowDown | `prev` / `next` |
+| PageUp / PageDown | `prev` / `next` |
+| MediaPlayPause | `toggle` |
+| MediaPlay | `play` |
+| MediaPause, MediaStop | `pause` |
+| MediaTrackNext / MediaTrackPrevious | `next` / `prev` |
+| MediaFastForward / MediaRewind | `forward` / `back` |
+| ChannelUp / ChannelDown | `prev` / `next` |
+| Tap (under 300 ms, under 10 px) | `toggle` |
+| Swipe left / right (at least 50 px, mostly sideways) | `next` / `prev` |
+| Press 300 ms, then drag | Scrub the video (on other items it is a swipe) |
+| Mouse click | `toggle` (after 250 ms, cancelled by a double-click) |
+| Double-click right / left half | `forward` / `back` |
+| Wheel down / up | `forward` / `back` (one step per 300 ms) |
+| Mouse back / forward button | `prev` / `next` |
+
+A held key repeats `forward`/`back` at most every 250 ms; repeats of the other actions are
+ignored. Gestures are measured in the screen's upright frame, so they follow the
+`orientation` setting. On Android, the D-pad and remote buttons map the same way, and a short
+press of OK is `toggle`.
+
+**Proof of play.** Paused time does not count as play time. A skipped item is reported with
+the time it was really on screen; a play under 500 ms is dropped.
 
 ## Screenshots
 
@@ -435,7 +487,8 @@ They load the browser player at `/player/` and talk to it through a small hook. 
 browser there is no hook and the player behaves exactly as before.
 
 `net.shell()` in `static/player/net.js` looks for one of two hosts and returns a normalized
-object `{info, onState(s), onManifest(json), capture(), stats()}`, or `null`:
+object `{info, onState(s), onManifest(json), capture(), stats(), onCommand(obj),
+onControl(fn)}`, or `null`:
 
 - **Electron:** `window.AiSignXShell`, exposed by the preload with `contextBridge`, with
   `info()` returning an object and the functions `onState(s)`, `onManifest(json)`, `capture()`
@@ -454,7 +507,7 @@ Every call into the shell is wrapped in `try/catch`; a broken shell never stops 
 | `device` | Device name sent with `POST /pair` (up to 120 characters), for example `HOSTNAME / Windows`. |
 | `client_id` | 32 lowercase hex characters. If valid, the player stores and uses it as its `client_id`. |
 | `admin_url` | The server URL configured in the client (`http(s)://host[:port]`). Used for the pairing hint `<admin_url>/displays/pair`, because behind the Electron proxy `location.origin` is a loopback address. |
-| `caps` | Optional list of capabilities: `capture` (the shell can take a real screenshot), `rotate` (the shell rotates the device itself, so the page does not rotate with CSS), `pin-exit` (leaving the app asks for the unlock PIN). Unknown values are ignored. |
+| `caps` | Optional list of capabilities: `capture` (the shell can take a real screenshot), `rotate` (the shell rotates the device itself, so the page does not rotate with CSS), `pin-exit` (leaving the app asks for the unlock PIN), `controls` (the shell forwards keys and remote buttons as control actions), `kiosk-lock` (the shell honours `kiosk_lock` and the `unlock`/`lock` commands). Unknown values are ignored. |
 
 **Capture.** `capture()` resolves to a JPEG `Blob` of the real screen, or `null`; the page then
 falls back to drawing its own media on a canvas. Electron: `AiSignXShell.capture()` returns
@@ -462,9 +515,28 @@ JPEG bytes. Android: the page posts `{"t":"capture","id":<n>}` through the port 
 replies on the same port with `{"t":"capture","id":<n>,"ok":true,"jpeg":"<base64>"}` (or
 `"ok":false`); the page gives up after 10 seconds.
 
-**Stats.** `stats()` returns `{uptime_s, cache: {files, bytes}, storage_free_bytes}` or `null`
-(Electron `AiSignXShell.stats()`, Android `AiSignXShellInfo.stats()` as a JSON string). It goes
-into the heartbeat `diag`. It never holds secrets: on Android, iframes can call it too.
+**Stats.** `stats()` returns `{uptime_s, cache: {files, bytes}, storage_free_bytes, lock}` or
+`null` (Electron `AiSignXShell.stats()`, Android `AiSignXShellInfo.stats()` as a JSON string).
+It goes into the heartbeat `diag`. It never holds secrets: on Android, iframes can call it too.
+The optional `lock` is one of `off`, `locked`, `unlocked`, `pinned` (Android screen pinning,
+no Device Owner), `owner` (Android Device Owner lock task) or `failed`; the admin shows it as
+`diag.shell.lock`.
+
+**Commands (page to shell).** `onCommand(obj)` forwards the `unlock` and `lock` SSE commands,
+and nothing else. Electron: `AiSignXShell.onCommand(json)` with the command as a JSON string
+under 1 KB. Android: the page posts `{"t":"command","c":{...}}` through the port. Shells check
+the payload themselves (`minutes` an integer, `request_id` 16 lowercase hex) and dedupe by
+`request_id`.
+
+**Controls (shell to page).** `onControl(fn)` registers `fn(action, repeat)`, where `action` is
+one of `toggle`, `play`, `pause`, `forward`, `back`, `next`, `prev` and `repeat` is a boolean
+(a held key). Electron: `AiSignXShell.onControl(cb)`; a later call replaces the callback.
+Android: the page posts `{"t":"controls"}` on its first `onControl` call (and again after every
+page load); the shell keeps that message's reply proxy and sends
+`{"t":"control","a":"next","r":false}` on it. Shells forward keys only while their stored
+`allow_input` is `true`; otherwise keys stay blocked. The page validates every action and
+ignores them unless controls are on, it is `PLAYING` and no emergency shows. Both hooks are
+no-ops on an old or broken shell.
 
 `onState(s)` is called on every state change with one of `CONNECTING`, `SETUP_WAIT`, `PAIRING`,
 `PLAYING`, `NO_CONTENT`, plus `PAIRED` once when pairing succeeds (before the player boots).
@@ -473,8 +545,8 @@ Shells flush their cookie store to disk on `PAIRED`.
 `onManifest(json)` is called with the manifest as a JSON string after every `GET /manifest` that
 returned 200 (never on 304, and not for the copy restored from `localStorage`). Shells use it to
 prefetch and keep image and video files in their media cache, and to keep the native part of
-`settings`: the unlock PIN hash (both apps) and, on Android, the orientation and input lock. They
-store these so an offline start still applies them. A manifest without `settings` changes
+`settings`: the unlock PIN hash, `allow_input` and `kiosk_lock` (both apps) and, on Android,
+the orientation. They store these so an offline start still applies them. A manifest without `settings` changes
 nothing; one whose `settings` has `"unlock": null` removes the PIN.
 
 **No token or cookie ever reaches the hook.** The credential stays in the HttpOnly

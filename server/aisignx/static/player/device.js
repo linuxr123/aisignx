@@ -1,4 +1,4 @@
-// AiSignX browser player: per-display settings (rotation, volume, input lock, offline banner),
+// AiSignX browser player: per-display settings (rotation, volume, input lock, offline banner, auto-resume),
 // identify overlay, screenshots, diagnostics and the error ring.
 // Classic script, ES2018 at most. Text via textContent only; no inline styles (strict CSP).
 // The page never reads settings.unlock: the unlock PIN is for the native apps only.
@@ -14,14 +14,15 @@
 
   var ORIENTATIONS = [0, 90, 180, 270];
   // A settings object with a bad field falls back to these.
-  var DEFAULTS = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: false };
+  var DEFAULTS = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: false, resume_after_s: 300 };
   // No settings key at all (older server or cached manifest): keep the old behaviour.
-  var LEGACY = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: true };
+  var LEGACY = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: true, resume_after_s: 300 };
+  var RESUME_MIN_S = 60, RESUME_MAX_S = 3600;
   var BLOCKED = ["keydown", "keyup", "keypress", "contextmenu", "wheel", "dragstart"];
   var MAX_SIDE = 1920, JPEG_QUALITY = 0.8, MAX_ERRORS = 10, DIAG_MAX = 4000;
   var RID = /^[0-9a-f]{16}$/;
 
-  var cfg = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: true };
+  var cfg = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: true, resume_after_s: 300 };
   var ctx = { manifest: function () { return null; } };
   var errors = [];
   var idTimer = null, shotRid = null;
@@ -46,6 +47,8 @@
       volume: typeof s.volume === "number" && s.volume >= 0 && s.volume <= 100 ? Math.round(s.volume) : d.volume,
       show_offline_banner: isBool(s.show_offline_banner) ? s.show_offline_banner : d.show_offline_banner,
       allow_input: isBool(s.allow_input) ? s.allow_input : d.allow_input,
+      resume_after_s: typeof s.resume_after_s === "number" && Math.floor(s.resume_after_s) === s.resume_after_s
+        ? Math.max(RESUME_MIN_S, Math.min(RESUME_MAX_S, s.resume_after_s)) : d.resume_after_s,
     };
     var rot = hasCap("rotate") ? 0 : cfg.orientation;  // the shell rotates the device itself
     cssRot = rot;
@@ -263,6 +266,7 @@
           d.cache = { files: count(st.cache.files) || 0, bytes: count(st.cache.bytes) || 0 };
         }
         if (count(st.storage_free_bytes) !== null) d.storage_free_bytes = count(st.storage_free_bytes);
+        if (typeof st.lock === "string") d.shell.lock = st.lock.slice(0, 16);
       }
     }
     if (errors.length) d.errors = errors.slice();
@@ -289,8 +293,15 @@
   // init({manifest: () => current manifest or null})
   function init(c) { if (c && typeof c.manifest === "function") ctx.manifest = c.manifest; }
 
+  // config(): a copy of the applied settings. rotation(): degrees the page turns its output
+  // (0 when the shell rotates the device natively; pointer coordinates are then already upright).
+  function config() { return Object.assign({}, cfg); }
+  function rotation() { return cssRot; }
+
   A.device = {
     init: init,
+    config: config,
+    rotation: rotation,
     applySettings: applySettings,
     command: command,
     identify: identify,

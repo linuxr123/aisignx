@@ -82,6 +82,47 @@ def test_limiter_key_cap_evicts_oldest(clock):
     assert lim.retry_after("a") and lim.retry_after("c") and lim.retry_after("d")
 
 
+def test_limiter_flood_of_new_keys_cannot_evict_a_busy_key(clock):
+    lim = FailureLimiter(5, 600, max_keys=100)
+    for _ in range(4):
+        lim.fail("admin")  # one guess left before the block
+    for i in range(10_000):  # junk user names, each failing once
+        clock.now += 0.01
+        lim.fail(f"junk-{i}")
+    assert len(lim) == 100
+    assert lim.fail("admin") is True
+    assert lim.retry_after("admin")
+
+
+def test_limiter_evicts_idle_keys_before_busy_ones(clock):
+    lim = FailureLimiter(5, 60, max_keys=2)
+    lim.fail("old")
+    clock.now += 61  # "old" is idle now
+    lim.fail("busy")
+    lim.fail("busy")
+    lim.fail("new")
+    assert lim.retry_after("old") is None and len(lim) == 2
+    lim.fail("busy")
+    lim.fail("busy")
+    assert lim.fail("busy") is True
+
+
+def test_ip_key_groups_ipv6_by_64():
+    assert ratelimit.ip_key("2001:db8:1:2:aaaa::1") == ratelimit.ip_key("2001:db8:1:2:ffff::9")
+    assert ratelimit.ip_key("2001:db8:1:2::1") != ratelimit.ip_key("2001:db8:1:3::1")
+    assert ratelimit.ip_key("::ffff:10.0.0.1") == "10.0.0.1"
+    assert ratelimit.ip_key("10.0.0.1") == "10.0.0.1"
+    assert ratelimit.ip_key(None) == "unknown" and ratelimit.ip_key("junk") == "junk"
+
+
+def test_ipv6_hosts_in_one_64_share_the_ip_limit(app, client, configured):
+    app.config["LOGIN_MAX_PER_IP"] = 3
+    for n in range(3):
+        _post(client, f"user{n}", "wrong", ip=f"2001:db8::{n + 1:x}")
+    assert _post(client, "user9", "wrong", ip="2001:db8::abcd").status_code == 429
+    assert _post(client, "user9", "wrong", ip="2001:db8:0:1::1").status_code != 429
+
+
 def test_limiter_sweeps_idle_keys(clock):
     lim = FailureLimiter(5, 60)
     for i in range(50):

@@ -22,9 +22,35 @@ function isBlocked(input) {
     k === 'backspace' || k === 'browserback' || k === 'browserforward' || k === 'browserrefresh';
 }
 
-function attachKeyBlock(webContents) {
+// Player control keys (docs/player-api.md, "Player controls"). Forwarded to the page as
+// actions only while the display allows input; otherwise the page blocks them as before.
+const CONTROL_KEYS = new Map([
+  [' ', 'toggle'], ['Enter', 'toggle'],
+  ['ArrowRight', 'forward'], ['ArrowLeft', 'back'], ['ArrowUp', 'prev'], ['ArrowDown', 'next'],
+  ['PageUp', 'prev'], ['PageDown', 'next'],
+  ['MediaPlayPause', 'toggle'], ['MediaPlay', 'play'], ['MediaPause', 'pause'], ['MediaStop', 'pause'],
+  ['MediaTrackNext', 'next'], ['MediaTrackPrevious', 'prev'],
+  ['MediaFastForward', 'forward'], ['MediaRewind', 'back'],
+]);
+
+// -> {a: action, r: isAutoRepeat} or null.
+function controlAction(input) {
+  if (!input || input.type !== 'keyDown' || input.control || input.alt || input.meta) return null;
+  const a = CONTROL_KEYS.get(String(input.key || ''));
+  return a ? { a, r: !!input.isAutoRepeat } : null;
+}
+
+// opts (optional): {controls: () => bool, onControl: ({a, r}) => void}
+function attachKeyBlock(webContents, opts) {
+  const o = opts || {};
   webContents.on('before-input-event', (event, input) => {
-    if (isBlocked(input)) event.preventDefault();
+    if (isBlocked(input)) { event.preventDefault(); return; }
+    if (typeof o.controls !== 'function' || !o.controls()) return;
+    const m = controlAction(input);
+    if (m) {
+      event.preventDefault();
+      if (typeof o.onControl === 'function') o.onControl(m);
+    }
   });
   // Zoom by mouse wheel or pinch.
   webContents.setVisualZoomLevelLimits(1, 1).catch(() => {});
@@ -93,5 +119,5 @@ function applyAutostart(enabled, opts) {
   return 'unsupported';
 }
 
-module.exports = { isBlocked, attachKeyBlock, registerShortcuts, unregisterShortcuts, keepAwake, releaseAwake,
+module.exports = { isBlocked, controlAction, attachKeyBlock, registerShortcuts, unregisterShortcuts, keepAwake, releaseAwake,
   applyAutostart, desktopEntry };

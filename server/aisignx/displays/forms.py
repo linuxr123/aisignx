@@ -86,7 +86,12 @@ class DisplayForm(FlaskForm):
 
     # Kiosk lock: admins only. Removed from the form for everyone else, so an editor
     # posting these fields changes nothing.
-    allow_input = BooleanField("Allow touch, mouse and keyboard")
+    allow_input = BooleanField("Player controls (touch, mouse, keyboard, remote)")
+    # Optional so a post without it (an older form or script) keeps the stored value.
+    resume_after_min = IntegerField("Resume after a pause (minutes)", default=5,
+                                    validators=[Optional(), NumberRange(1, 60)],
+                                    render_kw={"min": 1, "max": 60})
+    kiosk_lock = BooleanField("Lock player")
     unlock_pin = PasswordField(
         "New unlock PIN",
         # ASCII digits only (\d would accept e.g. Arabic-Indic digits the kiosk keypads
@@ -97,13 +102,15 @@ class DisplayForm(FlaskForm):
         render_kw={"autocomplete": "new-password", "inputmode": "numeric"})
     clear_pin = BooleanField("Remove the unlock PIN")
 
-    KIOSK_FIELDS = ("allow_input", "unlock_pin", "clear_pin")
+    KIOSK_FIELDS = ("allow_input", "unlock_pin", "clear_pin", "kiosk_lock",
+                    "resume_after_min")
 
-    def __init__(self, *args, admin: bool = False, **kwargs):
+    def __init__(self, *args, admin: bool = False, has_pin: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self.playlist.choices = playlist_choices()
         self.group.choices = group_choices()
         self.is_admin_form = admin
+        self.has_pin = has_pin
         if not admin:
             for name in self.KIOSK_FIELDS:
                 delattr(self, name)
@@ -114,8 +121,28 @@ class DisplayForm(FlaskForm):
             self.unlock_pin.errors = [*self.unlock_pin.errors,
                                       "Either remove the PIN or set a new one."]
             ok = False
+        if self.is_admin_form and self.kiosk_lock.data:
+            # A locked player without a PIN could never be left on the device.
+            pin_after = ((self.has_pin and not self.clear_pin.data)
+                         or bool(self.unlock_pin.data))
+            if self.clear_pin.data:
+                self.clear_pin.errors = [*self.clear_pin.errors,
+                                         "Turn off Lock player before removing the PIN."]
+                ok = False
+            elif not pin_after:
+                self.kiosk_lock.errors = [
+                    *self.kiosk_lock.errors,
+                    "Set an unlock PIN first: without it nobody can leave a locked player."]
+                ok = False
         return ok
 
 
 class ActionForm(FlaskForm):
     """Empty form used only for its CSRF token."""
+
+
+class UnlockForm(FlaskForm):
+    """Remote unlock of a locked player: how long it stays unlocked."""
+    minutes = SelectField("Unlock for", coerce=int, default=15, validators=[InputRequired()],
+                          choices=[SelectChoice(5, "5 minutes"), SelectChoice(15, "15 minutes"),
+                                   SelectChoice(30, "30 minutes"), SelectChoice(60, "1 hour")])

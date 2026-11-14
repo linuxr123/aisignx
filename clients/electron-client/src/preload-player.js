@@ -4,6 +4,9 @@
 // No credential passes through here: the display cookie stays HttpOnly in Chromium.
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Player control actions the shell forwards (docs/player-api.md, "Player controls").
+const ACTIONS = new Set(['toggle', 'play', 'pause', 'forward', 'back', 'next', 'prev']);
+
 let shell = null;
 try { shell = ipcRenderer.sendSync('shell-info'); } catch (e) { shell = null; }
 
@@ -23,5 +26,18 @@ if (shell && shell.port && location.origin === 'http://127.0.0.1:' + shell.port)
     capture: () => ipcRenderer.invoke('shell-capture').catch(() => null),
     // {uptime_s, cache: {files, bytes}, storage_free_bytes} or null.
     stats: () => { try { return ipcRenderer.sendSync('shell-stats'); } catch (e) { return null; } },
+    // `unlock` / `lock` SSE commands, as JSON; main validates them.
+    onCommand: (json) => {
+      if (typeof json === 'string' && json.length < 1024) ipcRenderer.send('shell-command', json);
+    },
+    // cb(action, repeat) for control keys the shell takes before the page. One callback:
+    // a later call replaces it.
+    onControl: (cb) => {
+      if (typeof cb !== 'function') return;
+      ipcRenderer.removeAllListeners('shell-control');
+      ipcRenderer.on('shell-control', (e, m) => {
+        if (m && ACTIONS.has(m.a)) { try { cb(m.a, !!m.r); } catch (_) { /* page error */ } }
+      });
+    },
   });
 }

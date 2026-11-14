@@ -79,7 +79,7 @@
     <dd class="col-sm-8">{% if display.client_id %}<code>{{ display.client_id[:8] }}</code>{% else %}&mdash;{% endif %}</dd>
   </dl>
 </div></div>
-{{ settings_card(display, pin_set) }}
+{{ settings_card(display, pin_set, current_user.is_admin, unlock_form) }}
 {% if display.is_paired or has_screenshot %}{{ screenshot_card(display, has_screenshot, screenshot_pending) }}{% endif %}
 {{ diagnostics_card(display, diag, current_user.can_edit, action_form) }}
 <div class="card" style="max-width: 48rem"><div class="card-body">

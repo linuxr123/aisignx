@@ -65,6 +65,10 @@ class Config(ctx: Context) {
     val allowInput: Boolean
         get() = prefs.getBoolean(KEY_ALLOW_INPUT, true)
 
+    /** Lock player (lock task) from the last manifest; off until settings arrive. */
+    val kioskLock: Boolean
+        get() = prefs.getBoolean(KEY_KIOSK_LOCK, false)
+
     /** Wrong PINs in a row and the time (wall clock ms) until which the prompt is locked. */
     val unlockFailures: Int get() = prefs.getInt(KEY_UNLOCK_FAILURES, 0)
     val unlockLockedUntil: Long get() = prefs.getLong(KEY_UNLOCK_LOCKED_UNTIL, 0L)
@@ -74,6 +78,7 @@ class Config(ctx: Context) {
         val e = prefs.edit()
             .putInt(KEY_ORIENTATION, s.orientation)
             .putBoolean(KEY_ALLOW_INPUT, s.allowInput)
+            .putBoolean(KEY_KIOSK_LOCK, s.kioskLock)
         val old = prefs.getString(KEY_UNLOCK_HASH, null)
         val new = s.unlock?.toPref()
         if (new == null) e.remove(KEY_UNLOCK_HASH) else e.putString(KEY_UNLOCK_HASH, new)
@@ -103,7 +108,7 @@ class Config(ctx: Context) {
 
     private fun removeDisplaySettings(e: SharedPreferences.Editor): SharedPreferences.Editor =
         e.remove(KEY_UNLOCK_HASH).remove(KEY_UNLOCK_FAILURES).remove(KEY_UNLOCK_LOCKED_UNTIL)
-            .remove(KEY_ORIENTATION).remove(KEY_ALLOW_INPUT)
+            .remove(KEY_ORIENTATION).remove(KEY_ALLOW_INPUT).remove(KEY_KIOSK_LOCK)
 
     companion object {
         const val PREFS = "player_v3"
@@ -117,6 +122,7 @@ class Config(ctx: Context) {
         private const val KEY_UNLOCK_LOCKED_UNTIL = "unlock_locked_until"
         private const val KEY_ORIENTATION = "display_orientation"
         private const val KEY_ALLOW_INPUT = "allow_input"
+        private const val KEY_KIOSK_LOCK = "kiosk_lock"
 
         val CLIENT_ID_RE = Regex("^[0-9a-f]{32}$")
         val PIN_RE = Regex("^[0-9a-f]{64}$")

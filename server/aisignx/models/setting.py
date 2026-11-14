@@ -5,7 +5,8 @@ Besides the admin-edited settings in DEFAULTS, runtime status is stored here as 
 
     job.<name>.last_run_at / last_ok_at / last_error / fail_count     written by jobs.py
     backup.last_ok_at / last_error / last_error_at / last_size / last_name /
-    backup.last_scheduled_date / retry_after                          written by backup/
+    backup.last_scheduled_date / retry_after / last_restore_at        written by backup/
+    auth.session_epoch                  replaced by a restore (models/user.py)
     pop.rollup_watermark                                              written by pop/
 """
 from datetime import datetime

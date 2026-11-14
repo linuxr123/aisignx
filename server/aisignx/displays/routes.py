@@ -1,3 +1,4 @@
+import secrets
 from io import BytesIO
 
 from flask import (abort, current_app, flash, jsonify, redirect, render_template, request,
@@ -6,15 +7,16 @@ from flask_login import current_user, login_required
 from sqlalchemy import func
 
 from ..audit import service as audit
-from ..auth.decorators import editor_required
+from ..auth.decorators import admin_required, editor_required
 from ..extensions import db
 from ..emergency.service import clear_for_target
 from ..models import Display, Schedule
 from ..player.broker import get_broker
 from ..player.manifest import build_manifest
+from ..pop import service as pop_service
 from ..schedules.resolve import load_context, resolve, split_by_day, week_segments
 from . import bp, options, pairing, screenshots, service
-from .forms import ActionForm, DisplayForm, PairForm
+from .forms import ActionForm, DisplayForm, PairForm, UnlockForm
 
 
 def _get_display_or_404(display_id: int) -> Display:
@@ -114,7 +116,7 @@ def detail(display_id: int):
                            pin_set=bool(display.unlock_pin_hash),
                            screenshot_pending=bool(screenshots.pending(display)),
                            has_screenshot=screenshots.exists(display.id),
-                           action_form=ActionForm())
+                           action_form=ActionForm(), unlock_form=UnlockForm())
 
 
 @bp.route("/<int:display_id>/edit", methods=["GET", "POST"])
@@ -122,7 +124,7 @@ def detail(display_id: int):
 def edit(display_id: int):
     display = _get_display_or_404(display_id)
     # not obj=: "playlist"/"group" would read the relationships
-    form = DisplayForm(admin=current_user.is_admin)
+    form = DisplayForm(admin=current_user.is_admin, has_pin=bool(display.unlock_pin_hash))
     if request.method == "GET":
         _prefill(form, display)
     if form.validate_on_submit():
@@ -139,6 +141,9 @@ def edit(display_id: int):
         pin_changed = False
         if form.is_admin_form:
             display.allow_input = bool(form.allow_input.data)
+            display.kiosk_lock = bool(form.kiosk_lock.data)
+            if form.resume_after_min.data is not None:
+                display.resume_after_s = form.resume_after_min.data * 60
             if form.clear_pin.data:
                 pin_changed = display.unlock_pin_hash is not None
                 options.clear_unlock_pin(display)
@@ -161,7 +166,8 @@ def edit(display_id: int):
 
 
 _AUDITED_FIELDS = ("name", "playlist_id", "group_id", "location", "description", "orientation",
-                   "fit_override", "volume", "show_offline_banner", "allow_input")
+                   "fit_override", "volume", "show_offline_banner", "allow_input",
+                   "kiosk_lock", "resume_after_s")
 
 
 def _snapshot(display: Display) -> dict:
@@ -180,6 +186,8 @@ def _prefill(form: DisplayForm, display: Display) -> None:
     form.show_offline_banner.data = display.show_offline_banner
     if form.is_admin_form:
         form.allow_input.data = display.allow_input  # the PIN is never prefilled
+        form.kiosk_lock.data = display.kiosk_lock
+        form.resume_after_min.data = max(1, (display.resume_after_s or 300) // 60)
 
 
 @bp.route("/<int:display_id>/reload", methods=["POST"])
@@ -264,6 +272,43 @@ def refresh_diagnostics(display_id: int):
     return _back(display)
 
 
+def _lock_command(display: Display, data: dict, event: str, done: str):
+    """Send a live unlock/lock command (never stored; a reconnect does not repeat it)."""
+    if not display.is_paired:
+        flash("This display is not paired.", "warning")
+        return _back(display)
+    sent = _publish(display, {**data, "request_id": secrets.token_hex(8)}, force=True)
+    detail = {"delivered": bool(sent)}
+    if "minutes" in data:
+        detail["minutes"] = data["minutes"]
+    audit.record_now(event, display, detail=detail)
+    if sent:
+        flash(done, "success")
+    else:
+        flash("The display is not connected right now.", "warning")
+    return _back(display)
+
+
+@bp.route("/<int:display_id>/unlock", methods=["POST"])
+@admin_required
+def unlock(display_id: int):
+    form = UnlockForm()
+    if not form.validate_on_submit():
+        abort(400)
+    display = _get_display_or_404(display_id)
+    minutes = form.minutes.data
+    return _lock_command(display, {"action": "unlock", "minutes": minutes},
+                         "display.unlock", f"Unlocked for {minutes} minutes.")
+
+
+@bp.route("/<int:display_id>/relock", methods=["POST"])
+@admin_required
+def relock(display_id: int):
+    _require_action_form()
+    display = _get_display_or_404(display_id)
+    return _lock_command(display, {"action": "lock"}, "display.relock", "Locked again.")
+
+
 @bp.route("/<int:display_id>/unpair", methods=["POST"])
 @editor_required
 def unpair(display_id: int):
@@ -288,6 +333,7 @@ def delete(display_id: int):
     _require_action_form()
     display = _get_display_or_404(display_id)
     name, ident = display.name, display.id
+    pop_service.keep_plays_of(ident)  # before the cascade removes its raw play events
     cleared = clear_for_target(display=display)  # keeps the history (reason target_deleted)
     audit.record("display.delete", display,
                  detail={"schedules_removed": _schedule_counts().get(ident, 0),

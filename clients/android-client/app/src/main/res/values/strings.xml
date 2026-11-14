@@ -34,6 +34,12 @@
     <string name="unlock_wrong">Wrong PIN</string>
     <string name="unlock_wait">Too many wrong PINs. Try again in %1$s.</string>
     <string name="unlock_ok">Unlock</string>
+    <string name="remote_unlocked">Unlocked for %1$d min</string>
+    <string name="owner_title">Device Owner</string>
+    <string name="owner_info">This app is the Device Owner: Lock player keeps the screen in lock task with no Home, Recents or status bar.</string>
+    <string name="btn_remove_owner">Remove Device Owner</string>
+    <string name="owner_removed">Device Owner removed. Lock player now uses screen pinning.</string>
+    <string name="owner_remove_failed">Android refused to remove Device Owner. See the log.</string>
     <string name="reason_offline">Can\'t reach the server</string>
     <string name="reason_cert_changed">Server certificate changed. Re-run setup.</string>
 </resources>

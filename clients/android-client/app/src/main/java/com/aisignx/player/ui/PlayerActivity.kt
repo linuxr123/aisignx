@@ -12,6 +12,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.text.InputFilter
 import android.text.InputType
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ViewGroup
@@ -40,7 +41,9 @@ import java.util.concurrent.Executors
  * Kiosk shell around the v3 browser player at <server>/player/. Pairing, playback,
  * schedules, emergency rules and SSE all live in the page; this activity only keeps
  * the WebView alive, full screen and awake, and applies the native part of the
- * display settings: orientation (not on TVs), the input lock and the unlock PIN.
+ * display settings: orientation (not on TVs), the input lock, Lock player (lock task)
+ * and the unlock PIN. While input is allowed, remote keys go to the page as control
+ * actions (ControlKeys).
  */
 class PlayerActivity : AppCompatActivity() {
 
@@ -58,6 +61,22 @@ class PlayerActivity : AppCompatActivity() {
     private var isTv = false
     private var inputLocked = false
     private var verifying = false
+
+    /** Lock player; the remote unlock is in memory only, so a restart locks again. */
+    private val lock = LockPolicy { SystemClock.elapsedRealtime() }
+    @Volatile private var lockOwner = false
+    @Volatile private var lockFailed = false
+    private var lockState = ""
+    private var ownerReleased = false
+    private var resumed = false
+    private val relockRunnable = Runnable { updateLock() }
+    private val lockWatchdog = object : Runnable {
+        override fun run() {
+            if (!resumed || !lockOwner || !lock.kioskLock) return
+            updateLock()
+            main.postDelayed(this, WATCHDOG_MS)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -109,6 +128,7 @@ class PlayerActivity : AppCompatActivity() {
             onState = { s -> FileLog.i(TAG, "player state $s") },
             onManifest = { json -> onManifest(json) },
             onCapture = { _, reply -> Capture.capture(this, worker, reply) },
+            onCommand = { c -> main.post { if (!isFinishing && !isDestroyed) onRemoteCommand(c) } },
         )
         val attached = port.attach(view, services.origin)
         shellPort = port
@@ -158,6 +178,7 @@ class PlayerActivity : AppCompatActivity() {
         val deg = config.displayOrientation
         if (deg != -1 && !isTv) requestedOrientation = DisplaySettings.orientationFlag(deg)
         inputLocked = !config.allowInput
+        lock.configure(config.kioskLock)
     }
 
     private fun applySettings(s: DisplaySettings) {
@@ -167,6 +188,69 @@ class PlayerActivity : AppCompatActivity() {
         }
         if (inputLocked == s.allowInput) FileLog.i(TAG, "input ${if (s.allowInput) "allowed" else "locked"}")
         inputLocked = !s.allowInput
+        if (lock.configure(s.kioskLock)) FileLog.i(TAG, "lock player ${if (s.kioskLock) "on" else "off"}")
+        updateLock()
+    }
+
+    // ---- Lock player ----------------------------------------------------------------
+
+    /** Main thread. Starts or stops lock task to match the setting and any remote unlock. */
+    private fun updateLock() {
+        if (!::b.isInitialized || isFinishing || isDestroyed) return
+        val owner = LockTask.isDeviceOwner(this)
+        lockOwner = owner
+        if (owner && !lock.kioskLock && !ownerReleased) {
+            LockTask.releaseOwner(this, AiSignXApp.from(this).config.homeMode)
+            ownerReleased = true
+        }
+        val active = LockTask.inLockTask(this)
+        when (lock.step(active, owner, canStart = resumed)) {
+            LockPolicy.Step.START -> {
+                if (owner) {
+                    LockTask.prepareOwner(this)
+                    ownerReleased = false
+                }
+                lockFailed = try {
+                    startLockTask()
+                    false
+                } catch (e: Exception) {
+                    FileLog.w(TAG, "startLockTask failed: ${e.message}")
+                    true
+                }
+            }
+            LockPolicy.Step.STOP -> {
+                try { stopLockTask() } catch (e: Exception) { FileLog.w(TAG, "stopLockTask failed: ${e.message}") }
+                lockFailed = false
+            }
+            LockPolicy.Step.NONE -> if (!lock.want()) lockFailed = false
+        }
+        val state = lock.state(LockTask.inLockTask(this), owner, lockFailed)
+        if (state != lockState) {
+            FileLog.i(TAG, "lock $state")
+            lockState = state
+        }
+        main.removeCallbacks(lockWatchdog)
+        if (resumed && owner && lock.kioskLock) main.postDelayed(lockWatchdog, WATCHDOG_MS)
+    }
+
+    /** Main thread. unlock/lock forwarded by the page from the server (ShellPort validated it). */
+    private fun onRemoteCommand(c: ShellPort.Command) {
+        when (c.action) {
+            ShellPort.UNLOCK -> {
+                if (!lock.unlockFor(c.minutes, c.requestId)) return
+                FileLog.i(TAG, "unlocked remotely for ${c.minutes} min")
+                main.removeCallbacks(relockRunnable)
+                main.postDelayed(relockRunnable, lock.remainingMs() + RELOCK_SLACK_MS)
+                updateLock()
+                Toast.makeText(this, getString(R.string.remote_unlocked, c.minutes), Toast.LENGTH_LONG).show()
+            }
+            ShellPort.LOCK -> {
+                if (!lock.relock(c.requestId)) return
+                FileLog.i(TAG, "locked remotely")
+                main.removeCallbacks(relockRunnable)
+                updateLock()
+            }
+        }
     }
 
     /** JavaBridge thread. No secrets: iframes can call this too. */
@@ -174,7 +258,8 @@ class PlayerActivity : AppCompatActivity() {
         val uptime = (SystemClock.uptimeMillis() - Process.getStartUptimeMillis()) / 1000
         val cache = AiSignXApp.from(this).services()?.mediaCache
         val free = try { filesDir.usableSpace } catch (_: Exception) { -1L }
-        return ShellInfo.statsJson(uptime, cache?.fileCount() ?: 0, cache?.totalBytes() ?: 0L, free)
+        val lockNow = lock.state(LockTask.inLockTask(this), lockOwner, lockFailed)
+        return ShellInfo.statsJson(uptime, cache?.fileCount() ?: 0, cache?.totalBytes() ?: 0L, free, lockNow)
     }
 
     private fun destroyWebView() {
@@ -209,10 +294,16 @@ class PlayerActivity : AppCompatActivity() {
         super.onResume()
         webView?.onResume()
         webView?.resumeTimers()
-        if (::b.isInitialized) Kiosk.hideSystemUi(this)
+        resumed = true
+        if (::b.isInitialized) {
+            Kiosk.hideSystemUi(this)
+            updateLock()
+        }
     }
 
     override fun onPause() {
+        resumed = false
+        main.removeCallbacks(lockWatchdog)
         webView?.onPause()
         webView?.pauseTimers()
         CookieManager.getInstance().flush()
@@ -234,6 +325,11 @@ class PlayerActivity : AppCompatActivity() {
 
     // ---- keys and the hidden exit ---------------------------------------------------
 
+    /**
+     * MENU and OK (D-pad center): a 1.5 s press opens the hidden exit; a short OK press
+     * is "toggle". With input allowed, other control keys go to the page (ControlKeys);
+     * otherwise they are swallowed (TvKeys). Volume, power and Home pass through.
+     */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val code = event.keyCode
         if (TvKeys.isExitKey(code)) {
@@ -248,11 +344,25 @@ class PlayerActivity : AppCompatActivity() {
                     }
                 }
                 KeyEvent.ACTION_UP -> {
-                    if (!exitKeyFired && event.eventTime - exitKeyDownAt >= LONG_PRESS_MS) confirmExit()
+                    // An UP without our DOWN (pressed in a dialog) does nothing.
+                    if (exitKeyDownAt > 0 && !exitKeyFired) {
+                        if (event.eventTime - exitKeyDownAt >= LONG_PRESS_MS) confirmExit()
+                        else if (code == KeyEvent.KEYCODE_DPAD_CENTER && !inputLocked) {
+                            shellPort?.sendControl(ControlKeys.TOGGLE, false)
+                        }
+                    }
+                    exitKeyDownAt = 0L
                     exitKeyFired = false
                 }
             }
             return true
+        }
+        if (!inputLocked) {
+            val action = ControlKeys.action(code, event.isFromSource(InputDevice.SOURCE_MOUSE))
+            if (action != null) {
+                if (event.action == KeyEvent.ACTION_DOWN) shellPort?.sendControl(action, event.repeatCount > 0)
+                return true
+            }
         }
         if (TvKeys.consumes(code)) return true
         return super.dispatchKeyEvent(event)
@@ -293,9 +403,17 @@ class PlayerActivity : AppCompatActivity() {
         // Swallowed on purpose.
     }
 
-    /** The hidden exit. With an unlock PIN set it asks for the PIN instead of yes/no. */
+    /**
+     * The hidden exit. With an unlock PIN set it asks for the PIN instead of yes/no.
+     * During a remote unlock of a locked player it goes straight to setup.
+     */
     private fun confirmExit() {
         if (exitDialog?.isShowing == true || verifying) return
+        if (lock.remoteUnlocked()) {
+            FileLog.i(TAG, "exit without PIN (remote unlock)")
+            leaveToSetup()
+            return
+        }
         val config = AiSignXApp.from(this).config
         val hash = config.unlockHash
         if (hash != null) {
@@ -306,7 +424,7 @@ class PlayerActivity : AppCompatActivity() {
         exitDialog = AlertDialog.Builder(this)
             .setTitle(R.string.exit_title)
             .setMessage(R.string.exit_message)
-            .setPositiveButton(R.string.exit_yes) { _, _ -> openSetup() }
+            .setPositiveButton(R.string.exit_yes) { _, _ -> leaveToSetup() }
             .setNegativeButton(R.string.exit_no, null)
             .setOnDismissListener { Kiosk.hideSystemUi(this) }
             .show()
@@ -360,7 +478,7 @@ class PlayerActivity : AppCompatActivity() {
         if (ok) {
             config.saveUnlockState(0, 0L)
             FileLog.i(TAG, "unlock PIN accepted")
-            openSetup()
+            leaveToSetup()
             return
         }
         val failures = config.unlockFailures + 1
@@ -369,6 +487,15 @@ class PlayerActivity : AppCompatActivity() {
         FileLog.w(TAG, "wrong unlock PIN ($failures in a row)")
         val text = if (wait > 0) getString(R.string.unlock_wait, waitText(wait)) else getString(R.string.unlock_wrong)
         Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+    }
+
+    /** Leaves lock task first; the player locks again on its next start. */
+    private fun leaveToSetup() {
+        main.removeCallbacks(lockWatchdog)
+        if (LockTask.inLockTask(this)) {
+            try { stopLockTask() } catch (e: Exception) { FileLog.w(TAG, "stopLockTask failed: ${e.message}") }
+        }
+        openSetup()
     }
 
     private fun openSetup() {
@@ -388,6 +515,8 @@ class PlayerActivity : AppCompatActivity() {
         private const val MAX_PIN_LENGTH = 12
         private const val CRASH_BUDGET = 5
         private const val CRASH_WINDOW_MS = 10 * 60 * 1000L
+        private const val WATCHDOG_MS = 5_000L
+        private const val RELOCK_SLACK_MS = 250L
 
         /** Survives recreate() so the budget spans activity instances. */
         private val crashTimes = ArrayList<Long>()

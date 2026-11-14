@@ -12,6 +12,7 @@
 </head>
 <body data-api="{{ request.script_root }}/api/player/v1" data-root="{{ request.script_root }}" data-build="{{ build }}">
   <div id="stage"></div>
+  <div id="controls" hidden></div>
   <div id="screen" class="screen screen-connecting" role="status" aria-live="polite">
     <div class="screen-box">
       <p class="screen-title">AiSignX</p>
@@ -21,12 +22,15 @@
   <div id="emergency" hidden role="alert" aria-live="assertive"><div class="em-title"></div><div class="em-msg"></div></div>
   <div id="offline" hidden role="status">Offline &middot; showing saved content</div>
   <div id="identify" hidden aria-live="polite"><div class="id-name"></div><div class="id-sub"></div></div>
+  <div id="paused" hidden role="status"><span class="p-icon"></span><span class="p-text">Paused</span><span class="p-sub"></span></div>
+  <div id="hint" hidden aria-live="polite"></div>
   <noscript><p class="noscript">The AiSignX player needs JavaScript.</p></noscript>
   <script src="{{ url_for('static', filename='player/net.js', v=build) }}"></script>
   <script src="{{ url_for('static', filename='player/render.js', v=build) }}"></script>
   <script src="{{ url_for('static', filename='player/emergency.js', v=build) }}"></script>
   <script src="{{ url_for('static', filename='player/device.js', v=build) }}"></script>
   <script src="{{ url_for('static', filename='player/pop.js', v=build) }}"></script>
+  <script src="{{ url_for('static', filename='player/controls.js', v=build) }}"></script>
   <script src="{{ url_for('static', filename='player/player.js', v=build) }}"></script>
 </body>
 </html>

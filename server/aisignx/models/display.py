@@ -13,6 +13,10 @@ STATE_OFFLINE = "offline"
 
 # Degrees the player rotates its output clockwise.
 ORIENTATIONS = (0, 90, 180, 270)
+# Seconds after which a paused player resumes on its own.
+RESUME_MIN_S = 60
+RESUME_MAX_S = 3600
+RESUME_DEFAULT_S = 300
 
 
 def _utcnow():
@@ -66,6 +70,11 @@ class Display(db.Model):
                             server_default=sa.false())
     # pbkdf2-sha256$<iter>$<salt hex>$<hash hex>; guards leaving the native apps.
     unlock_pin_hash = db.Column(db.String(200), nullable=True)
+    # Lock player: the native apps cannot be left without the unlock PIN.
+    kiosk_lock = db.Column(db.Boolean, nullable=False, default=False,
+                           server_default=sa.false())
+    resume_after_s = db.Column(db.Integer, nullable=False, default=RESUME_DEFAULT_S,
+                               server_default="300")
 
     # Device-reported data and screenshot requests. These are written only with Core
     # UPDATE; an ORM write broadcasts a manifest hint to every screen.

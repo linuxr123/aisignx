@@ -23,8 +23,11 @@ class ShellInfoTest {
     }
 
     @Test fun capsList() {
-        assertEquals(listOf("pin-exit", "capture", "rotate"), ShellInfo.caps(portAttached = true, isTv = false))
-        assertEquals(listOf("pin-exit", "capture"), ShellInfo.caps(portAttached = true, isTv = true))
+        assertEquals(
+            listOf("pin-exit", "capture", "rotate", "controls", "kiosk-lock"),
+            ShellInfo.caps(portAttached = true, isTv = false),
+        )
+        assertEquals(listOf("pin-exit", "capture", "controls", "kiosk-lock"), ShellInfo.caps(portAttached = true, isTv = true))
         assertEquals(emptyList<String>(), ShellInfo.caps(portAttached = false, isTv = false))
         val caps = ShellInfo.caps(portAttached = true, isTv = false)
         val json = JSONObject(ShellInfo("3.0.0", "d", Config.newClientId(), "https://s", caps).info())
@@ -40,6 +43,12 @@ class ShellInfoTest {
         assertEquals(52_000_000_000L, o.getLong("storage_free_bytes"))
         assertEquals(setOf("uptime_s", "cache", "storage_free_bytes"), o.keySet())
         assertFalse(JSONObject(ShellInfo.statsJson(-1, -1, -1, -1)).has("storage_free_bytes"))
+    }
+
+    @Test fun statsLock() {
+        assertEquals("owner", JSONObject(ShellInfo.statsJson(1, 0, 0, 0, "owner")).getString("lock"))
+        assertFalse(JSONObject(ShellInfo.statsJson(1, 0, 0, 0)).has("lock"))
+        assertEquals(16, JSONObject(ShellInfo.statsJson(1, 0, 0, 0, "x".repeat(40))).getString("lock").length)
     }
 
     @Test fun statsNeverThrows() {

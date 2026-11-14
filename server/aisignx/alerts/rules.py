@@ -76,9 +76,13 @@ def check_displays(now) -> None:
         wanted[f"display:{display.id}"] = (
             severity, f"Display {display.name} is offline",
             f"Last seen {localtime(seen)} ({_ago(away)} ago).")
-    # Right after a restart every screen still has to reconnect: open nothing new,
-    # but resolve the screens that are back (or unpaired, deleted or muted).
-    in_grace = uptime_s() < minutes * 60 + STARTUP_GRACE_EXTRA_S
+    # Right after a restart or a restore (whose database holds old last_seen_at times,
+    # while players were told to retry later) every screen still has to reconnect: open
+    # nothing new, but resolve the screens that are back (or unpaired, deleted or muted).
+    grace_s = minutes * 60 + STARTUP_GRACE_EXTRA_S
+    restored = Setting.get_datetime("backup.last_restore_at")
+    in_grace = uptime_s() < grace_s or (
+        restored is not None and (now - restored).total_seconds() < grace_s)
     _reconcile("display_offline", wanted, opening=not in_grace)
 
 

@@ -11,7 +11,7 @@
 {%- else %}&mdash;{% endif -%}
 {%- endmacro %}
 
-{% macro settings_card(display, pin_set) %}
+{% macro settings_card(display, pin_set, can_unlock=false, unlock_form=none) %}
 {% set orientations = {0: "Landscape", 90: "Portrait (90°)", 180: "Landscape upside down", 270: "Portrait (270°)"} %}
 {% set fits = {"fit": "Fit (letterbox)", "fill": "Fill (crop)", "stretch": "Stretch"} %}
 <div class="card mb-4" style="max-width: 48rem"><div class="card-body">
@@ -29,11 +29,27 @@
     <dd class="col-sm-8">{{ display.volume }}%</dd>
     <dt class="col-sm-4">Offline banner</dt>
     <dd class="col-sm-8">{{ "Shown" if display.show_offline_banner else "Hidden" }}</dd>
-    <dt class="col-sm-4">Touch, mouse, keyboard</dt>
-    <dd class="col-sm-8">{{ "Allowed" if display.allow_input else "Blocked" }}</dd>
+    <dt class="col-sm-4">Player controls</dt>
+    <dd class="col-sm-8">{{ "On" if display.allow_input else "Off" }}</dd>
+    <dt class="col-sm-4">Resume after pause</dt>
+    <dd class="col-sm-8">{{ (display.resume_after_s or 300) // 60 }} min</dd>
+    <dt class="col-sm-4">Lock player</dt>
+    <dd class="col-sm-8">{{ "Locked" if display.kiosk_lock else "Off" }}</dd>
     <dt class="col-sm-4">Unlock PIN</dt>
     <dd class="col-sm-8">{{ "Set" if pin_set else "Not set" }}</dd>
   </dl>
+  {% if can_unlock and unlock_form and display.kiosk_lock and display.is_paired %}
+  <form method="post" class="d-flex flex-wrap align-items-center gap-2 mt-3" data-unlock-form
+        action="{{ url_for('displays.unlock', display_id=display.id) }}">
+    {{ unlock_form.hidden_tag() }}
+    <label class="visually-hidden" for="{{ unlock_form.minutes.id }}">{{ unlock_form.minutes.label.text }}</label>
+    {{ unlock_form.minutes(class_="form-select form-select-sm w-auto") }}
+    <button class="btn btn-sm btn-outline-warning" type="submit">Unlock remotely</button>
+    <button class="btn btn-sm btn-link" type="submit"
+            formaction="{{ url_for('displays.relock', display_id=display.id) }}">Lock again</button>
+  </form>
+  <p class="small text-body-secondary mt-2 mb-0">Unlocking lifts the lock on the Windows or Android app for a while, and its exit skips the PIN. A restart locks it again.</p>
+  {% endif %}
 </div></div>
 {% endmacro %}
 
@@ -77,7 +93,7 @@
     <dt class="col-sm-4">Viewport</dt>
     <dd class="col-sm-8">{% if viewport.w and viewport.h %}{{ viewport.w }} &times; {{ viewport.h }}{% else %}&mdash;{% endif %}</dd>
     <dt class="col-sm-4">Shell</dt>
-    <dd class="col-sm-8">{% if shell.name %}{{ shell.name }} {{ shell.version or "" }}{% if shell.caps %} <span class="text-body-secondary">({{ shell.caps|join(", ") }})</span>{% endif %}{% else %}Browser{% endif %}</dd>
+    <dd class="col-sm-8">{% if shell.name %}{{ shell.name }} {{ shell.version or "" }}{% if shell.caps %} <span class="text-body-secondary">({{ shell.caps|join(", ") }})</span>{% endif %}{% if shell.lock %} &middot; lock: {{ shell.lock }}{% endif %}{% else %}Browser{% endif %}</dd>
     <dt class="col-sm-4">Uptime</dt>
     <dd class="col-sm-8">app {{ uptime(shell.uptime_s) }} &middot; page {{ uptime(diag.page_uptime_s) }}</dd>
     <dt class="col-sm-4">Media cache</dt>

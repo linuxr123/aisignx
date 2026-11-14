@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 
 ORPHAN_MIN_AGE_S = 3600        # unreferenced files in media/ and thumbs/
 TMP_MIN_AGE_S = 24 * 3600      # anything left in tmp/
+RESTORE_GRACE_S = 24 * 3600    # no orphan deletion this long after a restore
 
 
 class NotReplaceableError(ValueError):
@@ -156,12 +157,15 @@ def _delete(path) -> bool:
 
 def orphan_job() -> str:
     """Job: delete files in media/ and thumbs/ that no Media row references (older than
-    1 h, so uploads still being saved are left alone) and anything in tmp/ older than 24 h."""
+    1 h, so uploads still being saved are left alone) and anything in tmp/ older than 24 h.
+    Media files are left alone for a day after a restore, so an admin can still undo it."""
     now = time.time()
+    restored = Setting.get_datetime("backup.last_restore_at")
+    held = restored is not None and abs(now - restored.timestamp()) < RESTORE_GRACE_S
     rows = db.session.query(Media.stored_name, Media.thumbnail_name).all()
     referenced = {name for row in rows for name in row if name}
     removed = skipped = 0
-    for folder in (storage.media_dir(), storage.thumbs_dir()):
+    for folder in () if held else (storage.media_dir(), storage.thumbs_dir()):
         for path in folder.iterdir():
             if path.name in referenced or not path.is_file():
                 continue
@@ -176,4 +180,5 @@ def orphan_job() -> str:
                 removed += 1
             else:
                 skipped += 1
-    return f"removed {removed} file(s)" + (f", {skipped} locked" if skipped else "")
+    return (f"removed {removed} file(s)" + (f", {skipped} locked" if skipped else "")
+            + ("; media kept (restore in the last 24 h)" if held else ""))

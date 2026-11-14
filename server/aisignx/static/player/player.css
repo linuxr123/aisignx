@@ -241,6 +241,66 @@ body.rot-90 #emergency.layout-banner, body.rot-270 #emergency.layout-banner { ma
 body.no-input .slide.active { pointer-events: none; }
 body.input-on, body.input-on * { cursor: auto; }
 
+/* ---- Player controls (controls.js): a transparent layer over the slides catches taps, swipes,
+   clicks and the wheel, so web items cannot be used while controls are on. Above the slides
+   (z 0-2), below the screens (10), emergency (15), pill and hint (17), offline (18), identify (20). */
+#controls {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 5;
+  background: transparent;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+body:not(.input-on) #controls { display: none; }
+
+#paused {
+  position: fixed;
+  top: 2vmin;
+  right: 2vmin;
+  z-index: 17;
+  display: flex;
+  align-items: center;
+  gap: .6em;
+  padding: .45em 1em;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .7);
+  color: #fff;
+  font-size: clamp(.8rem, 1.8vmin, 1.4rem);
+  pointer-events: none;
+}
+#paused .p-icon { display: inline-block; width: .8em; height: .9em; border-left: .28em solid #fff; border-right: .28em solid #fff; }
+#paused .p-sub { color: #bbb; }
+
+#hint {
+  position: fixed;
+  top: 50%; left: 50%;
+  z-index: 17;
+  min-width: 6em;
+  padding: .5em 1.1em;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .7);
+  color: #fff;
+  font-size: clamp(1rem, 3.2vmin, 2.6rem);
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity .2s ease-out;
+  pointer-events: none;
+}
+#hint.show { opacity: 1; }
+#hint.hint-left { left: 25%; }
+#hint.hint-right { left: 75%; }
+#hint .h-bar { display: none; }
+#hint.scrub { top: auto; bottom: 6vmin; transform: translate(-50%, 0); width: 60vw; border-radius: 1em; font-size: clamp(.9rem, 2.4vmin, 2rem); }
+#hint.scrub .h-bar { display: block; height: .35em; margin-top: .4em; border-radius: .2em; background: rgba(255, 255, 255, .3); overflow: hidden; }
+#hint.scrub .h-fill { display: block; height: 100%; width: 0; background: #fff; }
+body.rot-90 #hint.scrub, body.rot-270 #hint.scrub { width: 60vh; bottom: 6vmin; }
+@media (prefers-reduced-motion: reduce) { #hint { transition: none; } }
+
 /* ---- ?debug=1 overlay. */
 .debug {
   position: fixed;

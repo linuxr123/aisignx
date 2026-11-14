@@ -677,7 +677,7 @@ def test_player_page(app, configured, client):
     scripts = re.findall(r"<script([^>]*)>(.*?)</script>", html, re.S)
     names = [re.search(r'src="/static/player/(\w+)\.js\?v=[^"]+"', attrs).group(1)
              for attrs, _ in scripts]
-    assert names == ["net", "render", "emergency", "device", "pop", "player"]
+    assert names == ["net", "render", "emergency", "device", "pop", "controls", "player"]
     for _, body in scripts:
         assert body.strip() == ""  # no inline script
     assert re.search(r'<div id="emergency" hidden[ >]', html)  # overlay starts hidden

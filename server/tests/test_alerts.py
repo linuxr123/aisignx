@@ -128,6 +128,25 @@ def test_startup_grace_opens_nothing_but_still_resolves(app, monkeypatch):
     assert _alerts(app, open_only=True) == []
 
 
+def test_restore_grace_opens_nothing_but_still_resolves(app):
+    """A restored database holds old last_seen_at times: no offline flood right after."""
+    old = _display(app, "Old", seen_ago=timedelta(days=2))
+    _sweep(app)
+    assert _alerts(app, open_only=True) == [(f"display:{old}", "critical", True)]
+    _display(app, "Hall", seen_ago=timedelta(days=2))
+    with app.app_context():
+        Setting.set_datetime("backup.last_restore_at", utcnow() - timedelta(minutes=1))
+        db.session.get(Display, old).last_seen_at = utcnow()
+        db.session.commit()
+    _sweep(app)
+    assert _alerts(app, open_only=True) == []  # Hall not opened, Old resolved
+    with app.app_context():
+        Setting.set_datetime("backup.last_restore_at", utcnow() - timedelta(minutes=13))
+        db.session.commit()
+    _sweep(app)
+    assert len(_alerts(app, open_only=True)) == 1
+
+
 def test_muted_display_is_skipped_and_mute_resolves(app):
     _display(app, "Off", seen_ago=timedelta(hours=2), muted=True)
     did = _display(app, seen_ago=timedelta(hours=2))
@@ -270,11 +289,18 @@ def test_sweep_job_runs_through_jobs(app):
 class FakeSMTP:
     sent: list = []
     logins: list = []
-    fail = False
+    fail = False  # True: refuse every address with fail_code
+    fail_code = 451
+    refuse: dict = {}  # address -> SMTP code
+    drop_after = None  # disconnect after this many send_message calls
+    connect_error = None
+    calls = 0
     instances = 0
 
     def __init__(self, host, port, timeout=None, **kw):
         FakeSMTP.instances += 1
+        if FakeSMTP.connect_error is not None:
+            raise FakeSMTP.connect_error
         self.host, self.port = host, port
 
     def ehlo(self):
@@ -287,8 +313,12 @@ class FakeSMTP:
         FakeSMTP.logins.append((user, password))
 
     def send_message(self, msg, from_addr=None, to_addrs=None):
-        if FakeSMTP.fail:
-            raise smtplib.SMTPRecipientsRefused({to_addrs[0]: (550, b"no")})
+        FakeSMTP.calls += 1
+        if FakeSMTP.drop_after is not None and FakeSMTP.calls > FakeSMTP.drop_after:
+            raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+        code = FakeSMTP.refuse.get(to_addrs[0]) or (FakeSMTP.fail_code if FakeSMTP.fail else None)
+        if code:
+            raise smtplib.SMTPRecipientsRefused({to_addrs[0]: (code, b"no")})
         FakeSMTP.sent.append((msg, to_addrs))
 
     def quit(self):
@@ -301,6 +331,8 @@ class FakeSMTP:
 @pytest.fixture
 def smtp(app, monkeypatch):
     FakeSMTP.sent, FakeSMTP.logins, FakeSMTP.fail, FakeSMTP.instances = [], [], False, 0
+    FakeSMTP.fail_code, FakeSMTP.refuse, FakeSMTP.drop_after = 451, {}, None
+    FakeSMTP.connect_error, FakeSMTP.calls = None, 0
     monkeypatch.setattr(mailer.smtplib, "SMTP", FakeSMTP)
     app.config["SMTP_PASSWORD"] = "pw"
     _set(app, smtp__host="mail.example.test", smtp__from="signage@example.test",
@@ -363,6 +395,73 @@ def test_mail_failure_retries_with_backoff(app, smtp, monkeypatch):
         alert = Alert.query.one()
         assert alert.notified_at is not None and alert.notify_attempts == 0
         assert alert.last_notify_error is None
+
+
+def _later(monkeypatch, minutes):
+    clock = mailer.time.monotonic() + minutes * 60
+    monkeypatch.setattr(mailer.time, "monotonic", lambda: clock)
+
+
+def test_mail_one_refused_address_never_resends_to_the_others(app, smtp, monkeypatch):
+    smtp.refuse = {"b@example.test": 550}
+    with app.app_context():
+        service.open_alert("disk_low", "disk:uploads", "warning", "Low")
+    assert "sent 1" in run_job(app, "alerts.mail")
+    assert [to for _, to in smtp.sent] == [["a@example.test"]]
+    with app.app_context():
+        alert = Alert.query.one()
+        assert alert.notified_at is not None and alert.notify_attempts == 0
+        assert "b@example.test" in alert.last_notify_error
+    for minutes in (3, 10, 100):
+        _later(monkeypatch, minutes)
+        run_job(app, "alerts.mail")
+    assert len(smtp.sent) == 1
+
+
+def test_mail_permanent_refusal_of_every_address_is_final(app, smtp, monkeypatch):
+    smtp.fail, smtp.fail_code = True, 550
+    with app.app_context():
+        service.open_alert("disk_low", "disk:uploads", "warning", "Low")
+    with pytest.raises(RuntimeError):
+        run_job(app, "alerts.mail")
+    calls = smtp.calls
+    with app.app_context():
+        alert = Alert.query.one()
+        assert alert.notified_at is not None and alert.last_notify_error.startswith("refused")
+    _later(monkeypatch, 10)
+    run_job(app, "alerts.mail")
+    assert smtp.calls == calls  # not tried again
+
+
+def test_mail_unreachable_server_is_tried_once_per_run(app, smtp):
+    smtp.connect_error = TimeoutError("timed out")
+    with app.app_context():
+        for n in range(30):
+            service.open_alert("display_offline", f"display:{n}", "warning", f"Screen {n}")
+    with pytest.raises(RuntimeError, match="cannot reach"):
+        run_job(app, "alerts.mail")
+    assert smtp.instances == 1
+    with app.app_context():
+        assert {a.notify_attempts for a in Alert.query} == {1}
+        assert all(a.notified_at is None for a in Alert.query)
+
+
+def test_mail_connection_drop_stops_the_run(app, smtp, monkeypatch):
+    with app.app_context():
+        for n in range(3):
+            service.open_alert("disk_low", f"disk:{n}", "warning", f"Low {n}")
+    smtp.drop_after = 3  # alert 0 to a and b, alert 1 to a, then the server hangs up
+    assert "sent 2" in run_job(app, "alerts.mail")
+    assert smtp.calls == 4  # nothing more was tried after the drop
+    with app.app_context():
+        rows = {a.key: a for a in Alert.query}
+        assert rows["disk:0"].notified_at and rows["disk:0"].last_notify_error is None
+        assert rows["disk:1"].notified_at and "b@example.test" in rows["disk:1"].last_notify_error
+        assert rows["disk:2"].notified_at is None and rows["disk:2"].notify_attempts == 1
+    smtp.drop_after, sent = None, len(smtp.sent)
+    _later(monkeypatch, 3)
+    run_job(app, "alerts.mail")
+    assert [m["Subject"].endswith("Low 2") for m, _ in smtp.sent[sent:]] == [True, True]
 
 
 def test_mail_skips_expired_and_unmailed_resolved(app, smtp):

@@ -164,6 +164,12 @@ schedule that hasn't played since the screen went offline is not cached.
 - A crashed page reloads after 2 seconds (more than 5 crashes in 10 minutes restarts the app);
   a hung page is reloaded.
 - The installed app starts at Windows logon (a checkbox in setup).
+- With **Lock player** on, Alt+F4, closing and minimizing the window are blocked, and the
+  window stays on top and takes the focus back. Electron cannot block Alt+Tab, the Windows key
+  or Ctrl+Alt+Del; the app only brings itself back to the front. For a real lockdown, see
+  [kiosk-lockdown.md](kiosk-lockdown.md).
+- With **Player controls** on, the arrow, Page, Space, Enter and media keys control playback.
+  Otherwise they stay blocked.
 
 Set up the PC for unattended use:
 
@@ -176,8 +182,13 @@ Data lives in `%APPDATA%\AiSignX Player\v3`: `config.json`, `client_id.txt`, the
 
 ### Android
 
-- Immersive full screen, the screen stays on, and the back key is ignored. Remote keys are
-  consumed so videos cannot be skipped or seeked.
+- Immersive full screen, the screen stays on, and the back key is ignored. With **Player
+  controls** off, remote keys are consumed so videos cannot be skipped or seeked. With it on,
+  the D-pad, OK and media keys control playback (see `docs/player-api.md`, Player controls).
+- With **Lock player** on, the app runs in lock task mode. Without Device Owner this is plain
+  screen pinning (App pinning must be on, and a person can unpin with Back + Overview); as
+  Device Owner it is a full lockdown with no Home, Recents or status bar. See
+  [kiosk-lockdown.md](kiosk-lockdown.md).
 - **Home-app mode (recommended for signage boxes):** tick **Use as Home app** in setup, press
   Home once and choose AiSignX Player as the default ("Always"). The player then starts after
   every boot and whenever Home is pressed.
@@ -186,7 +197,8 @@ Data lives in `%APPDATA%\AiSignX Player\v3`: `config.json`, `client_id.txt`, the
 - The log is in `Android/data/com.aisignx.player/files/logs/` (1 MB, one rotation, never contains
   cookies).
 
-Device Owner (lock task) mode and automatic app updates are planned for a later version.
+Device Owner lock task mode is described in [kiosk-lockdown.md](kiosk-lockdown.md).
+Automatic app updates are planned for a later version.
 
 ## Display options
 
@@ -197,9 +209,21 @@ the next manifest, within about a second.
   down whose device cannot rotate its own output. Android phones and tablets rotate natively;
   Android TV boxes and Electron rotate the page with CSS.
 - **Volume** (0-100) applies to the player's own videos. It does not change the OS volume.
-- **Input** (admins only) is off by default: touches, clicks, keys and the mouse wheel are
-  ignored, so nobody can use a web page in a playlist from the screen. Android still counts the
-  7 corner taps for the hidden exit.
+- **Player controls** (admins only) are off by default: touches, clicks, keys and the mouse
+  wheel are ignored. Android still counts the 7 corner taps for the hidden exit. When on, tap,
+  Space or OK pauses and resumes; the arrows seek 10 s in a video or change item; a swipe,
+  PageUp/PageDown or the remote's up/down change item. A transparent layer covers the content,
+  so a web page in a playlist cannot be clicked or scrolled from the screen either way.
+  Paused time does not count in proof of play.
+- **Resume after a pause** (admins only, 1-60 minutes, default 5): a paused screen always
+  resumes after this time. An emergency message also resumes it.
+- **Lock player** (admins only, Windows and Android apps): the app cannot be left without the
+  unlock PIN, so the PIN must be set first, and it cannot be removed while the lock is on. A
+  plain browser cannot be locked. See [kiosk-lockdown.md](kiosk-lockdown.md).
+- **Remote unlock** (admins only): on the display page of a locked display, **Unlock remotely**
+  lifts the lock for 5 minutes to 1 hour, so someone at the screen can close the app or use the
+  admin shortcuts without the PIN. **Lock again** ends it early. It is sent live only: a screen
+  that is not connected at that moment does not get it, and restarting the app locks it again.
 - **Unlock PIN** (admins only, 4-8 digits) guards leaving the app:
   - **Electron:** every Ctrl+Alt shortcut (setup, log, DevTools, quit) asks for it.
   - **Android:** the hidden exit (long press or 7 taps) asks for it instead of yes/no.

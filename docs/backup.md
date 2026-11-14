@@ -95,20 +95,29 @@ name from the backup folder or a path to an archive anywhere.
 3. AiSignX then:
    - shows a maintenance page to everyone and sends players a "retry later" answer (screens
      keep playing what they have);
-   - writes a `pre-restore` safety backup, and **cancels the restore if that fails** (nothing
-     is changed);
+   - writes a `pre-restore` safety backup **with the uploads** (also for a database-only
+     archive, so the restore can be undone completely), and **cancels the restore if that
+     fails** (nothing is changed);
+   - checks the free disk space where the database, the uploads and the backup folder live,
+     and cancels the restore if any of them is short (nothing is changed);
    - writes the database in place, syncs the uploads (files missing from the archive are
-     deleted), restores the secret key, and upgrades the database if the archive came from an
-     older version;
+     deleted, but only after every file from the archive was written), restores the secret
+     key, and upgrades the database if the archive came from an older version;
    - records the restore in the audit log and tells all screens to reload their content.
-4. Everyone, including you, has to sign in again.
-5. **Restart the server.** A restored secret key only takes effect after a restart, and a
-   restart clears every old session.
+4. Everyone, including you, is signed out and has to sign in again. This covers every open
+   browser and every "Keep me signed in" cookie, whether or not the secret key changes.
+5. **Restart the server** when the archive held a secret key and `AISIGNX_SECRET_KEY` is not
+   set: a restored key only takes effect after a restart.
+
+Background jobs pause while a restore runs. For a few minutes afterwards no "display offline"
+alert opens (screens need time to reconnect), and for a day the unused-file cleanup leaves
+the media folder alone, so the safety backup can still undo the restore.
 
 If any step after the safety backup fails, AiSignX puts the safety backup back automatically
-and shows both errors. On Windows, a media file that is open in another program cannot be
-replaced. Such files are listed after the restore, not treated as errors. Close the program
-and restore again, or copy the file by hand.
+and shows both errors. A disk that fills up while the uploads are written counts as a failure.
+On Windows, a media file that is open in another program cannot be replaced. Such files are
+listed after the restore, not treated as errors, and the files missing from the archive are
+then kept. Close the program and restore again, or copy the file by hand.
 
 An archive made by a **newer** AiSignX version is refused ("Upgrade first"). Databases are
 never migrated down.

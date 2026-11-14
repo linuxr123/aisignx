@@ -33,7 +33,7 @@ class ShellInfo(
         .put("caps", JSONArray(caps))
         .toString()
 
-    /** {uptime_s, cache: {files, bytes}, storage_free_bytes} as JSON; "{}" on error. */
+    /** {uptime_s, cache: {files, bytes}, storage_free_bytes, lock} as JSON; "{}" on error. */
     @JavascriptInterface
     fun stats(): String = try { stats.invoke() } catch (_: Exception) { "{}" }
 
@@ -56,6 +56,8 @@ class ShellInfo(
         const val CAP_CAPTURE = "capture"
         const val CAP_ROTATE = "rotate"
         const val CAP_PIN_EXIT = "pin-exit"
+        const val CAP_CONTROLS = "controls"
+        const val CAP_KIOSK_LOCK = "kiosk-lock"
 
         /**
          * Capabilities: settings and capture requests arrive through the port, so
@@ -67,14 +69,20 @@ class ShellInfo(
                 add(CAP_PIN_EXIT)
                 add(CAP_CAPTURE)
                 if (!isTv) add(CAP_ROTATE)
+                add(CAP_CONTROLS)
+                add(CAP_KIOSK_LOCK)
             }
         }
 
-        /** The JSON returned by stats(). Negative values are left out. */
-        fun statsJson(uptimeS: Long, cacheFiles: Int, cacheBytes: Long, freeBytes: Long): String {
+        /**
+         * The JSON returned by stats(). Negative values are left out. [lock] is one of
+         * off, locked, unlocked, pinned, owner, failed (left out when null).
+         */
+        fun statsJson(uptimeS: Long, cacheFiles: Int, cacheBytes: Long, freeBytes: Long, lock: String? = null): String {
             val o = JSONObject().put("uptime_s", maxOf(0L, uptimeS))
                 .put("cache", JSONObject().put("files", maxOf(0, cacheFiles)).put("bytes", maxOf(0L, cacheBytes)))
             if (freeBytes >= 0) o.put("storage_free_bytes", freeBytes)
+            if (lock != null) o.put("lock", lock.take(16))
             return o.toString()
         }
 

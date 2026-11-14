@@ -22,7 +22,9 @@ function pickTarget(focused, prompt, previous, fallback) {
   return alive(fallback);
 }
 
-// opts: {getUnlock: () => cfg.unlock | null, gate: createGate(...)}
+// opts: {getUnlock: () => cfg.unlock | null, gate: createGate(...),
+//   isRemoteUnlocked: () => bool (Lock player lifted from the admin: no PIN asked),
+//   onOpen(), onClose(): the prompt window appeared / went away}
 function createUnlockWindow(opts) {
   let win = null;
   let pending = null;   // the action to run after a correct PIN
@@ -116,14 +118,28 @@ function createUnlockWindow(opts) {
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.once('ready-to-show', () => { win.show(); win.focus(); });
     const self = win;
-    win.on('closed', () => { if (win === self) { win = null; pending = null; } });
+    win.on('closed', () => {
+      if (win === self) { win = null; pending = null; }
+      hook('onClose');
+    });
+    hook('onOpen');
     load(name);
   }
 
-  // Runs action() now when no PIN is set, otherwise after the PIN was entered.
-  // A second shortcut while the prompt is open replaces the pending action.
+  function hook(name) {
+    if (typeof opts[name] !== 'function') return;
+    try { opts[name](); } catch (e) { log.warn('unlock window ' + name, e.message); }
+  }
+
+  function remoteUnlocked() {
+    try { return typeof opts.isRemoteUnlocked === 'function' && !!opts.isRemoteUnlocked(); } catch (e) { return false; }
+  }
+
+  // Runs action() now when no PIN is set (also with Lock player on: a missing PIN hash must
+  // never trap the screen) or while an admin unlocked the player remotely; otherwise after
+  // the PIN was entered. A second shortcut while the prompt is open replaces the pending action.
   function requirePin(name, action) {
-    if (!opts.getUnlock()) { action(); return; }
+    if (!opts.getUnlock() || remoteUnlocked()) { action(); return; }
     pending = action;
     open(ACTIONS.has(name) ? name : '');
   }

@@ -53,6 +53,7 @@
             android:name=".ui.PlayerActivity"
             android:exported="false"
             android:launchMode="singleTask"
+            android:lockTaskMode="if_whitelisted"
             android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|smallestScreenSize" />
 
         <receiver
@@ -60,6 +61,20 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Device Owner for Lock player (docs/kiosk-lockdown.md). Same name as v2. -->
+        <receiver
+            android:name=".AisignxDeviceAdminReceiver"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_receiver" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
 

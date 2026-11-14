@@ -250,6 +250,42 @@ def test_rollup_names_deleted_display(configured, paired_display):
     assert row[5] == f"Display #{display_id}"
 
 
+def test_deleting_a_display_keeps_its_plays_in_the_daily_rows(configured, client,
+                                                              paired_display):
+    display_id, _token = paired_display
+    enable(configured)
+    with configured.app_context():
+        other = Display(name="Window")
+        db.session.add(other)
+        db.session.commit()
+        other_id = other.id
+    now = utcnow()
+    add_raw(configured, display_id, 1, now - timedelta(days=1))
+    add_raw(configured, other_id, 1, now - timedelta(days=1))
+    with configured.app_context():
+        service.rollup(now)
+    add_raw(configured, display_id, 1, now - timedelta(minutes=5))  # not rolled up yet
+    login(client, "admin")
+    client.post(f"/displays/{display_id}/delete")
+    with configured.app_context():
+        assert db.session.get(Display, display_id) is None
+        assert PlayEvent.query.filter_by(display_id=display_id).count() == 0  # cascade
+    before = [r for r in daily(configured) if r[1] == display_id]
+    assert sum(r[3] for r in before) == 2  # yesterday's play and the one just before delete
+
+    # The hourly rollup rebuilds yesterday and today; a late event from another screen
+    # makes it rebuild an older day too. The deleted display's rows survive all of it.
+    later = utcnow() + timedelta(hours=1)
+    with configured.app_context():
+        db.session.add(PlayEvent(display_id=other_id, media_id=1, media_name="Clip",
+                                 client_event_id="late-0001", duration_ms=1000,
+                                 started_at=now - timedelta(days=3), received_at=later))
+        db.session.commit()
+        service.rollup(later + timedelta(minutes=1))
+    assert [r for r in daily(configured) if r[1] == display_id] == before
+    assert sum(r[3] for r in daily(configured) if r[1] == other_id) == 2
+
+
 def test_retention_purge(configured, paired_display):
     display_id, _token = paired_display
     enable(configured, raw_days="2", daily_days="30")

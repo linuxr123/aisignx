@@ -5,10 +5,16 @@ import org.json.JSONObject
 
 /**
  * The parts of manifest.settings that the Android shell applies natively:
- * screen orientation (non-TV only), the input lock and the unlock PIN hash.
+ * screen orientation (non-TV only), the input lock, Lock player (lock task) and the
+ * unlock PIN hash.
  * Volume, the offline banner and CSS rotation are handled by the page.
  */
-data class DisplaySettings(val orientation: Int, val allowInput: Boolean, val unlock: UnlockHash?) {
+data class DisplaySettings(
+    val orientation: Int,
+    val allowInput: Boolean,
+    val kioskLock: Boolean,
+    val unlock: UnlockHash?,
+) {
 
     companion object {
         val ORIENTATIONS = setOf(0, 90, 180, 270)
@@ -17,6 +23,7 @@ data class DisplaySettings(val orientation: Int, val allowInput: Boolean, val un
          * Parse a manifest JSON string. Null when it has no "settings" object (an older
          * server), so the stored settings are left alone. Bad values fall back to
          * defaults; a bad unlock object counts as "no PIN", like the Electron sanitizer.
+         * "kiosk_lock" missing (an older server) or not a boolean means off.
          */
         fun parse(manifestJson: String): DisplaySettings? {
             val root = try { JSONObject(manifestJson) } catch (_: Exception) { return null }
@@ -24,7 +31,8 @@ data class DisplaySettings(val orientation: Int, val allowInput: Boolean, val un
             val deg = s.opt("orientation")
             val orientation = if (deg is Int && deg in ORIENTATIONS) deg else 0
             val allow = s.opt("allow_input") == true
-            return DisplaySettings(orientation, allow, parseUnlock(s.optJSONObject("unlock")))
+            val lock = s.opt("kiosk_lock") == true
+            return DisplaySettings(orientation, allow, lock, parseUnlock(s.optJSONObject("unlock")))
         }
 
         fun parseUnlock(u: JSONObject?): UnlockHash? {

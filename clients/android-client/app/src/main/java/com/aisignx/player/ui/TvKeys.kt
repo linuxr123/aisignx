@@ -4,9 +4,10 @@ import android.view.KeyEvent
 
 /**
  * Remote-control keys the player swallows, so a viewer cannot pause or seek a
- * <video>, scroll the page or leave the player. Forwarding keys to the player page
- * is deferred. DPAD_CENTER and MENU long presses are handled by PlayerActivity
- * (hidden exit to setup).
+ * <video>, scroll the page or leave the player. Forwarding is done by ControlKeys when
+ * input is allowed; this set is the fallback while input is locked (and catches the
+ * keys ControlKeys does not map). DPAD_CENTER and MENU long presses are handled by
+ * PlayerActivity (hidden exit to setup).
  */
 object TvKeys {
 

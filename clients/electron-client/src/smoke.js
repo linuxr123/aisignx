@@ -49,7 +49,8 @@ async function runSmoke({ getWindow, getOrigin, log }) {
       const jpeg = await s.capture();
       const st = s.stats();
       return { caps: s.info().caps, jpeg: !!jpeg && jpeg.length > 100 && jpeg[0] === 0xff && jpeg[1] === 0xd8,
-        stats: !!st && Number.isInteger(st.uptime_s) };
+        stats: !!st && Number.isInteger(st.uptime_s) && typeof st.lock === 'string',
+        hooks: typeof s.onCommand === 'function' && typeof s.onControl === 'function' };
     })()`, true);
     const offline = await get(getOrigin() + '/__shell/offline');
     const health = await get(getOrigin() + '/healthz');
@@ -57,7 +58,8 @@ async function runSmoke({ getWindow, getOrigin, log }) {
     if (hasShell !== 'electron') problems.push('window.AiSignXShell missing');
     if (!native.jpeg) problems.push('capture() returned no JPEG');
     if (!native.stats) problems.push('stats() returned nothing');
-    if (String(native.caps) !== 'capture,pin-exit') problems.push('caps ' + JSON.stringify(native.caps));
+    if (!native.hooks) problems.push('onCommand/onControl missing');
+    if (String(native.caps) !== 'capture,pin-exit,controls,kiosk-lock') problems.push('caps ' + JSON.stringify(native.caps));
     if (offline !== 503) problems.push('/__shell/offline returned ' + offline);
     if (health !== 200) problems.push('/healthz returned ' + health);
     if (problems.length) {

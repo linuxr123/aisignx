@@ -67,6 +67,8 @@ ACTIONS = OrderedDict([
     ("display.screenshot_request", "Screenshot requested"),
     ("display.reload", "Display reloaded"),
     ("display.identify", "Display identified"),
+    ("display.unlock", "Player unlocked remotely"),
+    ("display.relock", "Player locked again"),
     ("group.", "Groups (all)"),
     ("group.create", "Group created"),
     ("group.update", "Group updated"),

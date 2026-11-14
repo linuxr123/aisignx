@@ -18,6 +18,7 @@ const { createSetup } = require('./setup');
 const { runSmoke, tempProfile } = require('./smoke');
 const unlock = require('./unlock');
 const { createUnlockWindow } = require('./unlock-window');
+const { createLock, parseCommand } = require('./lock');
 
 function argValue(name) {
   const hit = process.argv.find((a) => a.startsWith('--' + name + '='));
@@ -35,6 +36,9 @@ else app.setPath('userData', path.join(app.getPath('appData'), 'AiSignX Player',
 Menu.setApplicationMenu(null);
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disk-cache-size', '67108864');
+// Media keys arrive as ordinary key input (before-input-event, then player controls) instead
+// of going to the OS media overlay.
+app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 
 const DATA = app.getPath('userData');
 const CAPTURE_MAX_SIDE = 1920;
@@ -46,7 +50,7 @@ const S = {
   clientId: '',
   proxy: null, upstream: null, pageCache: null, mediaCache: null,
   player: null, setup: null, cookie: '', retryTimer: null, quitting: false,
-  gate: null, unlockWin: null,
+  gate: null, unlockWin: null, lock: null,
 };
 
 function origin() {
@@ -60,7 +64,7 @@ function shellInfo() {
     device: (os.hostname() + ' / ' + os.version()).slice(0, 120),
     client_id: S.clientId,
     admin_url: S.cfg.serverUrl,
-    caps: ['capture', 'pin-exit'],
+    caps: ['capture', 'pin-exit', 'controls', 'kiosk-lock'],
   };
 }
 
@@ -100,8 +104,16 @@ async function startProxy() {
 
 async function startPlayer() {
   if (!S.player || S.player.win.isDestroyed()) {
-    S.player = createPlayerWindow({ smoke: SMOKE, getOrigin: origin });
+    S.player = createPlayerWindow({
+      smoke: SMOKE,
+      getOrigin: origin,
+      controls: () => !!S.cfg.allowInput,
+      lock: S.lock,
+      isQuitting: () => S.quitting,
+    });
     S.player.win.on('closed', () => { S.player = null; });
+    // Windows logoff or shutdown: a locked window must not hold it up.
+    S.player.win.on('session-end', () => { S.quitting = true; });
   }
   try {
     await startProxy();
@@ -134,6 +146,7 @@ async function onSaved(cfg, { serverChanged }) {
     S.gate.reset();
   }
   S.cfg = cfg;
+  S.lock.configure({ kioskLock: cfg.kioskLock });
   kiosk.applyAutostart(cfg.autostart);
   await startPlayer();
   if (S.setup) S.setup.close();
@@ -142,7 +155,9 @@ async function onSaved(cfg, { serverChanged }) {
 async function onForget() {
   if (S.player && !S.player.win.isDestroyed()) S.player.win.destroy();
   await wipeServerData();
-  S.cfg = config.saveConfig(DATA, Object.assign({}, S.cfg, { serverUrl: '', certPin: null, unlock: null }));
+  S.cfg = config.saveConfig(DATA, Object.assign({}, S.cfg,
+    { serverUrl: '', certPin: null, unlock: null, allowInput: true, kioskLock: false }));
+  S.lock.configure({ kioskLock: false });
   S.gate.reset();
   log.info('server forgotten');
 }
@@ -179,23 +194,39 @@ function registerIpc() {
   ipcMain.on('shell-stats', (event) => {
     event.returnValue = fromPlayer(event) ? stats() : null;
   });
+  // `unlock` / `lock` commands from the admin, forwarded by the page.
+  ipcMain.on('shell-command', (event, json) => {
+    if (!fromPlayer(event) || SMOKE) return;
+    const c = parseCommand(json);
+    if (!c) return;
+    if (c.action === 'unlock') {
+      if (S.lock.unlockFor(c.minutes, c.rid)) log.info('unlocked remotely for', c.minutes, 'min');
+    } else if (S.lock.relock(c.rid)) {
+      log.info('locked again remotely');
+    }
+  });
 }
 
-// Keeps the unlock PIN hash from the manifest's `settings` in config.json, so the PIN still
-// guards the shortcuts when the app starts offline. An old server sends no `settings`: no change.
+// Keeps the unlock PIN hash, "Player controls" and "Lock player" from the manifest's
+// `settings` in config.json, so they apply when the app starts offline. An old server sends
+// no `settings`: no change.
 function applySettings(json) {
   if (SMOKE || !S.cfg.serverUrl) return;
   let settings;
   try { settings = JSON.parse(json).settings; } catch (e) { return; }
-  if (!settings || typeof settings !== 'object' || !('unlock' in settings)) return;
-  const next = unlock.sanitizeUnlock(settings.unlock);
-  if (JSON.stringify(next) === JSON.stringify(S.cfg.unlock)) return;
+  const patch = config.settingsPatch(S.cfg, settings);
+  if (!Object.keys(patch).length) return;
+  if ('unlock' in patch) log.info(patch.unlock ? 'unlock PIN set by the server' : 'unlock PIN removed by the server');
+  if ('allowInput' in patch) log.info('player controls', patch.allowInput ? 'on' : 'off');
+  if ('kioskLock' in patch) log.info('lock player', patch.kioskLock ? 'on' : 'off');
+  const next = Object.assign({}, S.cfg, patch);
   try {
-    S.cfg = config.saveConfig(DATA, Object.assign({}, S.cfg, { unlock: next }));
-    log.info(next ? 'unlock PIN set by the server' : 'unlock PIN removed by the server');
+    S.cfg = config.saveConfig(DATA, next);
   } catch (e) {
-    log.warn('could not save the unlock PIN', e.message);
+    S.cfg = next; // still applied until the next start
+    log.warn('could not save the display settings', e.message);
   }
+  S.lock.configure({ kioskLock: S.cfg.kioskLock });
 }
 
 // A JPEG of the player window (what the screen shows), longest side at most 1920, or null.
@@ -215,7 +246,8 @@ async function capture() {
 }
 
 function stats() {
-  const out = { uptime_s: Math.floor(process.uptime()), cache: S.mediaCache ? S.mediaCache.stats() : null };
+  const out = { uptime_s: Math.floor(process.uptime()), cache: S.mediaCache ? S.mediaCache.stats() : null,
+    lock: S.lock ? S.lock.state() : 'off' };
   try {
     const st = fs.statfsSync(DATA);
     out.storage_free_bytes = st.bavail * st.bsize;
@@ -237,7 +269,20 @@ async function main() {
   registerIpc();
   S.clientId = config.clientId(DATA);
   S.gate = unlock.createGate({ dataDir: DATA });
-  S.unlockWin = createUnlockWindow({ getUnlock: () => S.cfg.unlock, gate: S.gate });
+  S.lock = createLock();
+  S.lock.onChange((state) => {
+    log.info('lock state', state);
+    if (S.player) S.player.applyLockLevel();
+  });
+  const suspendPlayer = (on, reason) => { if (S.player && !S.player.win.isDestroyed()) S.player.suspend(on, reason); };
+  S.unlockWin = createUnlockWindow({
+    getUnlock: () => S.cfg.unlock,
+    gate: S.gate,
+    // A remote unlock skips the PIN only while Lock player is on; otherwise the PIN guards as before.
+    isRemoteUnlocked: () => !!S.cfg.kioskLock && S.lock.state() === 'unlocked',
+    onOpen: () => suspendPlayer(true, 'unlock'),
+    onClose: () => suspendPlayer(false, 'unlock'),
+  });
 
   if (SMOKE) {
     // --port=N keeps the loopback origin (and so localStorage) across smoke runs.
@@ -259,7 +304,11 @@ async function main() {
     version: app.getVersion(),
     onSaved,
     onForget,
-    onClosed: () => { if (!S.player && !S.quitting) app.quit(); },
+    onOpen: () => suspendPlayer(true, 'setup'),
+    onClosed: () => {
+      suspendPlayer(false, 'setup');
+      if (!S.player && !S.quitting) app.quit();
+    },
     quit: () => app.quit(),
   });
   // Every Ctrl+Alt shortcut asks for the unlock PIN when the server set one.
@@ -277,6 +326,7 @@ async function main() {
 
   const loaded = config.loadConfig(DATA);
   S.cfg = loaded.config;
+  S.lock.configure({ kioskLock: S.cfg.kioskLock });
   log.info('AiSignX Player', app.getVersion(), 'starting; config', loaded.status);
   if (!S.cfg.serverUrl || !S.cfg.port) {
     openSetup();

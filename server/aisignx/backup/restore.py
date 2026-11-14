@@ -5,6 +5,10 @@ It first writes a "pre-restore" safety backup and refuses to go on if that fails
 database is written with the SQLite backup API into the live file (WAL-safe, no file
 rename, so it also works on Windows while the server runs). If any later step fails,
 the safety backup is put back automatically.
+
+The safety backup always includes the uploads, so it can undo a database-only restore
+even after the media.orphans job has removed files the restored database does not know.
+A restore of a database signs everyone out (models/user.py, session epoch).
 """
 import hashlib
 import logging
@@ -33,6 +37,8 @@ NEWER_MESSAGE = "This backup is from a newer AiSignX. Upgrade first."
 STATUS_KEYS = ("backup.last_ok_at", "backup.last_size", "backup.last_name",
                "backup.last_error", "backup.last_error_at", "backup.last_scheduled_date",
                "backup.retry_after")
+# When the last restore finished: the offline alerts and the orphan-file job wait after it.
+RESTORED_AT_KEY = "backup.last_restore_at"
 
 
 class RestoreError(BackupError):
@@ -160,11 +166,11 @@ def restore(path, *, actor_via: str = "web", actor=None, skip_snapshot: bool = F
         pre = None
         if not skip_snapshot:
             try:
-                pre = service.create("pre-restore",
-                                     include_uploads=bool(manifest.get("include_uploads")))
+                pre = service.create("pre-restore", include_uploads=True)
             except Exception as exc:
                 raise RestoreError(f"Restore cancelled: the safety backup taken first "
                                    f"failed ({exc}). Nothing was changed.") from exc
+        _check_space(manifest, live)
         kept = _read_status()
         try:
             skipped = _apply(path, manifest, live)
@@ -197,6 +203,58 @@ def restore(path, *, actor_via: str = "web", actor=None, skip_snapshot: bool = F
             "revision": manifest.get("alembic_revision")}
 
 
+def _free(folder: Path) -> int:
+    return shutil.disk_usage(folder).free
+
+
+def _existing(path: Path) -> Path:
+    """The path itself or its nearest existing parent."""
+    path = Path(path).resolve()
+    for candidate in (path, *path.parents):
+        if candidate.exists():
+            return candidate
+    return path
+
+
+def _check_space(manifest: dict, live: Path | None) -> None:
+    """Refuse, before anything is changed, when a volume the restore writes to (the
+    backup folder for staging, the database, the uploads) lacks the space it needs.
+    Runs after the safety backup, which uses space too."""
+    files = manifest["files"]
+    need: dict[int, list] = {}  # st_dev -> [bytes, folder]
+
+    def add(folder: Path, size: int) -> None:
+        folder = _existing(folder)
+        need.setdefault(os.stat(folder).st_dev, [0, folder])[0] += max(size, 0)
+
+    if live is not None:
+        size = files[DB_MEMBER]["size"]
+        add(service.backup_dir(), size)  # staged copy
+        try:
+            current = live.stat().st_size
+        except OSError:
+            current = 0
+        add(live.parent, size - current)  # written in place
+    if manifest.get("include_uploads"):
+        root = Path(current_app.config["UPLOAD_FOLDER"])
+        total = largest = 0
+        for member, entry in files.items():
+            match = UPLOAD_MEMBER_RE.match(member)
+            if not match:
+                continue
+            try:
+                current = (root / match.group(1) / match.group(2)).stat().st_size
+            except OSError:
+                current = 0
+            total += max(entry["size"] - current, 0)  # nothing is deleted until the end
+            largest = max(largest, entry["size"])  # one temporary copy at a time
+        add(root, total + largest)
+    for size, folder in need.values():
+        if size > _free(folder):
+            raise RestoreError(f"Restore cancelled: not enough free disk space in {folder} "
+                               f"({size // 2**20 + 1} MB needed). Nothing was changed.")
+
+
 def _read_status() -> dict:
     from ..models import Setting
 
@@ -214,6 +272,7 @@ def _write_status(values: dict) -> None:
     try:
         for key, value in values.items():
             Setting.set(key, value)
+        Setting.set_datetime(RESTORED_AT_KEY, utcnow())
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -238,9 +297,19 @@ def _apply(path: Path, manifest: dict, live: Path | None) -> list[str]:
                 _write_secret(zf.read(SECRET_MEMBER))
         if live is not None:
             _upgrade()
+            _sign_everyone_out()
         return skipped
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+
+
+def _sign_everyone_out() -> None:
+    """Sessions hold a user id, which may name someone else in the restored users table
+    (and the restored secret key may be the old one): invalidate them all."""
+    from ..models.user import new_session_epoch
+
+    new_session_epoch()
+    db.session.commit()
 
 
 def write_db(staged: Path, live: Path) -> None:
@@ -275,9 +344,16 @@ def _same_file(dest: Path, entry: dict) -> bool:
         return False
 
 
+def _locked(exc: OSError) -> bool:
+    """A file held open by another program (Windows sharing violation, EACCES/EPERM)."""
+    return isinstance(exc, PermissionError)
+
+
 def _sync_uploads(zf: zipfile.ZipFile, files: dict) -> list[str]:
     """Make uploads/media and uploads/thumbs match the archive. Files that cannot be
-    written or deleted (locked on Windows) are reported, not raised."""
+    replaced or deleted because they are locked (Windows) are reported, not raised. Any
+    other write error (disk full, I/O error) raises, so restore() puts the safety backup
+    back. Extra files are deleted only after every archive file was written."""
     root = Path(current_app.config["UPLOAD_FOLDER"])
     wanted: dict[str, dict[str, tuple[str, dict]]] = {sub: {} for sub in UPLOAD_SUBDIRS}
     for member, entry in files.items():
@@ -299,7 +375,15 @@ def _sync_uploads(zf: zipfile.ZipFile, files: dict) -> list[str]:
                 os.replace(tmp, dest)
             except OSError as exc:
                 service._remove(tmp)
+                if not _locked(exc):
+                    raise RestoreError(f"Could not write {sub}/{fname}: {exc}") from exc
                 skipped.append(f"{sub}/{fname}: {exc}")
+    if skipped:
+        log.warning("Restore kept the extra upload files: %d archive files were not "
+                    "written", len(skipped))
+        return skipped
+    for sub, entries in wanted.items():
+        folder = root / sub
         for path in folder.iterdir():
             if path.name.startswith(".") or path.name in entries or not path.is_file():
                 continue

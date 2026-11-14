@@ -291,6 +291,42 @@
     }
   }
 
+  // ---- Player controls (player.js): direct access to the on-screen video.
+  function videoOf(slide) { return isVideo(slide) ? slide.media : null; }
+  function durationOfVideo(v) { var d = Number(v.duration); return isFinite(d) && d > 0 ? d : 0; }
+  // setVideoTime(slide, t): jump to t seconds, kept inside the video. Returns the time set.
+  function setVideoTime(slide, t, fast) {
+    var v = videoOf(slide);
+    if (!v) return 0;
+    var d = durationOfVideo(v), max = d ? Math.max(0, d - 0.25) : Number.POSITIVE_INFINITY;
+    var target = Math.max(0, Math.min(max, Number(t) || 0));
+    try {
+      if (fast && typeof v.fastSeek === "function") v.fastSeek(target);
+      else v.currentTime = target;
+    } catch (e) { return Number(v.currentTime) || 0; }
+    return target;
+  }
+  // seekVideo(slide, deltaS) -> {applied, atEnd}: applied is the real jump in seconds; atEnd
+  // says the request went past the end of the video.
+  function seekVideo(slide, deltaS) {
+    var v = videoOf(slide);
+    if (!v) return { applied: 0, atEnd: false };
+    var from = Number(v.currentTime) || 0, d = durationOfVideo(v), want = from + deltaS;
+    var atEnd = deltaS > 0 && d > 0 && want > d - 0.25;
+    if (atEnd) return { applied: 0, atEnd: true };
+    var to = setVideoTime(slide, want, true);
+    return { applied: to - from, atEnd: false };
+  }
+  function pauseVideo(slide) {
+    var v = videoOf(slide);
+    if (v) { try { v.pause(); } catch (e) { /* ignore */ } }
+  }
+  // playVideo(slide, onErr): play the slide's video; a rejected play() calls onErr(err).
+  function playSlide(slide, onErr) {
+    var v = videoOf(slide);
+    if (v) playVideo(v, onErr || function () { /* ignore */ });
+  }
+
   // setVolume(0..100): the display's volume for the player's own videos (on screen and
   // being prepared). Muting is separate and unchanged; this never touches `muted`.
   function setVolume(v) {
@@ -312,6 +348,11 @@
     runVideo: runVideo,
     resume: resume,
     isVideo: isVideo,
+    videoOf: videoOf,
+    seekVideo: seekVideo,
+    setVideoTime: setVideoTime,
+    pauseVideo: pauseVideo,
+    playVideo: playSlide,
     pickTransition: pickTransition,
     setVolume: setVolume,
   };

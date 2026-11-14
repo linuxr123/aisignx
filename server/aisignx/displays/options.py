@@ -13,7 +13,7 @@ import secrets
 import unicodedata
 
 from ..models import Display
-from ..models.display import ORIENTATIONS
+from ..models.display import ORIENTATIONS, RESUME_DEFAULT_S, RESUME_MAX_S, RESUME_MIN_S
 
 ALG = "pbkdf2-sha256"
 PBKDF2_ITER = 200_000
@@ -91,8 +91,17 @@ def settings_payload(display: Display) -> dict:
         "volume": max(0, min(100, volume)),
         "show_offline_banner": bool(display.show_offline_banner),
         "allow_input": bool(display.allow_input),
+        "kiosk_lock": bool(display.kiosk_lock),
+        "resume_after_s": resume_seconds(display.resume_after_s),
         "unlock": unlock_payload(display),
     }
+
+
+def resume_seconds(value) -> int:
+    """Auto-resume delay for the manifest: clamped to 60..3600, 300 if not an integer."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return RESUME_DEFAULT_S
+    return max(RESUME_MIN_S, min(RESUME_MAX_S, value))
 
 
 def parse_diag(text: str | None) -> dict | None:

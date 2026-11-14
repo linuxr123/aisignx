@@ -99,17 +99,28 @@ pair it once, and it keeps playing after restarts.
 Windows (Chrome):
 
 ```powershell
-& "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk --autoplay-policy=no-user-gesture-required --user-data-dir=C:\AiSignX\kiosk-profile --no-first-run http://192.168.1.10:5000/player/
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk --noerrdialogs --disable-session-crashed-bubble --disable-pinch --overscroll-history-navigation=0 --disable-features=Translate --autoplay-policy=no-user-gesture-required --no-first-run --user-data-dir=C:\AiSignX\kiosk-profile http://192.168.1.10:5000/player/
 ```
 
 Linux (Chromium):
 
 ```bash
-chromium --kiosk --autoplay-policy=no-user-gesture-required --user-data-dir="$HOME/.aisignx-kiosk" --no-first-run http://192.168.1.10:5000/player/
+chromium --kiosk --noerrdialogs --disable-session-crashed-bubble --disable-pinch --overscroll-history-navigation=0 --disable-features=Translate --autoplay-policy=no-user-gesture-required --no-first-run --user-data-dir="$HOME/.aisignx-kiosk" http://192.168.1.10:5000/player/
 ```
 
 With Microsoft Edge, use `--start-fullscreen` instead of `--kiosk`, with the other flags as above.
 Edge's own kiosk mode browses InPrivate and forgets the pairing at every start.
+
+The extra flags hide crash and restore bubbles, error dialogs and the translate bar, and turn
+off pinch zoom and swipe-back navigation, so a touch screen stays on the player.
+
+**A browser cannot be locked.** Anyone with a keyboard can leave it (Alt+F4, Alt+Tab, the
+Windows key). The display's **Lock player** option only works in the Windows and Android apps.
+For a locked screen, use the Windows app, or Windows Assigned Access / Shell Launcher; see
+[kiosk-lockdown.md](kiosk-lockdown.md).
+
+With **Player controls** on, media keys in Chrome go to the page's Media Session, which the
+player handles (play, pause, next, previous, seek).
 
 Put the command in the screen computer's start-up (the Windows Startup folder or Task Scheduler,
 or your Linux desktop's autostart), and turn off screen sleep and screen savers.

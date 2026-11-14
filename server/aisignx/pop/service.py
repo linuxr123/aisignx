@@ -57,9 +57,17 @@ def raw_cutoff(now: datetime | None = None, tz=None) -> datetime:
 # --- rollup -------------------------------------------------------------------------------
 
 def rebuild_day(day: date, tz) -> int:
-    """Replace the PlayDaily rows of one local day from the raw events. No commit."""
+    """Replace the PlayDaily rows of one local day from the raw events. No commit.
+
+    Only the rows of displays with raw events that day are replaced. Deleting a display
+    cascades its raw events away, so the rows it already has are kept as they are: they
+    are the only record left of its plays (also when a new display reuses its id later).
+    """
     start, end = day_bounds(day, tz)
-    db.session.execute(sa.delete(PlayDaily).where(PlayDaily.day == day))
+    with_events = sa.select(PlayEvent.display_id).where(
+        PlayEvent.started_at >= start, PlayEvent.started_at < end)
+    db.session.execute(sa.delete(PlayDaily).where(
+        PlayDaily.day == day, PlayDaily.display_id.in_(with_events)))
     fallback = sa.literal("Display #") + sa.cast(PlayEvent.display_id, sa.String)
     sel = (
         sa.select(
@@ -110,6 +118,20 @@ def rollup(now: datetime | None = None) -> str:
     raw = purge_raw(raw_cutoff(now, tz))
     daily = purge_daily(today - timedelta(days=daily_days()))
     return f"rebuilt {days} day(s); purged {raw} raw and {daily} daily rows"
+
+
+def keep_plays_of(display_id: int) -> None:
+    """Call before deleting a display: the delete cascades its raw events away, so the
+    plays since the last hourly rollup are rolled up first. Commits; never raises."""
+    try:
+        pending = db.session.scalar(
+            sa.select(PlayEvent.id).where(PlayEvent.display_id == display_id).limit(1))
+        if pending is not None:
+            rollup()
+    except Exception:
+        db.session.rollback()
+        log.exception("Could not roll up the plays of display %s before deleting it",
+                      display_id)
 
 
 def rollup_job() -> str:

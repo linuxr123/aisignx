@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased: Player controls and Lock player
+
+### Added
+- **Player controls** (the display option formerly called "Allow touch, mouse and keyboard"): tap, Space or OK pauses and resumes; arrows seek 10 s in a video or change item; swipe, PageUp/PageDown, the remote's up/down and media keys change item. A paused screen resumes on its own after **Resume after a pause** (1-60 minutes, default 5), and an emergency ends any pause. Paused time does not count in proof of play; a skipped item is reported with its real on-screen time.
+- **Lock player** (admins only, Windows and Android apps): the app cannot be left without the unlock PIN. It needs a PIN, and the PIN cannot be removed while the lock is on. Android uses lock task mode (full lockdown as Device Owner). See [docs/kiosk-lockdown.md](docs/kiosk-lockdown.md).
+- **Remote unlock** on the display page: lifts the lock for 5 minutes to 1 hour, or ends it early with **Lock again**. Both are audited.
+- Player API: `settings.kiosk_lock` and `settings.resume_after_s`; the `unlock` and `lock` commands; shell hooks `onCommand` and `onControl`, the caps `controls` and `kiosk-lock`, and `stats().lock` (shown in Diagnostics).
+
+### Changed
+- With Player controls on, a transparent layer covers every item, so web pages in a playlist can no longer be clicked or scrolled from the screen.
+
 ## Unreleased (v3)
 
 v3 is a clean rewrite of AiSignX as a single-organization app.
@@ -49,9 +60,9 @@ v3 is a clean rewrite of AiSignX as a single-organization app.
 - Login rate limiting: failed sign-ins limited per IP address and per user name (429 with Retry-After; `AISIGNX_LOGIN_MAX_PER_IP`, `AISIGNX_LOGIN_MAX_PER_USER`, `AISIGNX_LOGIN_WINDOW_MIN`). Failed API token checks count against the same per-IP limit.
 - API tokens (per user, scoped `media:read`/`media:write`, optional expiry, revocable, stored only as hashes) and a JSON media API at `/api/v1/media` with the PowerPoint add-in's `/api/media` paths: list, get, upload and replace. See [docs/api.md](docs/api.md).
 - Replace a media file in place (API and admin) keeping its name, duration and playlist places; media IDs shown in the admin; a daily cleanup of unused upload files.
-- Backups: ZIP archives (SQLite backup API, secret key, uploads, sha256 manifest), a daily schedule with retention, web upload, download and restore with maintenance mode and automatic rollback, and `flask backup create|list|verify|restore|prune`. See [docs/backup.md](docs/backup.md).
+- Backups: ZIP archives (SQLite backup API, secret key, uploads, sha256 manifest), a daily schedule with retention, web upload, download and restore with maintenance mode, a safety backup (always with the uploads), a disk-space check, automatic rollback and sign-out of every session, and `flask backup create|list|verify|restore|prune`. See [docs/backup.md](docs/backup.md).
 - Alerts derived from facts (display offline, low disk, sign-in burst, backup failed or stale, failing jobs) with acknowledge, per-display mute and optional SMTP e-mail (password only from `AISIGNX_SMTP_PASSWORD`).
-- Proof of play: screens report finished items (`POST /api/player/v1/plays`, off by default), an hourly daily rollup in the organization's time zone, **Reports > Plays** with daily and raw CSV exports, and retention settings.
+- Proof of play: screens report finished items (`POST /api/player/v1/plays`, off by default), an hourly daily rollup in the organization's time zone (a deleted display keeps its totals), **Reports > Plays** with daily and raw CSV exports, and retention settings.
 - System page: self-test with timings (database, schema, folders, disk, ticker, jobs, live connections, last backup, SMTP), runtime info, a log viewer with level filter and download, and `flask --app wsgi check --all [--json] [--smtp]`.
 - Docker image and compose file (one `/data` volume, non-root user, health check, optional Caddy HTTPS profile); [docs/https.md](docs/https.md) and [docs/docker.md](docs/docker.md). Web previews honour `AISIGNX_BROWSER_NO_SANDBOX`.
 

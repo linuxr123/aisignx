@@ -103,8 +103,11 @@ a display to refresh its page, and **Unpair** to make it show a new pairing code
 
 Each display has its own options under **Edit**: location and notes, orientation (for screens
 mounted on their side), one fit mode for every item, video volume, an "offline" banner, and,
-for admins, whether touch, mouse and keyboard work on the screen (off by default) and an unlock
-PIN for the player apps. On the display page, **Identify** shows the name on the screen,
+for admins, player controls (touch, mouse, keyboard and remote pause, seek and skip; off by
+default), the auto-resume time after a pause, an unlock PIN for the player apps and **Lock
+player**, which keeps the Windows and Android apps from being closed without that PIN
+(see [docs/kiosk-lockdown.md](docs/kiosk-lockdown.md)). A locked screen can be unlocked
+remotely from its display page for a while. On the display page, **Identify** shows the name on the screen,
 **Screenshot** shows what the screen is showing, and **Diagnostics** shows its screen size,
 app version, cache and recent errors.
 

@@ -97,6 +97,37 @@ force a re-pair, but the new address must be entered in setup.
 
 Reload, DevTools, close, zoom and back-navigation keys are blocked in the player.
 
+When the server sets an unlock PIN for the display, every shortcut above asks for it first.
+
+## Player controls
+
+With **Player controls** on in the display's settings, the app forwards Space/Enter
+(pause/resume), the arrow keys (seek 10 s or change item), PageUp/PageDown and the media keys
+to the player page; touch, mouse and wheel work on the page itself. See
+`docs/player-api.md` ("Player controls") for the full mapping. With the option off, these keys
+are ignored as before.
+
+Media keys: the app starts Chromium with `--disable-features=HardwareMediaKeyHandling`, so
+Play/Pause, Next and Previous arrive as normal key presses instead of going to the Windows
+media overlay. They work while the player window has focus.
+
+## Lock player
+
+With **Lock player** on (it needs an unlock PIN on the server), the player window cannot be
+closed (Alt+F4, the taskbar) or minimized, stays on top of other windows and takes the focus
+back when something else gets it. Setup, the PIN prompt and DevTools still come to the front
+while they are open. Ctrl+Alt+Q still quits after the PIN, and Windows logoff and shutdown
+are never blocked.
+
+An admin can press **Unlock remotely** on the display page: for the chosen time the lock is
+lifted and the shortcuts run without the PIN. **Lock again** ends that early; a restart always
+locks again. If a locked display somehow has no valid PIN hash, the shortcuts run without a
+PIN, so a screen can never be locked for good.
+
+An app cannot block Alt+Tab, the Windows key or Ctrl+Alt+Del; it only takes the focus back.
+For a fully locked PC (auto-logon, Shell Launcher or Assigned Access, policies) see
+`docs/kiosk-lockdown.md`.
+
 ## Kiosk PC checklist (Windows)
 
 - A dedicated Windows user with automatic logon.
@@ -113,7 +144,7 @@ Data lives in `%APPDATA%\AiSignX Player\v3` (`~/.config/AiSignX Player/v3` on Li
 
 | Path | Content |
 |---|---|
-| `config.json` | `serverUrl`, `port`, `certPin` (`sha256`, `caPem`), `autostart` |
+| `config.json` | `serverUrl`, `port`, `certPin` (`sha256`, `caPem`), `autostart`, and from the server `unlock` (PIN hash), `allowInput`, `kioskLock` |
 | `client_id.txt` | 32 hex characters, created once |
 | `aisignx-player.log` | Log, truncated at 2 MB. Never contains cookies or request bodies. |
 | `page-cache\` | Snapshot of `/player/` and its scripts |
@@ -145,7 +176,9 @@ src/trust.js           CA list, pinning agent, certificate capture
 src/health.js          setup's /healthz test
 src/proxy/             loopback proxy: server, upstream, page-cache, media-cache, range
 src/window.js          player window and watchdogs
-src/kiosk.js           blocked keys, shortcuts, keep-awake, autostart
+src/kiosk.js           blocked keys, control keys, shortcuts, keep-awake, autostart
+src/lock.js            Lock player state and remote unlock
+src/unlock-window.js   PIN prompt in front of the shortcuts
 src/setup.js           setup window and its IPC
 src/preload-*.js       sandboxed preloads
 src/ui/                setup and offline pages
@@ -154,4 +187,4 @@ test/                  node:test unit tests
 
 ## Deferred
 
-Auto-update, PIN unlock, remote restart, macOS builds and code signing come later.
+Auto-update, remote restart, macOS builds and code signing come later.

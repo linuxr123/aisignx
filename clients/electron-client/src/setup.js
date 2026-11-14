@@ -15,15 +15,16 @@ async function firstFreePort() {
   throw new Error('No free local port in ' + config.PORT_MIN + '-' + config.PORT_MAX);
 }
 
-// The saved config keeps every other field (the unlock PIN hash); a new server drops the PIN,
-// which belongs to a display on the old server.
+// The saved config keeps every other field (the unlock PIN hash); a new server drops the PIN
+// and the display options, which belong to a display on the old server.
 function nextConfig(prev, fields, serverChanged) {
   const next = Object.assign({}, prev, fields);
-  if (serverChanged) next.unlock = null;
+  if (serverChanged) Object.assign(next, { unlock: null, allowInput: true, kioskLock: false });
   return next;
 }
 
-// opts: {dataDir, getConfig(), clientId, version, onSaved(cfg, {serverChanged}), onForget(), onClosed(), quit()}
+// opts: {dataDir, getConfig(), clientId, version, onSaved(cfg, {serverChanged}), onForget(),
+//   onOpen() (optional: a new setup window appeared), onClosed(), quit()}
 function createSetup(opts) {
   let win = null;
   let lastCapture = null; // {serverUrl, card} from the last untrusted test; the PEM stays in main
@@ -126,6 +127,7 @@ function createSetup(opts) {
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.once('ready-to-show', () => { win.show(); win.focus(); });
     win.on('closed', () => { win = null; lastCapture = null; opts.onClosed(); });
+    if (typeof opts.onOpen === 'function') opts.onOpen();
     win.loadFile(path.join(__dirname, 'ui', 'setup.html')).catch((e) => log.error('setup load', e.message));
     return win;
   }

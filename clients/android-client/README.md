@@ -7,7 +7,9 @@ updates all run in the player page, the same code a desktop browser uses. The ap
 - a setup screen (server address, connection test, certificate trust),
 - an offline snapshot of the player page and its scripts,
 - a cache for image and video files, so playback continues while the server is down,
-- full screen, keep-awake, remote-key blocking, restart after a renderer crash,
+- full screen, keep-awake, restart after a renderer crash,
+- remote keys as player controls (or blocked, when the display does not allow input),
+- Lock player: Android lock task, with full lockdown as Device Owner,
 - an optional Home-app mode and a start-at-boot fallback.
 
 Android 8.0 (API 26) or newer. Phones, tablets and Android TV boxes.
@@ -72,8 +74,50 @@ Without Home mode the app relies on a `BOOT_COMPLETED` receiver. Android 10 and 
 activity starts from the background, so on many devices that start is refused; Home mode is
 the reliable option.
 
-Device Owner / lock-task mode, PIN unlock and automatic app updates are not part of this
-version.
+Automatic app updates are not part of this version.
+
+## Player controls
+
+When the display's **Player controls** option is on, touch goes to the player page and the
+remote (or a keyboard) controls playback:
+
+| Key | Action |
+|---|---|
+| OK (short press), Enter, Space, Play/Pause | pause / resume |
+| D-pad right / left, Fast forward / Rewind | +10 s / -10 s in a video; next / previous item otherwise |
+| D-pad down / up, Channel down / up, Page down / up, Next / Previous | next / previous item |
+| Play, Pause, Stop | play, pause |
+| Mouse back / forward button | previous / next item |
+
+With the option off these keys are swallowed. Holding OK or Menu for 1.5 s still opens the
+hidden exit either way. Volume, power and Home always pass through.
+
+## Lock player
+
+With **Lock player** on (the admin requires an unlock PIN for it) the app starts Android
+lock task:
+
+- **Without Device Owner** this is screen pinning. Android asks once ("Pin this app?"), and
+  App pinning must be enabled in Settings > Security. A person can unpin with Back+Overview.
+- **As Device Owner** lock task starts without a prompt, Home, Recents and the status bar are
+  gone, the power menu stays, and the app becomes the persistent Home app. Provision a fresh
+  or factory-reset device with no Google account, enable USB debugging, then:
+
+  ```powershell
+  adb shell dpm set-device-owner com.aisignx.player/.AisignxDeviceAdminReceiver
+  # debug build:
+  adb shell dpm set-device-owner com.aisignx.player.debug/com.aisignx.player.AisignxDeviceAdminReceiver
+  ```
+
+  Devices provisioned with the v2 app keep working (same receiver name). To undo, leave the
+  player through the PIN-protected exit and press **Remove Device Owner** in setup, or
+  factory-reset the device.
+
+The hidden exit asks for the PIN and leaves lock task; the player locks again when it
+starts. **Unlock remotely** on the display page lifts the lock for the chosen time and lets
+the hidden exit skip the PIN; **Lock again** ends that early. A restart always locks again.
+The heartbeat diagnostics show the lock state (`off`, `pinned`, `owner`, `unlocked`, `locked`
+when pinning was declined, or `failed`). See `docs/kiosk-lockdown.md`.
 
 ## Offline behaviour
 
@@ -105,6 +149,8 @@ app/src/main/java/com/aisignx/player/
   cache/    PageCache.kt  MediaCache.kt  MediaDownloader.kt  Range.kt  Served.kt
   shell/    ShellInfo.kt (window.AiSignXShellInfo)  ShellPort.kt (window.AiSignXShellPort)
   ui/       SetupActivity.kt  PlayerActivity.kt  PlayerWebClient.kt  Kiosk.kt  TvKeys.kt
+            ControlKeys.kt (keys -> control actions)  LockPolicy.kt  LockTask.kt (lock task, Device Owner)
+  AisignxDeviceAdminReceiver.kt   Device Owner receiver
   boot/     BootReceiver.kt
 app/src/test/   JVM unit tests (no emulator needed)
 ```

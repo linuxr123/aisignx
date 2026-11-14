@@ -12,6 +12,7 @@ A job is claimed with a conditional UPDATE on last_run_at before it runs, so eve
 processes sharing a database never run the same job twice. The thread wakes every 30 s.
 It is started by `flask --app wsgi serve` and by the first request, never by
 create_app(), so `flask db upgrade` and other CLI commands start no thread.
+No job starts while this process is in maintenance mode (a restore is running).
 """
 import importlib
 import logging
@@ -24,6 +25,7 @@ import sqlalchemy as sa
 from flask import Flask
 from sqlalchemy.exc import IntegrityError
 
+from . import maintenance
 from .extensions import db
 from .models import Setting
 from .timeutil import as_utc, utcnow
@@ -168,9 +170,12 @@ def run_due(app: Flask, now: datetime | None = None) -> list[str]:
     """One pass of the loop: run every due job that this process claims.
 
     A failing job never stops the others. Returns the names of the jobs that ran.
+    Nothing runs in maintenance mode: a restore is swapping the database and uploads.
     """
     ran = []
     for job in JOBS:
+        if maintenance.active() is not None:
+            break
         try:
             with app.app_context():
                 when = now or utcnow()

@@ -16,7 +16,10 @@ const CLIENT_ID_RE = /^[0-9a-f]{32}$/;
 
 function defaults() {
   // unlock: the PBKDF2 hash of the display's unlock PIN, copied from the manifest (see unlock.js).
-  return { serverUrl: '', port: 0, certPin: null, autostart: true, unlock: null };
+  // allowInput / kioskLock: the display's "Player controls" and "Lock player" options, copied
+  // from the manifest so an offline start applies them. allowInput is true until the server
+  // says otherwise (the legacy default, as on Android).
+  return { serverUrl: '', port: 0, certPin: null, autostart: true, unlock: null, allowInput: true, kioskLock: false };
 }
 
 // Throws an Error with a user-facing message when the address is not acceptable.
@@ -79,7 +82,27 @@ function sanitize(raw) {
   }
   if (raw.autostart !== undefined) cfg.autostart = raw.autostart !== false;
   cfg.unlock = sanitizeUnlock(raw.unlock); // a bad value is dropped, never thrown
+  if (typeof raw.allowInput === 'boolean') cfg.allowInput = raw.allowInput;
+  if (typeof raw.kioskLock === 'boolean') cfg.kioskLock = raw.kioskLock;
   return cfg;
+}
+
+// The config fields a manifest's `settings` changes -> {unlock?, allowInput?, kioskLock?}, only
+// the ones that differ from cfg. No `settings` (old server): {}. `settings` without kiosk_lock
+// means off; unlock and allow_input change only when present.
+function settingsPatch(cfg, settings) {
+  const patch = {};
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return patch;
+  if ('unlock' in settings) {
+    const next = sanitizeUnlock(settings.unlock);
+    if (JSON.stringify(next) !== JSON.stringify(cfg.unlock)) patch.unlock = next;
+  }
+  if (typeof settings.allow_input === 'boolean' && settings.allow_input !== cfg.allowInput) {
+    patch.allowInput = settings.allow_input;
+  }
+  const kioskLock = settings.kiosk_lock === true;
+  if (kioskLock !== cfg.kioskLock) patch.kioskLock = kioskLock;
+  return patch;
 }
 
 // -> {config, status: 'ok' | 'missing' | 'corrupt'}. A corrupt file is renamed to .bad
@@ -128,4 +151,5 @@ function clientId(dir) {
 module.exports = {
   PORT_MIN, PORT_MAX, CLIENT_ID_RE,
   defaults, normalizeServerUrl, isPrivateHost, isValidPin, loadConfig, saveConfig, clientId, writeAtomic,
+  settingsPatch,
 };

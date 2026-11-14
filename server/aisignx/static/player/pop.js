@@ -3,7 +3,10 @@
 // end(false) when the slide on screen fails (failed slides are not recorded). Each finished
 // play is queued in localStorage and posted to /plays in batches; the server ignores resent
 // ids, so a batch is removed only after a 2xx "ok" and may safely be sent twice.
-// Gaps: time under a fullscreen emergency overlay is subtracted, sampled twice a second;
+// pause()/resume() bracket time the viewer paused the item (player controls); paused time is
+// not play time. A skip simply ends the play early with its real on-screen duration.
+// Gaps: time under a fullscreen emergency overlay is subtracted, sampled twice a second (never
+// while paused, so time that is both paused and covered is subtracted once);
 // started_at uses the device clock, so a screen with a wrong clock has its plays dropped.
 (function () {
   "use strict";
@@ -17,7 +20,7 @@
 
   var store = net && net.store ? net.store.local : null;
   var queue = load();
-  var cur = null;    // {id, media_id, item_id, started_at, t0, covered, coverFrom}
+  var cur = null;    // {id, media_id, item_id, started_at, t0, covered, coverFrom, paused, pauseFrom}
   var sending = false;
   var offUntil = Number(store && store.get(OFF_KEY)) || 0;  // collection is off until then
 
@@ -44,7 +47,7 @@
     return !!(em && em.shownId !== null && em.shownId !== undefined && em.layout === "fullscreen");
   }
   function sample() {
-    if (!cur) return;
+    if (!cur || cur.pauseFrom !== null) return;  // cover accounting is frozen while paused
     var c = covered(), t = mono();
     if (c && cur.coverFrom === null) cur.coverFrom = t;
     else if (!c && cur.coverFrom !== null) { cur.covered += t - cur.coverFrom; cur.coverFrom = null; }
@@ -57,7 +60,7 @@
       id: newId(), media_id: Number(item.media_id),
       item_id: typeof item.id === "number" && item.id >= 0 ? item.id : null,
       started_at: new Date(Date.now()).toISOString(),
-      t0: mono(), covered: 0, coverFrom: null,
+      t0: mono(), covered: 0, coverFrom: null, paused: 0, pauseFrom: null,
     };
     sample();
   }
@@ -66,13 +69,32 @@
     if (!c) return;
     sample();
     cur = null;
-    var t = mono(), shown = t - c.t0 - c.covered - (c.coverFrom !== null ? t - c.coverFrom : 0);
+    var t = mono(), shown = t - c.t0 - c.covered - (c.coverFrom !== null ? t - c.coverFrom : 0) -
+      c.paused - (c.pauseFrom !== null ? t - c.pauseFrom : 0);
     var ms = Math.min(MAX_MS, Math.round(shown));
     if (!ok || off() || ms < MIN_MS) return;
     queue.push({ id: c.id, media_id: c.media_id, item_id: c.item_id, started_at: c.started_at, duration_ms: ms });
     if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);  // drop the oldest
     save();
     if (queue.length >= FLUSH_AT) flush();
+  }
+
+  // pause(): the item on screen is paused; resume(): it plays again. Both are idempotent.
+  function pause() {
+    var c = cur;
+    if (!c || c.pauseFrom !== null) return;
+    sample();
+    var t = mono();
+    // Freeze cover accounting: covered time so far is kept, the rest counts as paused.
+    if (c.coverFrom !== null) { c.covered += t - c.coverFrom; c.coverFrom = null; }
+    c.pauseFrom = t;
+  }
+  function resume() {
+    var c = cur;
+    if (!c || c.pauseFrom === null) return;
+    c.paused += mono() - c.pauseFrom;
+    c.pauseFrom = null;
+    sample();  // re-opens cover accounting if a fullscreen emergency is up
   }
 
   // Posts up to BATCH events; an empty POST probes whether collection is back on.
@@ -119,6 +141,8 @@
   window.AiSignXPop = {
     begin: begin,
     end: end,
+    pause: pause,
+    resume: resume,
     flush: flush,
     queued: function () { return queue.length; },
   };

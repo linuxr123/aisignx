@@ -34,7 +34,7 @@ restart does not make a daily job run again.
 | `backup.scheduled` | 15 minutes | Makes the daily backup once its hour has passed |
 | `audit.purge` | 6 hours | Deletes audit rows past their retention |
 | `pop.rollup` | hour | Builds the daily proof-of-play totals and purges old plays |
-| `media.orphans` | day | Deletes upload files no media item uses (older than 1 hour) and temp files older than a day |
+| `media.orphans` | day | Deletes upload files no media item uses (older than 1 hour; not in the first day after a restore) and temp files older than a day |
 
 `AISIGNX_JOBS=0` turns the thread off; nothing above then happens. **Admin > System** lists
 every job with its last run and error. A job that fails three times in a row opens a
@@ -77,8 +77,13 @@ AISIGNX_SMTP_PASSWORD=...
 and restart the server. The settings page shows whether it is set, never the value.
 
 Each recipient gets their own message: one when an alert opens and one when it resolves. A
-failed send is retried with growing pauses (up to an hour). Alerts older than 24 hours are not
-mailed any more, so a long mail outage does not end in a flood.
+notice counts as sent once any recipient accepted it; the addresses that failed are shown on
+the alert and are not tried again, so the others never get the same mail twice. A notice no
+recipient accepted is retried with growing pauses (up to an hour), unless the server refused
+every address for good (5xx). All notices of one run share one connection: when the server
+cannot be reached, the run stops after one try and every notice waits for its next turn.
+Alerts older than 24 hours are not mailed any more, so a long mail outage does not end in a
+flood.
 
 ## Audit log
 
@@ -95,7 +100,8 @@ IP address, the item and a detail. Passwords, tokens, PINs and keys are never wr
 
 ## Sign-in protection
 
-Failed sign-ins are limited per IP address (20) and per user name (5) within 15 minutes. Past
+Failed sign-ins are limited per IP address (20; an IPv6 /64 network counts as one address)
+and per user name (5) within 15 minutes. Past
 the limit the login page answers "Too many failed sign-in attempts" with HTTP 429 until the
 window has passed; the answer is the same whether the user exists or not. A failed API token
 check counts against the same per-IP limit. Change the limits with

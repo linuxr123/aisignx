@@ -9,7 +9,7 @@ import android.view.WindowManager
 
 /**
  * Full-screen, always-on presentation for the player activity.
- * No lock task in Phase 5 (Device Owner is deferred).
+ * Lock task (Lock player) lives in LockTask and PlayerActivity.updateLock().
  */
 object Kiosk {
 
