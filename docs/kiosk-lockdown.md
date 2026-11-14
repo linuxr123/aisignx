@@ -60,6 +60,10 @@ With Lock player on, the app starts Android's lock task mode. Without Device Own
   happens. Android may ask once to confirm the pin.
 - A person can unpin with **Back + Overview** (held together), so this stops casual use only.
 - The display's Diagnostics show `lock: pinned`.
+- Android shows **"App is pinned"** (and may ask "Pin this app?"). These are system security
+  notices; no app can hide them. The only way to get rid of them is Device Owner, below.
+  Device Owner needs a device with **no accounts signed in**, so on a personal phone you keep
+  the message. Use Device Owner on dedicated signage devices and TV boxes.
 
 ### Device Owner: real lockdown
 

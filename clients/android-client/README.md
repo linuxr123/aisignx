@@ -113,6 +113,27 @@ lock task:
   player through the PIN-protected exit and press **Remove Device Owner** in setup, or
   factory-reset the device.
 
+### Hiding the "App is pinned" message
+
+The "App is pinned" message and the "Pin this app?" prompt are Android's own security
+notices for screen pinning. An app cannot hide them. They disappear only when the app is
+the **Device Owner** (see above): lock task then starts silently, with no message, no prompt
+and no way to unpin.
+
+Android allows a Device Owner only on a device with **no accounts**: no Google, Samsung or
+other account may be signed in. On a personal phone the command fails with
+`Not allowed to set the device owner because there are already some accounts on the device`.
+So:
+
+- **Dedicated signage device or TV box:** factory-reset it, skip every account sign-in during
+  setup, enable USB debugging, install the app, run the `dpm set-device-owner` command above,
+  then turn on **Lock player** in the admin. No pinned message appears.
+- **Personal or test phone:** keep screen pinning and accept the message. Locking still
+  works; only the notice stays.
+
+Check the result with `adb shell dumpsys device_policy` (look for `Device Owner`), or in the
+display's diagnostics (`lock: owner` instead of `lock: pinned`).
+
 The hidden exit asks for the PIN and leaves lock task; the player locks again when it
 starts. **Unlock remotely** on the display page lifts the lock for the chosen time and lets
 the hidden exit skip the PIN; **Lock again** ends that early. A restart always locks again.
