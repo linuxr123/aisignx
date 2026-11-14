@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Restore backup{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Restore backup</h1>
+<div class="card mb-4" style="max-width: 44rem"><div class="card-body">
+  <dl class="row mb-0">
+    <dt class="col-sm-4">File</dt><dd class="col-sm-8 text-break">{{ name }} ({{ size|filesize }})</dd>
+    {% if manifest %}
+    <dt class="col-sm-4">Created</dt><dd class="col-sm-8">{{ manifest.created_at or "unknown" }}{% if manifest.source %} ({{ manifest.source }}){% endif %}</dd>
+    <dt class="col-sm-4">AiSignX version</dt><dd class="col-sm-8">{{ manifest.app_version or "unknown" }}</dd>
+    <dt class="col-sm-4">Database</dt><dd class="col-sm-8">
+      {% if "db/aisignx.db" in (manifest.files or {}) %}revision {{ manifest.alembic_revision }}{% if manifest.alembic_revision == current_revision %} (same as now){% endif %}
+      {% else %}not included ({{ manifest.db_dialect or "unknown" }}): only uploads are restored{% endif %}</dd>
+    <dt class="col-sm-4">Uploads</dt><dd class="col-sm-8">{{ "Included" if manifest.include_uploads else "Not included (current uploads are kept)" }}</dd>
+    <dt class="col-sm-4">Files</dt><dd class="col-sm-8">{{ (manifest.totals or {}).files }} ({{ ((manifest.totals or {}).bytes or 0)|filesize }})</dd>
+    {% endif %}
+  </dl>
+</div></div>
+
+{% if started %}
+<div style="max-width: 44rem">{% include "backup/_progress.html" %}</div>
+<p class="text-secondary small">The site is in maintenance mode until the restore finishes.</p>
+{% elif error %}
+<div class="alert alert-danger" style="max-width: 44rem">{{ error }}</div>
+<a class="btn btn-outline-secondary" href="{{ url_for('backup.index') }}">Back to backups</a>
+{% else %}
+<div class="alert alert-warning" style="max-width: 44rem">
+  <p>Restoring <strong>replaces</strong> all current data{% if manifest.include_uploads %} and uploaded media{% endif %} with the contents of this backup. A safety backup of the current state is taken first; if it cannot be written, nothing is changed.</p>
+  <p class="mb-0">The site shows a maintenance page while the restore runs, then everyone has to sign in again. Restart the server afterwards.</p>
+</div>
+<div class="card" style="max-width: 44rem"><div class="card-body">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {{ field(form.confirm, autofocus=true) }}
+    <p class="form-text mt-n2">Type <code>{{ name }}</code></p>
+    <button class="btn btn-danger" type="submit">Restore this backup</button>
+    <a class="btn btn-link" href="{{ url_for('backup.index') }}">Cancel</a>
+  </form>
+</div></div>
+{% endif %}
+{% endblock %}

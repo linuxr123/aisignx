@@ -3,13 +3,19 @@
 {% from "media/_thumb.html" import thumb, type_badge, preview_warning %}
 {% block title %}Edit {{ media.name }}{% endblock %}
 {% block content %}
-<h1 class="h3 mb-4">Edit media</h1>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <h1 class="h3 mb-0">Edit media <span class="text-secondary fs-6 fw-normal" data-media-id>ID {{ media.id }}</span></h1>
+  {% if current_user.is_admin %}
+  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('audit.index', target='media:' ~ media.id) }}">History</a>
+  {% endif %}
+</div>
 <div class="row g-4">
   <div class="col-md-5">
     <div class="card">
       {{ thumb(media, "card-img-top") }}
       <div class="card-body small">
         <dl class="row mb-0">
+          <dt class="col-5">ID</dt><dd class="col-7">{{ media.id }}</dd>
           <dt class="col-5">Type</dt><dd class="col-7">{{ type_badge(media) }} {{ preview_warning(media) }}</dd>
           {% if media.original_filename %}<dt class="col-5">File</dt><dd class="col-7 text-break">{{ media.original_filename }}</dd>{% endif %}
           {% if media.file_size %}<dt class="col-5">Size</dt><dd class="col-7">{{ media.file_size|filesize }}</dd>{% endif %}
@@ -34,6 +40,20 @@
         <button class="btn btn-primary" type="submit">Save</button>
         <a class="btn btn-link" href="{{ url_for('media.index') }}">Cancel</a>
       </form>
+      {% if media.stored_name %}
+      <hr>
+      <form method="post" action="{{ url_for('media.replace', media_id=media.id) }}" enctype="multipart/form-data"
+            data-confirm="Replace the file? Playlists keep this item and screens switch to the new file.">
+        {{ replace_form.hidden_tag() }}
+        <label class="form-label" for="replace-file">Replace file</label>
+        <div class="d-flex gap-2">
+          <input class="form-control" type="file" id="replace-file" name="file" required
+                 accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mov,.m4v,.mkv">
+          <button class="btn btn-outline-primary text-nowrap" type="submit">Replace</button>
+        </div>
+        <div class="form-text">Keeps the name, ID, duration and playlist placements. An image can be replaced with a video and the other way round.</div>
+      </form>
+      {% endif %}
       <hr>
       <form method="post" action="{{ url_for('media.refresh_thumbnail', media_id=media.id) }}" class="d-inline">
         {{ delete_form.hidden_tag() }}

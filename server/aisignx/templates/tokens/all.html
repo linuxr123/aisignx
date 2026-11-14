@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "tokens/_status.html" import status_badge, revoke_button %}
+{% block title %}All API tokens{% endblock %}
+{% block content %}
+<h1 class="h3 mb-2">All API tokens</h1>
+<p class="text-secondary">Every user's tokens. Revoke a token that is lost or no longer used.
+  Disabling a user also stops all of their tokens.</p>
+<div class="card"><div class="table-responsive">
+  <table class="table align-middle mb-0">
+    <thead><tr><th>Owner</th><th>Name</th><th>Token</th><th>Permissions</th><th>Created</th><th>Last used</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for t in tokens %}
+      <tr>
+        <td>{{ t.user.username }}{% if not t.user.is_active %} <span class="badge text-bg-secondary">Disabled</span>{% endif %}</td>
+        <td>{{ t.name }}</td>
+        <td><code>{{ t.prefix }}…</code></td>
+        <td class="small">{{ t.scopes|replace(" ", ", ") }}</td>
+        <td class="small text-nowrap">{{ t.created_at|localtime }}</td>
+        <td class="small text-nowrap">{% if t.last_used_at %}{{ t.last_used_at|localtime }}{% if t.last_used_ip %}<br><span class="text-secondary">{{ t.last_used_ip }}</span>{% endif %}{% else %}Never{% endif %}</td>
+        <td class="small text-nowrap">{{ t.expires_at|localtime if t.expires_at else "Never" }}</td>
+        <td>{{ status_badge(t, status) }}</td>
+        <td class="text-end">{{ revoke_button(t, revoke_form, "all") }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="text-center text-secondary py-4">No API tokens yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

@@ -8,6 +8,7 @@ from flask_login import current_user, login_required
 from sqlalchemy.orm import selectinload
 
 from .. import targets
+from ..audit import service as audit
 from ..auth.decorators import editor_required
 from ..extensions import db
 from ..models import EmergencyMessage
@@ -27,6 +28,10 @@ def _get_message_or_404(message_id: int) -> EmergencyMessage:
 def _require_action_form() -> None:
     if not ActionForm().validate_on_submit():
         abort(400)
+
+
+def _target(msg: EmergencyMessage) -> tuple:
+    return ("emergency", msg.id, msg.title)
 
 
 def _screens(n: int) -> str:
@@ -78,6 +83,11 @@ def send():
         flash("The message was not sent. Check the form below.", "danger")
         return _render(form, 400)
     msg = service.send(form, current_user)
+    audit.record("emergency.send", _target(msg),
+                 detail={"target": msg.target_label, "scope": msg.scope,
+                         "display_id": msg.display_id, "group_id": msg.group_id,
+                         "level": msg.level,
+                         "playlist_id": msg.playlist_id, "show_text": msg.show_text})
     db.session.commit()
     sent = service.push(msg)
     current_app.logger.warning("emergency %s (%s, %s) sent to %s by user %s: %s",
@@ -95,6 +105,8 @@ def clear(message_id: int):
     if not service.clear(msg, current_user):
         flash(f"{msg.title} was already cleared.", "info")
         return redirect(url_for("emergency.index"))
+    audit.record("emergency.clear", _target(msg),
+                 detail={"reason": msg.clear_reason, "target": msg.target_label})
     db.session.commit()
     service.push(msg)
     current_app.logger.warning("emergency %s (%s) cleared by user %s", msg.id, msg.title,
@@ -111,6 +123,8 @@ def clear_all():
     if not cleared:
         flash("No emergency message is live.", "info")
         return redirect(url_for("emergency.index"))
+    audit.record("emergency.clear_all",
+                 detail={"cleared": [{"id": m.id, "title": m.title} for m in cleared]})
     db.session.commit()
     for msg in cleared:
         service.push(msg)

@@ -44,6 +44,16 @@ v3 is a clean rewrite of AiSignX as a single-organization app.
 - Display options: location and notes (admin only, never sent to the screen), orientation (0/90/180/270), a fit mode for every item, video volume, an offline banner, and an input lock. Admins can also set a 4-8 digit unlock PIN that the Windows and Android apps ask for before leaving the player; it is stored and sent only as a salted PBKDF2 hash, with a growing lockout after 5 wrong PINs.
 - Display page: **Identify** shows the display name on the screen, **Screenshot** asks the screen for a picture (the apps capture the real screen, a browser draws its own media), and a **Diagnostics** card shows screen size, app version and capabilities, cache, free storage and recent player errors.
 - Player API: the manifest gains `settings`; new `command` actions `identify`, `screenshot` and `diagnostics`; `POST /screenshot`; an optional `diag` object in the heartbeat; shell `caps`, `capture()` and `stats()`. Existing keys are unchanged.
+- Phase 6 (Operations): see [docs/operations.md](docs/operations.md). A background jobs thread (`AISIGNX_JOBS`) runs alerts, scheduled backups, retention and rollups; each job's last run and error are kept in the database so restarts don't repeat work. New settings for instance, log and backup folders (`AISIGNX_INSTANCE_DIR`, `AISIGNX_LOG_DIR`, `AISIGNX_LOG_LEVEL`, `AISIGNX_BACKUP_DIR`) and a rotating log file. An **Admin** menu (audit log, backups, system, logs, all API tokens) and top-level **Alerts** and **Reports**.
+- Audit log viewer (filters, CSV export, retention) and audit entries for setup, sign-in, users, displays, groups, playlists, schedules, media, emergency messages, settings, tokens, backups and alerts, with History links on edit pages. Passwords, tokens, PINs and keys are never recorded.
+- Login rate limiting: failed sign-ins limited per IP address and per user name (429 with Retry-After; `AISIGNX_LOGIN_MAX_PER_IP`, `AISIGNX_LOGIN_MAX_PER_USER`, `AISIGNX_LOGIN_WINDOW_MIN`). Failed API token checks count against the same per-IP limit.
+- API tokens (per user, scoped `media:read`/`media:write`, optional expiry, revocable, stored only as hashes) and a JSON media API at `/api/v1/media` with the PowerPoint add-in's `/api/media` paths: list, get, upload and replace. See [docs/api.md](docs/api.md).
+- Replace a media file in place (API and admin) keeping its name, duration and playlist places; media IDs shown in the admin; a daily cleanup of unused upload files.
+- Backups: ZIP archives (SQLite backup API, secret key, uploads, sha256 manifest), a daily schedule with retention, web upload, download and restore with maintenance mode and automatic rollback, and `flask backup create|list|verify|restore|prune`. See [docs/backup.md](docs/backup.md).
+- Alerts derived from facts (display offline, low disk, sign-in burst, backup failed or stale, failing jobs) with acknowledge, per-display mute and optional SMTP e-mail (password only from `AISIGNX_SMTP_PASSWORD`).
+- Proof of play: screens report finished items (`POST /api/player/v1/plays`, off by default), an hourly daily rollup in the organization's time zone, **Reports > Plays** with daily and raw CSV exports, and retention settings.
+- System page: self-test with timings (database, schema, folders, disk, ticker, jobs, live connections, last backup, SMTP), runtime info, a log viewer with level filter and download, and `flask --app wsgi check --all [--json] [--smtp]`.
+- Docker image and compose file (one `/data` volume, non-root user, health check, optional Caddy HTTPS profile); [docs/https.md](docs/https.md) and [docs/docker.md](docs/docker.md). Web previews honour `AISIGNX_BROWSER_NO_SANDBOX`.
 
 ### Changed
 - **Input on screens is now off by default.** Touches, clicks, keys and the wheel are ignored, so web pages in playlists can no longer be used from the screen until an admin turns on **Allow touch, mouse and keyboard** for that display. Screens on an older server keep input on.
@@ -54,3 +64,6 @@ v3 is a clean rewrite of AiSignX as a single-organization app.
 - A playlist used by a schedule or a live emergency can no longer be deleted. Deleting a display or group also removes its schedules.
 - Changing the time zone in Settings updates all screens right away.
 - `/healthz` now returns `{"status": "ok", "app": "aisignx", "api": 1}` so the player apps can recognise an AiSignX server. It still needs no login and shows no version.
+- `/healthz` returns HTTP 503 with `"status": "error"` when the database cannot be reached (same keys as before).
+- HTTPS and reverse-proxy instructions moved from `docs/deployment.md` to `docs/https.md`.
+- The admin navigation collapses into a menu on screens narrower than 992 px.

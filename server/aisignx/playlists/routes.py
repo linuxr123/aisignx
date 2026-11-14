@@ -1,6 +1,7 @@
 from flask import abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
 
+from ..audit import service as audit
 from ..auth.decorators import editor_required
 from ..extensions import db
 from ..models import EmergencyMessage, Media, Playlist, PlaylistItem, Schedule
@@ -68,6 +69,7 @@ def create():
         playlist = Playlist(name=form.name.data.strip(), description=form.description.data or None,
                             default_transition=form.default_transition.data)
         db.session.add(playlist)
+        audit.record("playlist.create", playlist)
         db.session.commit()
         flash("Playlist created. Now add some media.", "success")
         return _back(playlist)
@@ -89,9 +91,15 @@ def edit(playlist_id: int):
     playlist = _get_playlist_or_404(playlist_id)
     form = PlaylistForm(obj=playlist)
     if form.validate_on_submit():
+        before = (playlist.name, playlist.description, playlist.default_transition)
         playlist.name = form.name.data.strip()
         playlist.description = form.description.data or None
         playlist.default_transition = form.default_transition.data
+        after = (playlist.name, playlist.description, playlist.default_transition)
+        changed = [k for k, old, new in zip(("name", "description", "default_transition"),
+                                            before, after) if old != new]
+        if changed:
+            audit.record("playlist.update", playlist, detail={"changed": changed})
         db.session.commit()
         flash("Playlist saved.", "success")
         return _back(playlist)
@@ -107,6 +115,7 @@ def delete(playlist_id: int):
     if blocker:
         flash(blocker, "danger")
         return _back(playlist)
+    audit.record("playlist.delete", playlist, detail={"items": len(playlist.items)})
     db.session.delete(playlist)
     db.session.commit()
     flash(f"Deleted playlist {playlist.name}.", "success")
@@ -118,6 +127,7 @@ def delete(playlist_id: int):
 def duplicate(playlist_id: int):
     _require_action_form()
     copy = service.duplicate(_get_playlist_or_404(playlist_id))
+    audit.record("playlist.create", copy, detail={"duplicated_from": playlist_id})
     db.session.commit()
     flash("Playlist duplicated.", "success")
     return _back(copy)
@@ -130,6 +140,8 @@ def add_items(playlist_id: int):
     playlist = _get_playlist_or_404(playlist_id)
     ids = request.form.getlist("media_ids", type=int)
     added = service.add_media(playlist, ids)
+    if added:
+        audit.record("playlist.item_add", playlist, detail={"media_ids": ids, "added": added})
     db.session.commit()
     if added:
         flash(f"Added {added} item{'s' if added != 1 else ''}.", "success")
@@ -151,6 +163,10 @@ def update_item(playlist_id: int, item_id: int):
         if item.media.is_video:  # the mute box is only shown for videos
             item.mute = form.mute.data
         service.touch(playlist)
+        audit.record("playlist.item_update", playlist,
+                     detail={"item_id": item.id, "media": item.media.name,
+                             "duration": item.duration, "transition": item.transition,
+                             "fit_mode": item.fit_mode, "mute": item.mute})
         db.session.commit()
         flash(f"Updated {item.media.name}.", "success")
     else:
@@ -164,7 +180,11 @@ def update_item(playlist_id: int, item_id: int):
 def remove_item(playlist_id: int, item_id: int):
     _require_action_form()
     playlist = _get_playlist_or_404(playlist_id)
-    service.remove_item(playlist, _get_item_or_404(playlist, item_id))
+    item = _get_item_or_404(playlist, item_id)
+    audit.record("playlist.item_remove", playlist,
+                 detail={"item_id": item.id, "media_id": item.media_id,
+                         "media": item.media.name if item.media else None})
+    service.remove_item(playlist, item)
     db.session.commit()
     return _back(playlist)
 
@@ -176,6 +196,8 @@ def move_item(playlist_id: int, item_id: int):
     playlist = _get_playlist_or_404(playlist_id)
     offset = -1 if request.form.get("direction") == "up" else 1
     service.move_item(playlist, _get_item_or_404(playlist, item_id), offset)
+    audit.record("playlist.reorder", playlist,
+                 detail={"item_id": item_id, "direction": "up" if offset < 0 else "down"})
     db.session.commit()
     return _back(playlist)
 
@@ -191,5 +213,6 @@ def reorder(playlist_id: int):
         return jsonify(error="item_ids must be a list of integers"), 400
     if not service.reorder(playlist, ids):
         return jsonify(error="item_ids must list every item in this playlist exactly once"), 400
+    audit.record("playlist.reorder", playlist, detail={"item_ids": ids})
     db.session.commit()
     return jsonify(ok=True, total_duration=playlist.total_duration)

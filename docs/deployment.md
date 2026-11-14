@@ -1,6 +1,7 @@
 # Deployment
 
-How to run AiSignX for real screens: the server, a reverse proxy, HTTPS and the kiosk browser.
+How to run AiSignX for real screens: the server, start-up, the kiosk browser, and pointers to
+[HTTPS](https.md) and [Docker](docker.md).
 For a quick test at home, `flask --app wsgi run` is enough.
 
 ## Run the server
@@ -68,79 +69,15 @@ WantedBy=multi-user.target
 ## Reverse proxy and HTTPS
 
 Use HTTPS when the network is not fully trusted (guest Wi-Fi, shared offices, anything reachable
-from the internet). The simplest way is a reverse proxy in front of AiSignX:
+from the internet). Put a reverse proxy such as Caddy, nginx or IIS in front of AiSignX, then set
+`AISIGNX_PROXY_HOPS=1` and `AISIGNX_SECURE_COOKIES=1`. The proxy must not buffer the screens'
+live-update stream. [https.md](https.md) has the full steps and examples for Caddy, nginx, IIS
+and Cloudflare, and how screens and the PowerPoint add-in trust a private certificate.
 
-1. Start AiSignX on the local machine only: `flask --app wsgi serve --host 127.0.0.1`.
-2. Point the proxy at `http://127.0.0.1:5000`.
-3. In `server/.env`, set:
-   - `AISIGNX_PROXY_HOPS=1`, so AiSignX reads the real client IP and `https` from the proxy's
-     `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host` headers. Use `2` with two
-     proxies in a row. Leave it at `0` without a proxy, or anyone could fake those headers.
-   - `AISIGNX_SECURE_COOKIES=1`, so login and screen cookies are only sent over HTTPS. With this
-     on, signing in over plain `http://` no longer works.
-4. Restart AiSignX and open the screens at `https://<your-host>/player/`.
+## Docker
 
-The live-update stream (`/api/player/v1/events`) must not be buffered or compressed by the
-proxy, and the proxy must allow at least 75 seconds without data (the server sends a
-keep-alive every 20 seconds).
-
-**Caddy** needs nothing extra. It gets a certificate automatically and streams events as they
-come:
-
-```
-signage.example.com {
-    reverse_proxy 127.0.0.1:5000
-}
-```
-
-**nginx:**
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name signage.example.com;
-    # ssl_certificate ... ; ssl_certificate_key ... ;
-    client_max_body_size 2048m;            # match AISIGNX_MAX_UPLOAD_MB
-
-    location / {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-    }
-
-    location /api/player/v1/events {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 120s;
-        gzip off;
-    }
-}
-```
-
-**IIS with Application Request Routing (ARR):**
-
-- In **Server Proxy Settings**, set **Response buffer threshold** to `0` and the time-out to at
-  least 75 seconds.
-- Turn off dynamic compression for the site, or at least for `text/event-stream`.
-- ARR sends `X-Forwarded-For` by default. Add a URL Rewrite server variable so it also sends
-  `X-Forwarded-Proto: https`.
-
-The [player apps](clients.md) never skip certificate checks. With a self-signed certificate,
-install your own CA on the devices or pin the certificate in the app's setup. To compare the
-fingerprint the app shows, print it on the server:
-
-```bash
-openssl x509 -noout -fingerprint -sha256 -in cert.pem
-```
+A `Dockerfile` and `docker-compose.yml` are in the repository root, with an optional Caddy
+service for HTTPS. See [docker.md](docker.md).
 
 ## Player apps
 

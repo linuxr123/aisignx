@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Alerts{% endblock %}
+{% block content %}
+{% set sev_badge = {"warning": "text-bg-warning", "critical": "text-bg-danger"} %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">Alerts</h1>
+  {% if current_user.is_admin %}
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('alerts.settings') }}">Alert settings</a>
+  {% endif %}
+</div>
+<p class="text-secondary small">
+  Checked every minute. Alerts resolve on their own when the problem goes away.
+  E-mail is {{ "on" if email_on else "off" }}.
+</p>
+
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item"><a class="nav-link{% if tab == 'open' %} active{% endif %}" href="{{ url_for('alerts.index') }}">Open ({{ open_alerts|length }})</a></li>
+  <li class="nav-item"><a class="nav-link{% if tab == 'history' %} active{% endif %}" href="{{ url_for('alerts.index', tab='history') }}">History</a></li>
+</ul>
+
+{% if tab == 'open' %}
+{% if open_alerts %}
+<div class="card mb-4"><div class="table-responsive">
+  <table class="table table-sm align-middle mb-0" data-alerts-open>
+    <thead><tr><th>Alert</th><th>Severity</th><th>Since</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for a in open_alerts %}
+      <tr data-alert-id="{{ a.id }}">
+        <td><div class="fw-semibold">{{ a.title }}</div>
+          {% if a.detail %}<div class="small text-secondary" style="white-space: pre-wrap">{{ a.detail }}</div>{% endif %}</td>
+        <td><span class="badge {{ sev_badge.get(a.severity, 'text-bg-secondary') }}">{{ a.severity }}</span></td>
+        <td class="small text-nowrap">{{ a.opened_at|localtime }}<div class="text-secondary">checked {{ a.last_seen_at|localtime("%H:%M") }}</div></td>
+        <td class="small">
+          {% if a.acknowledged_at %}Acknowledged{% if a.acknowledged_by %} by {{ a.acknowledged_by.username }}{% endif %}<div class="text-secondary">{{ a.acknowledged_at|localtime }}</div>
+          {% else %}<span class="text-danger">New</span>{% endif %}
+          {% if a.notified_at and not a.last_notify_error %}<div class="text-secondary">e-mailed</div>
+          {% elif a.last_notify_error and a.notify_attempts %}<div class="text-danger" title="{{ a.last_notify_error }}">e-mail failed ({{ a.notify_attempts }}x)</div>{% endif %}
+        </td>
+        <td class="text-end text-nowrap">
+          {% if current_user.can_edit %}
+            {% if not a.acknowledged_at %}
+            <form class="d-inline" method="post" action="{{ url_for('alerts.ack', alert_id=a.id) }}">
+              {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-primary" type="submit">Acknowledge</button>
+            </form>
+            {% endif %}
+            {% set did = display_id(a) %}
+            {% if did %}
+            <form class="d-inline" method="post" action="{{ url_for('alerts.mute', display_id=did) }}"
+                  data-confirm="Mute offline alerts for this display? Use this for screens that are switched off on purpose.">
+              {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit">Mute display</button>
+            </form>
+            {% endif %}
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% else %}
+<p class="text-secondary mb-4">No open alerts. Everything looks fine.</p>
+{% endif %}
+
+<h2 class="h5 mb-3">Muted displays</h2>
+{% if muted %}
+<ul class="list-group mb-4" style="max-width: 36rem" data-muted-displays>
+  {% for d in muted %}
+  <li class="list-group-item d-flex justify-content-between align-items-center">
+    <span>{{ d.name }}</span>
+    {% if current_user.can_edit %}
+    <form method="post" action="{{ url_for('alerts.unmute', display_id=d.id) }}">
+      {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit">Unmute</button>
+    </form>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="text-secondary small">No display is muted. Every paired display raises an alert when it goes offline.</p>
+{% endif %}
+
+{% else %}
+{% if history and history.items %}
+<div class="card mb-3"><div class="table-responsive">
+  <table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Alert</th><th>Severity</th><th>Opened</th><th>Resolved</th></tr></thead>
+    <tbody>
+    {% for a in history.items %}
+      <tr>
+        <td><div class="fw-semibold">{{ a.title }}</div>
+          {% if a.detail %}<div class="small text-secondary" style="white-space: pre-wrap">{{ a.detail }}</div>{% endif %}</td>
+        <td><span class="badge {{ sev_badge.get(a.severity, 'text-bg-secondary') }}">{{ a.severity }}</span></td>
+        <td class="small text-nowrap">{{ a.opened_at|localtime }}</td>
+        <td class="small text-nowrap">{{ a.resolved_at|localtime }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% if history.pages > 1 %}
+<nav><ul class="pagination pagination-sm">
+  <li class="page-item{% if not history.has_prev %} disabled{% endif %}"><a class="page-link" href="{{ url_for('alerts.index', tab='history', page=history.prev_num or 1) }}">Newer</a></li>
+  <li class="page-item disabled"><span class="page-link">Page {{ history.page }} of {{ history.pages }}</span></li>
+  <li class="page-item{% if not history.has_next %} disabled{% endif %}"><a class="page-link" href="{{ url_for('alerts.index', tab='history', page=history.next_num or history.page) }}">Older</a></li>
+</ul></nav>
+{% endif %}
+{% else %}
+<p class="text-secondary">No resolved alerts yet.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

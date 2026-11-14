@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "audit/_history.html" import history_link with context %}
 {% from "displays/_badge.html" import badge %}
 {% from "displays/_week.html" import now_playing, week_list %}
 {% from "displays/_device.html" import settings_card, screenshot_card, diagnostics_card %}
@@ -10,6 +11,7 @@
   <h1 class="h3 mb-0">{{ display.name }} {{ badge(state, labels, display.id) }}</h1>
   {% if current_user.can_edit %}
   <div class="text-nowrap">
+    {{ history_link('display', display.id) }}
     <a class="btn btn-outline-secondary" href="{{ url_for('displays.edit', display_id=display.id) }}">Edit</a>
     <form class="d-inline" method="post" action="{{ url_for('displays.reload', display_id=display.id) }}">
       {{ action_form.hidden_tag() }}<button class="btn btn-outline-secondary" type="submit">Reload</button>

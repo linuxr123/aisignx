@@ -10,7 +10,7 @@
 </head>
 <body class="bg-body-tertiary"{% if current_user.is_authenticated %} data-thumb-status-url="{{ url_for('media.thumbnail_status') }}"{% endif %}>
 {% if current_user.is_authenticated %}
-<nav class="navbar navbar-expand-md bg-dark" data-bs-theme="dark">
+<nav class="navbar navbar-expand-lg bg-dark" data-bs-theme="dark">
   <div class="container-fluid">
     <a class="navbar-brand" href="{{ url_for('main.dashboard') }}">AiSignX <small class="text-secondary">{{ org_name }}</small></a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
@@ -30,6 +30,24 @@
         <li class="nav-item"><a class="nav-link{% if ep.startswith('users.') %} active{% endif %}" href="{{ url_for('users.index') }}">Users</a></li>
         <li class="nav-item"><a class="nav-link{% if ep.startswith('settings.') %} active{% endif %}" href="{{ url_for('settings.index') }}">Settings</a></li>
         {% endif %}
+        <li class="nav-item"><a class="nav-link{% if ep.startswith('pop.') %} active{% endif %}" href="{{ url_for('pop.report') }}">Reports</a></li>
+        <li class="nav-item">
+          <a class="nav-link{% if ep.startswith('alerts.') %} active{% endif %}" href="{{ url_for('alerts.index') }}">Alerts{% if open_alert_count|default(0) %}
+            <span class="badge rounded-pill text-bg-danger" data-alert-badge title="Open alerts">{{ open_alert_count }}</span>{% endif %}</a>
+        </li>
+        {% if current_user.is_admin %}
+        {% set admin_active = ep.startswith('audit.') or ep.startswith('backup.') or ep.startswith('system.') or ep == 'tokens.admin_index' %}
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle{% if admin_active %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Admin</a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item{% if ep.startswith('audit.') %} active{% endif %}" href="{{ url_for('audit.index') }}">Audit log</a></li>
+            <li><a class="dropdown-item{% if ep.startswith('backup.') %} active{% endif %}" href="{{ url_for('backup.index') }}">Backups</a></li>
+            <li><a class="dropdown-item{% if ep.startswith('system.') and ep != 'system.logs' %} active{% endif %}" href="{{ url_for('system.index') }}">System</a></li>
+            <li><a class="dropdown-item{% if ep == 'system.logs' %} active{% endif %}" href="{{ url_for('system.logs') }}">Logs</a></li>
+            <li><a class="dropdown-item{% if ep == 'tokens.admin_index' %} active{% endif %}" href="{{ url_for('tokens.admin_index') }}">All API tokens</a></li>
+          </ul>
+        </li>
+        {% endif %}
         <li class="nav-item"><a class="nav-link text-danger{% if ep.startswith('emergency.') %} active fw-semibold{% endif %}" href="{{ url_for('emergency.index') }}">Emergency</a></li>
       </ul>
       <ul class="navbar-nav">
@@ -39,6 +57,7 @@
           </a>
           <ul class="dropdown-menu dropdown-menu-end">
             <li><a class="dropdown-item" href="{{ url_for('auth.profile') }}">Profile</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('tokens.index') }}">API tokens</a></li>
             <li><hr class="dropdown-divider"></li>
             <li>
               <form method="post" action="{{ url_for('auth.logout') }}">

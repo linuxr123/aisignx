@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Backups{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Backups</h1>
+
+{% include "backup/_progress.html" %}
+{% if not state.running and state.finished_at and state.ok is false %}
+<div class="alert alert-danger">The last {{ state.op }} failed: {{ state.message }}</div>
+{% endif %}
+{% if stale %}
+<div class="alert alert-warning">The newest backup is more than 48 hours old, although daily backups are on. Check the last error below.</div>
+{% elif not backups %}
+<div class="alert alert-secondary">There are no backups yet.</div>
+{% endif %}
+
+<div class="card mb-4"><div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Date</th><th>Source</th><th>Size</th><th>Database version</th><th>Uploads</th><th></th></tr></thead>
+    <tbody>
+    {% for b in backups %}
+      <tr>
+        <td>{{ (b.created_at or b.mtime)|localtime }}<div class="small text-secondary text-break">{{ b.name }}</div></td>
+        <td>{{ b.source }}{% if b.origin and b.origin != b.source %} <span class="text-secondary small">(was {{ b.origin }})</span>{% endif %}</td>
+        <td>{{ b.size|filesize }}</td>
+        <td>
+          {% if b.error %}<span class="badge text-bg-danger">{{ b.error }}</span>
+          {% elif not b.db_included %}<span class="text-secondary">no database</span>
+          {% elif b.revision == current_revision %}<span class="badge text-bg-success">current</span>
+          {% elif b.revision in known %}<span class="badge text-bg-secondary">older ({{ b.revision }})</span>
+          {% else %}<span class="badge text-bg-warning">newer ({{ b.revision }})</span>{% endif %}
+          {% if b.app_version %}<div class="small text-secondary">AiSignX {{ b.app_version }}</div>{% endif %}
+        </td>
+        <td>{{ "—" if b.error else ("Yes" if b.include_uploads else "No") }}</td>
+        <td class="text-end text-nowrap">
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('backup.download', name=b.name) }}">Download</a>
+          {% if not b.error %}<a class="btn btn-sm btn-outline-warning" href="{{ url_for('backup.restore_page', name=b.name) }}">Restore…</a>{% endif %}
+          <form class="d-inline" method="post" action="{{ url_for('backup.delete', name=b.name) }}"
+                data-confirm="Delete {{ b.name }}?">
+            {{ action_form.hidden_tag() }}
+            <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+    {% if backups %}<tfoot><tr><td colspan="2" class="text-secondary">{{ backups|length }} archives</td><td colspan="4">{{ total|filesize }} in total</td></tr></tfoot>{% endif %}
+  </table>
+</div></div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card mb-4"><div class="card-body">
+      <h2 class="h5">Back up now</h2>
+      <form method="post" action="{{ url_for('backup.create') }}">
+        {{ create_form.hidden_tag() }}
+        {{ field(create_form.include_uploads) }}
+        <button class="btn btn-primary" type="submit"{% if state.running %} disabled{% endif %}>Create backup</button>
+      </form>
+    </div></div>
+    <div class="card mb-4"><div class="card-body">
+      <h2 class="h5">Upload a backup</h2>
+      <p class="small text-secondary">For example from another server. It is checked before it is listed. Files larger than the upload limit can be copied into the backup folder instead.</p>
+      <form method="post" action="{{ url_for('backup.upload') }}" enctype="multipart/form-data">
+        {{ upload_form.hidden_tag() }}
+        {{ field(upload_form.file) }}
+        <button class="btn btn-outline-primary" type="submit">Upload</button>
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card mb-4"><div class="card-body">
+      <h2 class="h5">Daily backups</h2>
+      <dl class="row small">
+        <dt class="col-5">Last successful backup</dt><dd class="col-7">{{ last_ok_at|localtime }}</dd>
+        <dt class="col-5">Last daily run</dt><dd class="col-7">{{ last_scheduled_date or "Never" }}</dd>
+        {% if last_error %}
+        <dt class="col-5">Last error</dt><dd class="col-7 text-danger">{{ last_error }}{% if last_error_at %} ({{ last_error_at|localtime }}){% endif %}</dd>
+        {% endif %}
+        <dt class="col-5">Backup folder</dt><dd class="col-7 text-break"><code>{{ backup_dir }}</code><div class="text-secondary">Set with AISIGNX_BACKUP_DIR.</div></dd>
+      </dl>
+      <form method="post" action="{{ url_for('backup.settings') }}" novalidate>
+        {{ settings_form.hidden_tag() }}
+        {{ field(settings_form.enabled) }}
+        {{ field(settings_form.hour) }}
+        {{ field(settings_form.keep) }}
+        {{ field(settings_form.include_uploads) }}
+        <p class="form-text">Only daily backups are deleted automatically. Manual, uploaded and pre-restore backups are kept until you delete them.</p>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </form>
+    </div></div>
+  </div>
+</div>
+<p class="small text-secondary">Backups contain password hashes and the server's secret key. Keep copies somewhere safe and private.</p>
+{% endblock %}

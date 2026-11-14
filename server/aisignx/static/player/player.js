@@ -5,6 +5,7 @@
 
   var A = window.AiSignX;
   var net = A.net, R = A.render, EM = A.emergency, D = A.device, store = net.store, K = net.store.KEYS;
+  var POP = window.AiSignXPop || null;  // proof of play (pop.js); optional
   var body = document.body, screenEl = document.getElementById("screen");
   var BUILD = body.getAttribute("data-build") || "";
   var ROOT = body.getAttribute("data-root") || "";
@@ -38,6 +39,7 @@
 
   function now() { return window.performance && performance.now ? performance.now() : Date.now(); }
   function note(msg) { S.note = msg; D.noteError(msg); if (window.console) console.info("[player] " + msg); }
+  function pop(fn, arg) { if (POP) { try { POP[fn](arg); } catch (e) { if (window.console) console.error(e); } } }
   function durationOf(item) { var d = Number(item.duration_ms); return d > 0 ? Math.max(1000, d) : DEFAULT_DURATION_MS; }
 
   // ---- Timers. Mode timers die on any state-machine transition; slide timers on any slide change.
@@ -197,7 +199,7 @@
 
   // ---- Playback loop.
   function startPlaying() { stopPlayback(); setState("PLAYING"); S.pos = -1; S.failures = 0; tick(); }
-  function stopPlayback() { S.gen++; clearSlideTimers(); dropNext(); R.clear(); S.cur = null; S.forceSwap = false; }
+  function stopPlayback() { pop("end", true); S.gen++; clearSlideTimers(); dropNext(); R.clear(); S.cur = null; S.forceSwap = false; }
   function showNoContent(failed) {
     stopPlayback();
     setState("NO_CONTENT");
@@ -230,7 +232,11 @@
   }
   function boundary() {
     if (S.reloadPending) guardedReload();
-    if (singleRepeat()) { S.cur.deadline = now() + durationOf(S.cur.item); return; }
+    if (singleRepeat()) {
+      S.cur.deadline = now() + durationOf(S.cur.item);
+      pop("end", true); pop("begin", S.cur.item);  // each repeat counts as a play
+      return;
+    }
     if (!S.nxt) prepareNext();
     else if (S.nxt.state === "ready") swapTo(S.nxt);
     // loading: the old slide stays until the new one is ready; wait: failure dwell
@@ -262,6 +268,7 @@
     var item = n.item, g = S.gen, t = now();
     R.swap(n.slide, item.transition);
     screenEl.hidden = true;
+    pop("end", true); pop("begin", item);
     S.cur = { slide: n.slide, item: item, shownAt: t, deadline: t + durationOf(item), failed: false };
     EM.sync();  // a fullscreen emergency keeps the new video silent
     if (!R.isVideo(n.slide)) return;
@@ -283,6 +290,7 @@
     if (!cur || cur.failed) return;
     note("item " + cur.item.id + " failed: " + reason);  // note() also feeds the error ring
     cur.failed = true;
+    pop("end", false);  // failed slides are not counted as plays
     if (countFailure()) return;
     cur.deadline = Math.min(cur.deadline, Math.max(now(), cur.shownAt + FAIL_DWELL_MS));
     tick();

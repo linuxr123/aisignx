@@ -4,9 +4,10 @@ Self-hosted digital signage. One web admin manages playlists, schedules and scre
 for a home, a small business, or a company with a few dozen screens.
 
 > **Status:** v3 is a rewrite in progress. Phase 1 (accounts, roles, settings, setup wizard),
-> Phase 2 (media library, playlists), Phase 3 (screens: pairing, browser player, live updates)
-> Phase 4 (schedules, display groups, emergency override) and Phase 5 (Windows and Android player
-> apps) are done. Operations (backup, audit log, Docker) are next. See [CHANGELOG.md](CHANGELOG.md).
+> Phase 2 (media library, playlists), Phase 3 (screens: pairing, browser player, live updates),
+> Phase 4 (schedules, display groups, emergency override), Phase 5 (Windows and Android player
+> apps) and Phase 6 (backups, alerts, audit log, API, proof of play, Docker) are done.
+> See [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
@@ -45,8 +46,10 @@ cd server
 Open http://127.0.0.1:5000. On first start, the setup wizard asks for your organization name,
 time zone and the first admin account. There are no default passwords.
 
-To check the system at any time, run `flask --app wsgi check` in `server/`. Admins also see a
-warning on the dashboard if a required program is missing.
+To check the system at any time, run `flask --app wsgi check --all` in `server/`, or open
+**Admin > System**. Admins also see a warning on the dashboard if a required program is missing.
+
+To run AiSignX in Docker instead, see [docs/docker.md](docs/docker.md).
 
 ## Configuration
 
@@ -65,6 +68,16 @@ Settings come from environment variables or `server/.env` (see `server/.env.exam
 | `AISIGNX_MAX_STREAMS` | `50` | Most screens with a live-update connection at once; `serve` starts this many threads plus 16 |
 | `AISIGNX_PROXY_HOPS` | `0` | Number of reverse proxies in front of AiSignX; set to `1` behind nginx, Caddy or IIS |
 | `AISIGNX_SCHEDULE_TICKER` | `1` | Background check that pushes schedule starts and ends to screens each minute; `0` turns it off (screens then catch up through their 30-second heartbeat) |
+| `AISIGNX_INSTANCE_DIR` | `server/instance` | Folder for the SQLite database and `secret_key` |
+| `AISIGNX_LOG_DIR` / `AISIGNX_LOG_LEVEL` | `server/logs` / `INFO` | Log folder (`aisignx.log`, 5 x 5 MB) and level |
+| `AISIGNX_BACKUP_DIR` | `server/backups` | Where backup archives are written |
+| `AISIGNX_JOBS` | `1` | Background jobs (alerts, backups, retention); `0` turns them off |
+| `AISIGNX_SMTP_PASSWORD` | not set | Password for the alert mail server (never stored in the database) |
+| `AISIGNX_LOGIN_MAX_PER_IP` / `_PER_USER` / `_WINDOW_MIN` | `20` / `5` / `15` | Failed sign-ins allowed per IP and per user name within the window in minutes |
+| `AISIGNX_BROWSER_NO_SANDBOX` | `0` | Start the preview browser with `--no-sandbox` (containers running as non-root) |
+
+The folder defaults are relative to the instance folder's parent, so with
+`AISIGNX_INSTANCE_DIR=/data/instance` logs go to `/data/logs` and backups to `/data/backups`.
 
 ## Media and playlists
 
@@ -97,8 +110,9 @@ app version, cache and recent errors.
 
 Each connected screen keeps one server thread busy. `flask --app wsgi serve` sizes the threads
 from `AISIGNX_MAX_STREAMS` (default 50 screens), so raise that setting if you have more screens.
-Run a single server process. For kiosk browser settings, reverse proxies and HTTPS, see
-[docs/deployment.md](docs/deployment.md). The player API is described in
+Run a single server process. For start-up and kiosk browser settings see
+[docs/deployment.md](docs/deployment.md); for HTTPS and reverse proxies see
+[docs/https.md](docs/https.md). The player API is described in
 [docs/player-api.md](docs/player-api.md).
 
 ## Player apps
@@ -131,11 +145,35 @@ behaviour, kiosk settings and build steps.
 Screens switch within about a second when a schedule starts or ends. Details, including daylight
 saving rules, are in [docs/scheduling.md](docs/scheduling.md).
 
+## Operations
+
+- **Backups:** a daily ZIP archive of the database, secret key and uploads (kept 7 by default),
+  plus manual backups, download, upload and restore under **Admin > Backups**, or
+  `flask --app wsgi backup create|list|verify|restore|prune`. Archives contain secrets; copy
+  them off-site somewhere private. See [docs/backup.md](docs/backup.md).
+- **Alerts:** screens offline, low disk space, bursts of failed sign-ins, failed or missing
+  backups and failing background jobs show under **Alerts**, optionally by e-mail.
+- **Audit log:** who changed what and when, with filters, CSV export and History links on
+  edit pages (**Admin > Audit log**).
+- **Sign-in protection:** failed sign-ins are limited per IP address and per user name.
+- **API tokens and media API:** each user can create tokens under **API tokens** in their menu.
+  The JSON media API lists, uploads and replaces media, and serves the PowerPoint add-in. See
+  [docs/api.md](docs/api.md).
+- **Proof of play:** when turned on, screens report what they played; **Reports > Plays** shows
+  totals and exports CSV.
+- **Health:** **Admin > System** runs a self-test, **Admin > Logs** shows the log file, and
+  `/healthz` answers uptime monitors.
+
+All of this runs inside the one server process. Details, retention and a monthly checklist are
+in [docs/operations.md](docs/operations.md).
+
 ## Roles
 
-- **Admin:** everything, including users and settings.
-- **Editor:** media, playlists, schedules and displays.
-- **Viewer:** read-only.
+- **Admin:** everything, including users, settings, backups, the audit log, the system page
+  and all API tokens.
+- **Editor:** media, playlists, schedules and displays; can acknowledge alerts and mute
+  displays; API tokens with read and write access to media.
+- **Viewer:** read-only, including alerts and play reports; API tokens that can only read media.
 
 ## Development
 

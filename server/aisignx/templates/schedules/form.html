@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "audit/_history.html" import history_link with context %}
 {% from "_form.html" import field %}
 {% block title %}{{ "Edit schedule" if schedule else "New schedule" }}{% endblock %}
 {% macro errors(f) %}{% for e in f.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}{% endmacro %}
@@ -49,6 +50,7 @@
 
     <button class="btn btn-primary" type="submit">Save</button>
     <a class="btn btn-link" href="{{ url_for('schedules.index') }}">Cancel</a>
+    {% if schedule %}{{ history_link('schedule', schedule.id, 'btn btn-link') }}{% endif %}
   </form>
 </div></div>
 {% endblock %}

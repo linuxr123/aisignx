@@ -52,6 +52,7 @@ Decide on `error` (and the HTTP status), never on `message`, which is for people
 | HTTP | `error` | Meaning | What the client does |
 |---|---|---|---|
 | 400 | `bad_request` | Body is not a JSON object, or a field is invalid | Client bug. Log it; don't repeat the same request in a loop. |
+| 400 | `too_many_events` | `POST /plays` with more than 200 events | Send smaller batches. |
 | 400 | `bad_image` | `POST /screenshot` body is not a readable JPEG or PNG, or is over 40 megapixels | Drop the screenshot. |
 | 401 | `unauthorized` | Token missing, wrong, unpaired or the display was deleted | Drop the token (and cached manifest), go back to pairing. |
 | 403 | `forbidden` | Not allowed | Client bug. |
@@ -59,7 +60,7 @@ Decide on `error` (and the HTTP status), never on `message`, which is for people
 | 404 | `expired` | Pairing secret unknown, used or expired | Start pairing again with `POST /pair`. |
 | 405 | `method_not_allowed` | Wrong HTTP method | Client bug. |
 | 409 | `stale_request` | `POST /screenshot` with a request id that is not (or no longer) open | Drop the screenshot. |
-| 413 | `too_large` | Request body over 8 KB (4 MB for `POST /screenshot`) | Client bug. |
+| 413 | `too_large` | Request body over 8 KB (64 KB for `POST /plays`, 4 MB for `POST /screenshot`) | Client bug. |
 | 415 | `unsupported_type` | `POST /screenshot` body is not `image/jpeg` or `image/png` | Client bug. |
 | 429 | `too_many_pending` | Too many screens are waiting to pair | Wait `Retry-After` seconds (60), then try again. |
 | 503 | `busy` | Server is at its connection limit, or a pairing code collision | Wait `Retry-After` seconds, keep playing. |
@@ -72,8 +73,9 @@ meanwhile. Use a request timeout of about 10 seconds.
 
 ## Request bodies
 
-- Send a JSON object with `Content-Type: application/json`. The body limit is 8 KB (the only
-  exception is the raw image body of `POST /screenshot`, up to 4 MB).
+- Send a JSON object with `Content-Type: application/json`. The body limit is 8 KB (the
+  exceptions are `POST /plays`, up to 64 KB, and the raw image body of `POST /screenshot`, up
+  to 4 MB).
 - `client_id` must match `^[A-Za-z0-9_-]{1,64}$`. Make one random hex ID on first start and keep
   it forever (for example 16 random bytes as 32 hex characters).
 - `player_version` is cut to 32 characters and `device` to 120. Use a prefix that names the
@@ -321,6 +323,54 @@ If `manifest_version` differs from the version you are playing, fetch the manife
 safety net when the event stream is down. The admin shows a display as online while heartbeats
 arrive (offline after 90 seconds without one). On a JSON 401, go back to pairing; ignore network
 errors and keep playing.
+
+## Plays
+
+### `POST /plays`
+
+Authenticated. Proof of play: the screen reports each item it finished showing. Collection is
+off until an admin turns it on (**Reports > Proof-of-play settings**).
+
+```json
+{"events": [{"id": "0b6f3c1e-8a4d-4f7e-9c2a-5d1e7f3a9b40", "media_id": 12, "item_id": 41,
+  "started_at": "2026-11-12T09:15:00.000Z", "duration_ms": 10000}]}
+```
+
+| Field | Rule |
+|---|---|
+| `id` | A unique id per play, `^[A-Za-z0-9_-]{8,64}$` (a UUID works). The server ignores an id it already stored for this display, so a batch can safely be sent again. |
+| `media_id` | The manifest item's `media_id` (integer, at least 1). An id the server no longer knows is still accepted. |
+| `item_id` | The manifest item's `id`, or `null`. |
+| `started_at` | When the item went on screen, ISO 8601 with a time zone (`Z`). Must be within the last 7 days (and inside the server's raw retention, `pop.raw_days`) and at most 5 minutes in the future. |
+| `duration_ms` | How long it was visible, integer. Clamped to 0..86,400,000; plays under 500 ms are dropped. |
+
+At most 200 events and 64 KB per request (`400 too_many_events`, `413 too_large`). A body that
+is not a JSON object, or `events` that is not a list, gives `400 bad_request`. An event that
+breaks a rule is dropped and counted, never an error, so one bad event cannot block a queue.
+
+`200 OK`:
+
+```json
+{"status": "ok", "accepted": 1, "duplicate": 0, "dropped": 0}
+```
+
+When collection is off: `200 {"status": "disabled", "retry_after_s": 1800}`. Clear the queue,
+stop collecting, and after `retry_after_s` seconds probe with an empty `{"events": []}`.
+
+How the browser player (`static/player/pop.js`) does it, as a model for other clients:
+
+- A play starts when a slide goes on screen and ends when the next one replaces it; each repeat
+  of a single-item playlist is a new play. Failed slides are not recorded.
+- Time under a fullscreen emergency overlay is subtracted (sampled twice a second); a banner
+  overlay does not count as covering the content.
+- The queue lives in `localStorage` (`aisignx.plays`), at most 1000 events (the oldest are
+  dropped). It is sent at 50 events or every 60 seconds, 200 per request, and an event is
+  removed only after a 2xx `"status": "ok"`. A `400` or `413` drops that batch.
+- `started_at` comes from the device clock, so a screen with a wrong clock loses its plays.
+- A 401 is left to the player's normal pairing logic.
+
+The server rolls the events up into daily totals per screen and media once an hour, in the
+organization time zone, for the play reports in the admin.
 
 ## Live events
 

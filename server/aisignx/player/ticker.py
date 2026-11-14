@@ -19,6 +19,7 @@ from ..models import Display
 from .broker import get_broker
 
 _KEY = "aisignx_schedule_ticker"
+_LAST_TICK_KEY = "aisignx_ticker_last_tick"  # time.time() of the last good pass
 _lock = threading.Lock()
 
 
@@ -70,6 +71,7 @@ def _run(app: Flask) -> None:
     while True:
         try:
             tick(app, last)
+            app.extensions[_LAST_TICK_KEY] = time.time()
         except Exception:  # keep ticking; the heartbeat is the backstop
             app.logger.exception("schedule ticker failed")
         _sleep_to_next_minute()

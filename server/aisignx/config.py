@@ -16,6 +16,23 @@ Secrets never live in this file. Supported variables:
                           changes to screens at minute boundaries (default: on)
     AISIGNX_PROXY_HOPS    number of reverse proxies in front of the app whose
                           X-Forwarded-* headers are trusted (default: 0 = none)
+
+Operations (Phase 6). Everything below is per process: run one server process.
+
+    AISIGNX_INSTANCE_DIR  folder for the SQLite database and secret_key
+                          (default: server/instance); read in create_app()
+    AISIGNX_LOG_DIR       folder for aisignx.log, rotated at 5 MB x 5 files
+                          (default: <instance parent>/logs)
+    AISIGNX_LOG_LEVEL     DEBUG, INFO, WARNING or ERROR (default: INFO)
+    AISIGNX_JOBS          "0" turns off the background jobs thread (alerts, backups,
+                          retention, proof-of-play rollup) (default: on)
+    AISIGNX_BACKUP_DIR    where backup archives are written (default: <instance parent>/backups)
+    AISIGNX_SMTP_PASSWORD password for the alert mail server; never stored in the database
+    AISIGNX_LOGIN_MAX_PER_IP    failed sign-ins per IP address per window (default: 20)
+    AISIGNX_LOGIN_MAX_PER_USER  failed sign-ins per user name per window (default: 5)
+    AISIGNX_LOGIN_WINDOW_MIN    length of the failed sign-in window in minutes (default: 15)
+    AISIGNX_BROWSER_NO_SANDBOX  "1" starts the preview browser with --no-sandbox
+                          (needed in containers that run as non-root; default: off)
 """
 import os
 import secrets
@@ -27,6 +44,14 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    value = (os.environ.get(name) or "").strip()
+    try:
+        return int(value) if value else default
+    except ValueError:
+        return default
 
 
 def load_secret_key(instance_path: str) -> str:
@@ -45,7 +70,8 @@ def load_secret_key(instance_path: str) -> str:
 def build_config(instance_path: str) -> dict:
     """Build the Flask config dict. instance_path must already exist."""
     default_db = "sqlite:///" + str(Path(instance_path) / "aisignx.db").replace("\\", "/")
-    default_uploads = str(Path(instance_path).parent / "uploads")
+    data_root = Path(instance_path).parent
+    default_uploads = str(data_root / "uploads")
     secure = _env_flag("AISIGNX_SECURE_COOKIES")
     return {
         "UPLOAD_FOLDER": os.environ.get("AISIGNX_UPLOAD_DIR", default_uploads),
@@ -76,4 +102,15 @@ def build_config(instance_path: str) -> dict:
         "PAIRING_MAX_PENDING": 50,
         "PAIRING_MAX_PENDING_PER_IP": 10,
         "PROXY_HOPS": int(os.environ.get("AISIGNX_PROXY_HOPS") or 0),
+        # Operations.
+        "LOG_DIR": os.environ.get("AISIGNX_LOG_DIR") or str(data_root / "logs"),
+        "LOG_LEVEL": (os.environ.get("AISIGNX_LOG_LEVEL") or "INFO").strip().upper(),
+        "LOG_TO_FILE": False,  # only consulted when TESTING (tests opt in)
+        "JOBS_ENABLED": os.environ.get("AISIGNX_JOBS", "1").strip() != "0",
+        "BACKUP_DIR": os.environ.get("AISIGNX_BACKUP_DIR") or str(data_root / "backups"),
+        "SMTP_PASSWORD": os.environ.get("AISIGNX_SMTP_PASSWORD") or None,
+        "LOGIN_MAX_PER_IP": _env_int("AISIGNX_LOGIN_MAX_PER_IP", 20),
+        "LOGIN_MAX_PER_USER": _env_int("AISIGNX_LOGIN_MAX_PER_USER", 5),
+        "LOGIN_WINDOW_SECONDS": _env_int("AISIGNX_LOGIN_WINDOW_MIN", 15) * 60,
+        "BROWSER_NO_SANDBOX": _env_flag("AISIGNX_BROWSER_NO_SANDBOX"),
     }

@@ -21,6 +21,9 @@ def app(tmp_path, monkeypatch):
         "THUMBNAILS_ASYNC": False,  # run thumbnail jobs inline so tests are deterministic
         "BROWSER_PATH": "aisignx-test-no-browser",  # no real browser/network unless a test opts in
         "PLAYER_SCHEDULE_TICKER": False,  # tests drive ticker.tick() directly
+        "JOBS_ENABLED": False,  # tests run jobs with run_job()
+        "BACKUP_DIR": str(tmp_path / "backups"),
+        "LOG_DIR": str(tmp_path / "logs"),
     })
     with app.app_context():
         upgrade()  # build the schema through Alembic, exactly like production
@@ -118,9 +121,38 @@ def make_csrf_app(tmp_path, monkeypatch, **overrides):
         "THUMBNAILS_ASYNC": False,
         "BROWSER_PATH": "aisignx-test-no-browser",
         "PLAYER_SCHEDULE_TICKER": False,
+        "JOBS_ENABLED": False,
+        "BACKUP_DIR": str(tmp_path / "backups"),
+        "LOG_DIR": str(tmp_path / "logs"),
     }
     config.update(overrides)
     app = create_app(config)
     with app.app_context():
         upgrade()
     return app
+
+
+# --- Operations (Phase 6) ---------------------------------------------------------------
+
+def make_token(app, user_id, scopes="media:read media:write", **kw) -> str:
+    """Insert an ApiToken for user_id (any column can be overridden). Returns the raw token."""
+    import hashlib
+    import secrets
+
+    from aisignx.models import ApiToken
+
+    raw = "asx_" + secrets.token_urlsafe(32)
+    fields = {"name": "test token", "prefix": raw[:12],
+              "token_hash": hashlib.sha256(raw.encode("utf-8")).hexdigest(), "scopes": scopes}
+    fields.update(kw)
+    with app.app_context():
+        db.session.add(ApiToken(user_id=user_id, **fields))
+        db.session.commit()
+    return raw
+
+
+def run_job(app, name):
+    """Run a background job now, due or not. Returns its status; raises its error."""
+    from aisignx import jobs
+
+    return jobs.run_now(app, name, force=True)

@@ -1,0 +1,34 @@
+{# Progress of a background backup/restore; polls backup.status every 2 s while running. #}
+<div id="backup-progress" class="alert alert-info{% if not (state.running or started) %} d-none{% endif %}"
+     data-status-url="{{ url_for('backup.status') }}" data-login-url="{{ url_for('auth.login') }}"
+     data-done-url="{{ url_for('backup.index') }}"
+     {% if state.running or started %}data-backup-running="1"{% endif %} role="status">
+  <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+  <span>{{ "Restoring" if state.op == "restore" else "Creating a backup" }}… this page updates by itself.</span>
+</div>
+<script>
+(function () {
+  "use strict";
+  const box = document.getElementById("backup-progress");
+  if (!box || !box.dataset.backupRunning) return;
+  const poll = async () => {
+    let data = null;
+    try {
+      const response = await fetch(box.dataset.statusUrl, { headers: { Accept: "application/json" }, cache: "no-store" });
+      data = await response.json();
+    } catch (e) { /* server busy or restarting: try again */ }
+    if (data && data.signed_out) {
+      box.className = "alert alert-success";
+      box.textContent = data.message + " ";
+      const link = document.createElement("a");
+      link.href = box.dataset.loginUrl;
+      link.textContent = "Sign in";
+      box.appendChild(link);
+      return;
+    }
+    if (data && data.running === false) { window.location.href = box.dataset.doneUrl; return; }
+    setTimeout(poll, 2000);
+  };
+  setTimeout(poll, 2000);
+})();
+</script>

@@ -27,6 +27,11 @@ def serve_command(host: str, port: int, threads: int | None):
             "waitress is not installed. Run: pip install -r requirements.txt") from exc
 
     app = current_app._get_current_object()
+    # Background work starts here (and lazily on the first request), never in create_app.
+    from .jobs import ensure_started as start_jobs
+    from .player.ticker import ensure_started as start_ticker
+    start_ticker(app)
+    start_jobs(app)
     if threads is None:
         threads = int(app.config["PLAYER_MAX_STREAMS"]) + THREAD_HEADROOM
     click.echo(f"AiSignX listening on http://{host}:{port} with {threads} threads")

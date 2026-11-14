@@ -1,5 +1,6 @@
 from flask import flash, redirect, render_template, url_for
 
+from ..audit import service as audit
 from ..auth.decorators import admin_required
 from ..extensions import db
 from ..models import Setting
@@ -15,9 +16,13 @@ def index():
     form.timezone.choices = timezone_choices()
     if form.validate_on_submit():
         tz_changed = form.timezone.data != Setting.get("timezone")
-        Setting.set("org_name", form.org_name.data.strip())
-        Setting.set("timezone", form.timezone.data)
-        Setting.set("default_duration", form.default_duration.data)
+        new = {"org_name": form.org_name.data.strip(), "timezone": form.timezone.data,
+               "default_duration": str(form.default_duration.data)}
+        changed = [k for k, v in new.items() if str(Setting.get(k)) != v]
+        for key, value in new.items():
+            Setting.set(key, value)
+        if changed:
+            audit.record("settings.update", detail={"changed": changed})
         db.session.commit()
         if tz_changed:  # schedules now fall at different instants
             broker = get_broker()

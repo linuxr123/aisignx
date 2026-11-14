@@ -1,0 +1,6 @@
+{# "History" link to the audit log for one object. Admin only. Import "with context". #}
+{% macro history_link(type, id, cls="btn btn-outline-secondary") %}
+{% if current_user.is_authenticated and current_user.is_admin and id %}
+<a class="{{ cls }}" href="{{ url_for('audit.index', target=type ~ ':' ~ id) }}" title="Audit log for this {{ type }}">History</a>
+{% endif %}
+{% endmacro %}

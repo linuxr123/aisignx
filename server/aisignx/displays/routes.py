@@ -5,6 +5,7 @@ from flask import (abort, current_app, flash, jsonify, redirect, render_template
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
+from ..audit import service as audit
 from ..auth.decorators import editor_required
 from ..extensions import db
 from ..emergency.service import clear_for_target
@@ -75,6 +76,8 @@ def pair():
         display = pairing.approve(form.code.data, form.name.data, playlist_id, replace,
                                   current_user)
         if display is not None:
+            audit.record("display.pair", display,
+                         detail={"replaced": replace is not None, "playlist_id": playlist_id})
             db.session.commit()
             if replace is not None:
                 _close_streams(display.id)
@@ -123,6 +126,7 @@ def edit(display_id: int):
     if request.method == "GET":
         _prefill(form, display)
     if form.validate_on_submit():
+        before = _snapshot(display)
         display.name = form.name.data.strip()
         display.playlist_id = form.playlist.data or None
         display.group_id = form.group.data or None
@@ -141,6 +145,11 @@ def edit(display_id: int):
             elif form.unlock_pin.data:
                 options.set_unlock_pin(display, form.unlock_pin.data)
                 pin_changed = True
+        changed = [k for k, v in _snapshot(display).items() if before[k] != v]
+        if pin_changed:
+            changed.append("unlock_pin")  # that it changed, never the PIN
+        if changed:
+            audit.record("display.update", display, detail={"changed": changed})
         db.session.commit()  # an ORM write: the screen gets the new settings at once
         if pin_changed:  # never the PIN itself
             current_app.logger.info("unlock PIN changed for display %s by user %s",
@@ -149,6 +158,14 @@ def edit(display_id: int):
         return _detail(display)
     return render_template("displays/form.html", form=form, display=display,
                            pin_set=bool(display.unlock_pin_hash))
+
+
+_AUDITED_FIELDS = ("name", "playlist_id", "group_id", "location", "description", "orientation",
+                   "fit_override", "volume", "show_offline_banner", "allow_input")
+
+
+def _snapshot(display: Display) -> dict:
+    return {f: getattr(display, f) for f in _AUDITED_FIELDS}
 
 
 def _prefill(form: DisplayForm, display: Display) -> None:
@@ -172,6 +189,7 @@ def reload(display_id: int):
     display = _get_display_or_404(display_id)
     broker = get_broker()
     sent = broker.publish(display.id, "command", {"action": "reload"}) if broker else 0
+    audit.record_now("display.reload", display, detail={"delivered": bool(sent)})
     if sent:
         flash("Reload sent.", "success")
     else:
@@ -189,7 +207,9 @@ def _publish(display: Display, data: dict, force: bool = False) -> int:
 def identify(display_id: int):
     _require_action_form()
     display = _get_display_or_404(display_id)
-    if _publish(display, {"action": "identify", "seconds": 15}):
+    sent = _publish(display, {"action": "identify", "seconds": 15})
+    audit.record_now("display.identify", display, detail={"delivered": bool(sent)})
+    if sent:
         flash("The screen shows its name for 15 seconds.", "success")
     else:
         flash("The display is not connected right now.", "warning")
@@ -208,6 +228,7 @@ def screenshot(display_id: int):
     if rid is None:
         flash("A screenshot was just requested.", "info")
         return _back(display)
+    audit.record("display.screenshot_request", display)
     db.session.commit()
     if _publish(display, {"action": "screenshot", "request_id": rid}, force=True):
         flash("Screenshot requested. It appears here in a few seconds.", "success")
@@ -252,6 +273,7 @@ def unpair(display_id: int):
     # ORM writes are fine here: unpairing changes the display row and pushes anyway.
     display.screenshot_request = None
     display.screenshot_requested_at = None
+    audit.record("display.unpair", display)
     db.session.commit()
     _close_streams(display.id)
     current_app.logger.info("display %s (%s) unpaired by user %s",
@@ -266,7 +288,10 @@ def delete(display_id: int):
     _require_action_form()
     display = _get_display_or_404(display_id)
     name, ident = display.name, display.id
-    clear_for_target(display=display)  # keeps the history rows (clear_reason target_deleted)
+    cleared = clear_for_target(display=display)  # keeps the history (reason target_deleted)
+    audit.record("display.delete", display,
+                 detail={"schedules_removed": _schedule_counts().get(ident, 0),
+                         "emergencies_cleared": len(cleared)})
     db.session.delete(display)  # the DB cascade removes its display-scoped schedules
     db.session.commit()
     _close_streams(ident)

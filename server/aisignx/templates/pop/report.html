@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Play reports{% endblock %}
+{% set group_label = {"media": "Media", "display": "Screen", "day": "Day"} %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+  <h1 class="h3 mb-0">Play reports</h1>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('pop.plays_csv', **args) }}">Daily CSV</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('pop.plays_raw_csv', **args) }}"
+       title="Every single play. Kept for {{ raw_days }} days (from {{ raw_first.isoformat() }}).">Individual plays CSV</a>
+  </div>
+</div>
+
+{% if not enabled %}
+<div class="alert alert-secondary" data-pop-off>
+  <strong>Proof of play is off.</strong> Screens do not report what they play.
+  {% if form %}<a href="#pop-settings">Turn it on below</a>.{% else %}An administrator can turn it on.{% endif %}
+</div>
+{% endif %}
+
+<p class="text-secondary small mb-3">
+  Days are in the organization time zone. Totals are rebuilt every hour, so today's figures run up to the last rollup
+  ({{ last_rollup|localtime if last_rollup else "not run yet" }}).
+</p>
+
+<form class="card card-body mb-4" method="get" action="{{ url_for('pop.report') }}">
+  <div class="row g-2 align-items-end">
+    <div class="col-6 col-md-2">
+      <label class="form-label small" for="start">From</label>
+      <input class="form-control" type="date" id="start" name="start" value="{{ f.start.isoformat() }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small" for="end">To</label>
+      <input class="form-control" type="date" id="end" name="end" value="{{ f.end.isoformat() }}">
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label small" for="target">Screens</label>
+      <select class="form-select" id="target" name="target">
+        <option value="">All screens</option>
+        {% if groups %}<optgroup label="Groups">
+          {% for g in groups %}<option value="g{{ g.id }}"{% if f.target == 'g' ~ g.id %} selected{% endif %}>{{ g.name }}</option>{% endfor %}
+        </optgroup>{% endif %}
+        {% if displays %}<optgroup label="Screens">
+          {% for d in displays %}<option value="d{{ d.id }}"{% if f.target == 'd' ~ d.id %} selected{% endif %}>{{ d.name }}</option>{% endfor %}
+        </optgroup>{% endif %}
+      </select>
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label small" for="media">Media</label>
+      <select class="form-select" id="media" name="media">
+        <option value="">All media</option>
+        {% for m in media %}<option value="{{ m.id }}"{% if f.media_id == m.id %} selected{% endif %}>{{ m.name }} (#{{ m.id }})</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-8 col-md-1">
+      <label class="form-label small" for="group">Group by</label>
+      <select class="form-select" id="group" name="group">
+        {% for key, label in group_label.items() %}<option value="{{ key }}"{% if f.group == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-4 col-md-1"><button class="btn btn-primary w-100" type="submit">Show</button></div>
+  </div>
+</form>
+
+<div class="row g-3 mb-3">
+  <div class="col-4"><div class="card card-body"><div class="text-secondary small">Plays</div><div class="fs-4 fw-semibold" data-pop-total-plays>{{ data.total.plays }}</div></div></div>
+  <div class="col-4"><div class="card card-body"><div class="text-secondary small">Total time</div><div class="fs-4 fw-semibold" data-pop-total-time>{{ data.total.seconds|duration }}</div></div></div>
+  <div class="col-4"><div class="card card-body"><div class="text-secondary small">Screens</div><div class="fs-4 fw-semibold" data-pop-total-screens>{{ data.total.screens }}</div></div></div>
+</div>
+
+{% if data.rows %}
+<div class="card mb-4"><div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead><tr><th>{{ group_label[data.group_by] }}</th><th class="text-end">Plays</th><th class="text-end">Total time</th><th class="text-end">Screens</th></tr></thead>
+    <tbody>
+    {% for r in data.rows %}
+      <tr data-pop-row="{{ r.key }}">
+        <td>{{ r.label }}{% if data.group_by == "media" %} <span class="text-secondary small">#{{ r.key }}</span>{% endif %}</td>
+        <td class="text-end">{{ r.plays }}</td>
+        <td class="text-end">{{ r.seconds|duration }}</td>
+        <td class="text-end">{{ r.screens }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% else %}
+<div class="text-center text-secondary py-5">No plays in this period.</div>
+{% endif %}
+
+{% if form %}
+<div class="card" id="pop-settings">
+  <div class="card-body">
+    <h2 class="h5">Proof-of-play settings</h2>
+    <p class="text-secondary small">Screens report each item they finish showing. Individual plays allow a detailed
+      export; daily totals feed these reports. Lower the first number on sites with many screens.</p>
+    <form method="post" action="{{ url_for('pop.settings') }}">
+      {{ form.hidden_tag() }}
+      {{ field(form.enabled) }}
+      <div class="row">
+        <div class="col-md-4">{{ field(form.raw_days) }}</div>
+        <div class="col-md-4">{{ field(form.daily_days) }}</div>
+      </div>
+      <button class="btn btn-primary" type="submit">Save</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

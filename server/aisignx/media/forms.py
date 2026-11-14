@@ -1,7 +1,7 @@
 from urllib.parse import urlsplit
 
 from flask_wtf import FlaskForm
-from flask_wtf.file import MultipleFileField
+from flask_wtf.file import FileField, MultipleFileField
 from wtforms import IntegerField, StringField, ValidationError
 from wtforms.validators import DataRequired, Length, NumberRange, Optional
 
@@ -30,6 +30,10 @@ class MediaEditForm(FlaskForm):
     url = StringField("Address (URL)", validators=[Optional(), Length(max=2048), http_url])
     default_duration = IntegerField("Default duration (seconds)",
                                     validators=[DataRequired(), NumberRange(min=1, max=MAX_DURATION)])
+
+
+class ReplaceForm(FlaskForm):
+    file = FileField("New file")
 
 
 class DeleteForm(FlaskForm):

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "audit/_history.html" import history_link with context %}
 {% from "_form.html" import field %}
 {% block title %}{{ "Edit playlist" if playlist else "New playlist" }}{% endblock %}
 {% block content %}
@@ -12,6 +13,7 @@
     <p class="form-text mt-n2">Used for every item that doesn't set its own transition. "Random" picks one per slide.</p>
     <button class="btn btn-primary" type="submit">Save</button>
     <a class="btn btn-link" href="{{ url_for('playlists.detail', playlist_id=playlist.id) if playlist else url_for('playlists.index') }}">Cancel</a>
+    {% if playlist %}{{ history_link('playlist', playlist.id, 'btn btn-link') }}{% endif %}
   </form>
 </div></div>
 {% endblock %}

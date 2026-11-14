@@ -1,12 +1,13 @@
 from flask import abort, flash, redirect, render_template, request, send_from_directory, url_for
 from flask_login import current_user, login_required
 
+from ..audit import service as audit
 from ..auth.decorators import editor_required
 from ..extensions import db
 from ..models import MEDIA_TYPES, Media
 from ..models.media import MEDIA_WEB, THUMB_PENDING
 from . import bp, service, storage, thumbnails, webshot
-from .forms import DeleteForm, MediaEditForm, UploadForm, WebPageForm
+from .forms import DeleteForm, MediaEditForm, ReplaceForm, UploadForm, WebPageForm
 from .probe import InvalidMediaError, ffmpeg_available
 
 
@@ -51,7 +52,8 @@ def upload():
     added, errors = 0, []
     for file_storage in files:
         try:
-            service.create_from_upload(file_storage, current_user)
+            media = service.create_from_upload(file_storage, current_user)
+            audit.record("media.upload", media)
             added += 1
         except InvalidMediaError as exc:
             errors.append(str(exc))
@@ -70,6 +72,7 @@ def add_web():
     if form.validate_on_submit():
         media = service.create_web_page(form.name.data, form.url.data, form.duration.data,
                                         current_user)
+        audit.record("media.create_web", media, detail={"url": media.url})
         db.session.commit()
         thumbnails.queue_thumbnail(media)
         flash("Web page added. Its preview will appear in a few seconds.", "success")
@@ -91,10 +94,16 @@ def edit(media_id: int):
             form.url.errors.append("Address is required for web pages.")
         else:
             url_changed = is_web and media.url != form.url.data.strip()
+            before = {"name": media.name, "default_duration": media.default_duration,
+                      "url": media.url}
             media.name = form.name.data.strip()
             media.default_duration = form.default_duration.data
             if is_web:
                 media.url = form.url.data.strip()
+            changed = {k: [v, getattr(media, k)] for k, v in before.items()
+                       if getattr(media, k) != v}
+            if changed:
+                audit.record("media.update", media, detail={"changed": changed})
             db.session.commit()
             if url_changed:
                 thumbnails.queue_thumbnail(media)
@@ -102,7 +111,32 @@ def edit(media_id: int):
             return redirect(url_for("media.index"))
     usage = sorted({item.playlist.name for item in media.playlist_items})
     return render_template("media/edit.html", form=form, media=media, usage=usage,
-                           delete_form=DeleteForm())
+                           delete_form=DeleteForm(), replace_form=ReplaceForm())
+
+
+@bp.route("/<int:media_id>/replace", methods=["POST"])
+@editor_required
+def replace(media_id: int):
+    form = ReplaceForm()
+    if not form.validate_on_submit():
+        abort(400)
+    media = _get_media_or_404(media_id)
+    file_storage = form.file.data
+    if not file_storage or not file_storage.filename:
+        flash("Choose a file to upload.", "warning")
+        return redirect(url_for("media.edit", media_id=media.id))
+    old_checksum = media.checksum_sha256
+    try:
+        old = service.replace_file(media, file_storage)
+    except (InvalidMediaError, service.NotReplaceableError) as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+        return redirect(url_for("media.edit", media_id=media.id))
+    audit.record("media.replace", media, detail={"old_checksum": old_checksum,
+                                                 "filename": media.original_filename})
+    service.commit_replace(media, old)
+    flash("File replaced. Screens using it will update shortly.", "success")
+    return redirect(url_for("media.edit", media_id=media.id))
 
 
 @bp.route("/<int:media_id>/delete", methods=["POST"])

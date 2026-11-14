@@ -1,8 +1,10 @@
-from flask import redirect, render_template, url_for
+from flask import current_app, redirect, render_template, url_for
 from flask_login import current_user, login_required
+from sqlalchemy import text
 
 from ..displays.service import dashboard_counts
 from ..emergency.service import live as live_emergencies
+from ..extensions import db
 from ..models import DisplayGroup, Media, Playlist, Schedule, User
 from ..system import run_checks
 from . import bp
@@ -35,6 +37,17 @@ def dashboard():
 
 @bp.route("/healthz")
 def healthz():
-    # Kiosk clients probe this in setup to tell an AiSignX server from anything else.
-    # "api" is the player API generation; no version string, so nothing is disclosed.
-    return {"status": "ok", "app": "aisignx", "api": 1}
+    # Kiosk clients probe this in setup to tell an AiSignX server from anything else, and
+    # Docker / monitoring use it for liveness. "api" is the player API generation; no
+    # version string or path, so nothing is disclosed. 503 when the database is down.
+    body = {"status": "ok", "app": "aisignx", "api": 1}
+    try:
+        db.session.execute(text("SELECT 1"))
+    except Exception:
+        current_app.logger.exception("Health check: the database did not answer")
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return {**body, "status": "error"}, 503
+    return body

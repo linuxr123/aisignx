@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}System{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="h3 mb-0">System</h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('system.logs') }}">Logs</a>
+    <form method="post" action="{{ url_for('system.selftest') }}">
+      {{ form.hidden_tag() }}
+      <button class="btn btn-primary" type="submit"
+              title="Runs every check again and also connects to the mail server">Run self-test</button>
+    </form>
+  </div>
+</div>
+
+{% if failed %}
+<div class="alert alert-warning" data-selftest-summary="failed">
+  {{ failed }} check{{ "s" if failed != 1 }} need{{ "" if failed != 1 else "s" }} attention.
+</div>
+{% else %}
+<div class="alert alert-success" data-selftest-summary="ok">
+  All checks passed{% if ran_selftest %}, including the mail server{% endif %}.
+</div>
+{% endif %}
+
+<div class="card mb-4">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th style="width: 7rem">Status</th><th>Check</th><th>Result</th><th class="text-end">Time</th></tr></thead>
+      <tbody>
+      {% for c in checks %}
+      <tr data-check="{{ c.name }}">
+        <td>
+          {% if not c.ok and not c.info %}<span class="badge text-bg-danger">Problem</span>
+          {% elif c.info %}<span class="badge text-bg-secondary">Info</span>
+          {% else %}<span class="badge text-bg-success">OK</span>{% endif %}
+        </td>
+        <td>
+          <div class="fw-semibold">{{ c.name }}</div>
+          {% if c.purpose %}<div class="small text-secondary">{{ c.purpose }}</div>{% endif %}
+        </td>
+        <td>
+          <div class="text-break">{{ c.detail }}</div>
+          {% if c.fix and not c.ok %}<div class="small text-danger-emphasis">Fix: {{ c.fix }}</div>{% endif %}
+        </td>
+        <td class="text-end text-secondary small text-nowrap">{% if c.duration_ms is not none %}{{ c.duration_ms }} ms{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<h2 class="h5">This installation</h2>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <tbody>
+      {% for c in info %}
+      <tr><th class="fw-normal text-secondary" style="width: 12rem">{{ c.name }}</th><td class="text-break">{{ c.detail }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="small text-secondary mt-3">
+  Background threads, live streams and limits belong to this server process. Run one
+  server process only. From the command line: <code>flask --app wsgi check --all</code>.
+</p>
+{% endblock %}

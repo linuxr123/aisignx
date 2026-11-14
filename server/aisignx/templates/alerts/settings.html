@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Alert settings{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0">Alert settings</h1>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('alerts.index') }}">Back to alerts</a>
+</div>
+<form method="post" action="{{ url_for('alerts.settings') }}" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="row g-4">
+    <div class="col-lg-6">
+      <div class="card h-100"><div class="card-body">
+        <h2 class="h5 mb-3">E-mail</h2>
+        {{ field(form.email_enabled) }}
+        {{ field(form.email_to) }}
+        <div class="row g-3">
+          <div class="col-sm-8">{{ field(form.smtp_host) }}</div>
+          <div class="col-sm-4">{{ field(form.smtp_port) }}</div>
+        </div>
+        {{ field(form.smtp_security) }}
+        {{ field(form.smtp_username) }}
+        <p class="form-text mt-n2" data-smtp-password>
+          Password:
+          {% if password_set %}<span class="text-success">set in the environment (AISIGNX_SMTP_PASSWORD)</span>
+          {% else %}<span class="text-secondary">not set. Put it in AISIGNX_SMTP_PASSWORD in the server's .env file and restart.</span>{% endif %}
+        </p>
+        {{ field(form.smtp_from) }}
+      </div></div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card h-100"><div class="card-body">
+        <h2 class="h5 mb-3">Thresholds</h2>
+        {{ field(form.offline_minutes) }}
+        <div class="row g-3">
+          <div class="col-sm-6">{{ field(form.disk_min_free_gb) }}</div>
+          <div class="col-sm-6">{{ field(form.disk_min_free_pct) }}</div>
+        </div>
+        {{ field(form.login_burst) }}
+        {{ field(form.retention_days) }}
+        <p class="form-text">Backups that fail or are older than 48 hours, and background jobs that fail three times in a row, always raise an alert.</p>
+      </div></div>
+    </div>
+  </div>
+  <button class="btn btn-primary mt-3" type="submit">Save</button>
+</form>
+
+<div class="card mt-4" style="max-width: 36rem"><div class="card-body">
+  <h2 class="h5">Test</h2>
+  <p class="small text-secondary">Sends a test message to every recipient using the saved settings. Save first.</p>
+  <form method="post" action="{{ url_for('alerts.test_email') }}">
+    {{ action_form.hidden_tag() }}<button class="btn btn-outline-primary" type="submit">Send test email</button>
+  </form>
+</div></div>
+{% endblock %}

@@ -5,6 +5,7 @@ from datetime import timedelta
 from flask import abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
+from ..audit import service as audit
 from ..auth.decorators import editor_required
 from ..displays.forms import ActionForm
 from ..extensions import db
@@ -78,6 +79,17 @@ def index():
                            tz_name=ctx.tz.key, action_form=ActionForm())
 
 
+def _summary(schedule: Schedule) -> dict:
+    """The schedule's key fields, for the audit log."""
+    return {"playlist_id": schedule.playlist_id, "target": label(schedule),
+            "days_mask": schedule.days_mask, "priority": schedule.priority,
+            "enabled": schedule.enabled,
+            "time": [str(schedule.start_time) if schedule.start_time else None,
+                     str(schedule.end_time) if schedule.end_time else None],
+            "dates": [str(schedule.start_date) if schedule.start_date else None,
+                      str(schedule.end_date) if schedule.end_date else None]}
+
+
 def _edit_page(form, schedule):
     return render_template("schedules/form.html", form=form, schedule=schedule,
                            tz_name=load_context().tz.key)
@@ -96,6 +108,7 @@ def create():
         schedule = Schedule()
         form.apply(schedule)
         db.session.add(schedule)
+        audit.record("schedule.create", schedule, detail=_summary(schedule))
         db.session.commit()
         current_app.logger.info("schedule %s (%s) created by user %s",
                                 schedule.id, schedule.name, current_user.id)
@@ -113,6 +126,7 @@ def edit(schedule_id: int):
         form.load(schedule)
     if form.validate_on_submit():
         form.apply(schedule)
+        audit.record("schedule.update", schedule, detail=_summary(schedule))
         db.session.commit()
         flash(f"Schedule {schedule.name} saved.", "success")
         return redirect(url_for("schedules.index"))
@@ -125,6 +139,7 @@ def toggle(schedule_id: int):
     _require_action_form()
     schedule = _get_schedule_or_404(schedule_id)
     schedule.enabled = not schedule.enabled
+    audit.record("schedule.toggle", schedule, detail={"enabled": schedule.enabled})
     db.session.commit()
     state = "enabled" if schedule.enabled else "disabled"
     flash(f"Schedule {schedule.name} {state}.", "success")
@@ -144,6 +159,7 @@ def duplicate(schedule_id: int):
         enabled=False,  # a copy plays nothing until it is edited and enabled
     )
     db.session.add(copy)
+    audit.record("schedule.create", copy, detail={"duplicated_from": src.id})
     db.session.commit()
     flash("Schedule duplicated (disabled). Adjust it, then enable it.", "success")
     return redirect(url_for("schedules.edit", schedule_id=copy.id))
@@ -155,6 +171,7 @@ def delete(schedule_id: int):
     _require_action_form()
     schedule = _get_schedule_or_404(schedule_id)
     name = schedule.name
+    audit.record("schedule.delete", schedule, detail=_summary(schedule))
     db.session.delete(schedule)
     db.session.commit()
     current_app.logger.info("schedule %s (%s) deleted by user %s",

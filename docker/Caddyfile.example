@@ -1,0 +1,19 @@
+# Caddy in front of AiSignX (docker compose --profile https up -d).
+# Caddy gets and renews a certificate by itself and passes live updates through unbuffered.
+# Set AISIGNX_PROXY_HOPS=1 for the aisignx service so it trusts Caddy's X-Forwarded-* headers,
+# and AISIGNX_SECURE_COOKIES=1 once HTTPS works. See docs/https.md.
+
+# Public host name with a Let's Encrypt certificate: set AISIGNX_DOMAIN (e.g. in a .env file
+# next to docker-compose.yml) to a DNS name that points at this machine, with ports 80 and
+# 443 reachable from the internet.
+{$AISIGNX_DOMAIN:localhost} {
+	reverse_proxy aisignx:5000
+}
+
+# LAN only, no public DNS: replace the block above with this one. Caddy then uses its own
+# local CA; install that CA's root certificate on the screens and admin PCs (docs/https.md).
+#
+# signage.lan, 192.168.1.10 {
+# 	tls internal
+# 	reverse_proxy aisignx:5000
+# }

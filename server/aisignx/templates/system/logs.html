@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="h3 mb-0">Logs</h1>
+  <a class="btn btn-outline-secondary" href="{{ url_for('system.logs_download') }}">Download log file</a>
+</div>
+
+<form class="row g-2 align-items-end mb-3" method="get" action="{{ url_for('system.logs') }}">
+  <div class="col-auto">
+    <label class="form-label small mb-0" for="lines">Lines</label>
+    <select class="form-select form-select-sm" id="lines" name="lines">
+      {% for n in line_choices %}<option value="{{ n }}"{% if n == lines %} selected{% endif %}>{{ n }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-0" for="level">Level</label>
+    <select class="form-select form-select-sm" id="level" name="level">
+      <option value="">All</option>
+      {% for l in levels %}<option value="{{ l }}"{% if l == level %} selected{% endif %}>{{ l|capitalize }} and above</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-auto form-check ms-2 mb-1">
+    <input class="form-check-input" type="checkbox" id="auto" name="auto" value="1"{% if auto %} checked{% endif %}>
+    <label class="form-check-label small" for="auto">Refresh every 10 s</label>
+  </div>
+  <div class="col-auto"><button class="btn btn-sm btn-primary" type="submit">Refresh</button></div>
+</form>
+
+{% if not exists %}
+<p class="text-secondary" data-log-empty>There is no log file yet ({{ path }}).</p>
+{% elif not entries %}
+<p class="text-secondary" data-log-empty>No matching lines.</p>
+{% else %}
+<pre class="border rounded bg-body-tertiary p-2 small" style="max-height: 70vh; overflow: auto; white-space: pre-wrap" data-log-lines>
+{%- for line, lvl in entries %}
+<span class="{{ {'WARNING': 'text-warning-emphasis', 'ERROR': 'text-danger', 'CRITICAL': 'text-danger fw-bold', 'DEBUG': 'text-secondary'}.get(lvl, '') }}">{{ line }}</span>
+{%- endfor %}
+</pre>
+{% endif %}
+<p class="small text-secondary">{{ path }} &middot; times are UTC &middot; rotated at 5 MB, five old files kept.</p>
+
+{% if auto %}
+<script>
+  // Auto-refresh: reload with the same filters while the box stays ticked.
+  (function () {
+    var box = document.getElementById("auto");
+    var timer = setTimeout(function () { location.reload(); }, 10000);
+    box.addEventListener("change", function () { if (!box.checked) clearTimeout(timer); });
+    var pre = document.querySelector("[data-log-lines]");
+    if (pre) pre.scrollTop = pre.scrollHeight;
+  })();
+</script>
+{% endif %}
+{% endblock %}

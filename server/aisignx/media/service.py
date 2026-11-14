@@ -1,10 +1,23 @@
-"""Create and delete media items (shared by routes and, later, the API)."""
+"""Create, replace and delete media items (shared by the admin pages and the JSON API)."""
+import logging
 import os
+import shutil
+import time
 
+from ..audit import service as audit
 from ..extensions import db
 from ..models import Media, Setting
 from ..models.media import DEFAULT_DURATION, MEDIA_IMAGE, MEDIA_WEB, THUMB_FAILED, THUMB_OK
 from . import probe, storage, thumbnails
+
+log = logging.getLogger(__name__)
+
+ORPHAN_MIN_AGE_S = 3600        # unreferenced files in media/ and thumbs/
+TMP_MIN_AGE_S = 24 * 3600      # anything left in tmp/
+
+
+class NotReplaceableError(ValueError):
+    """Only uploaded files can be replaced; web pages are edited instead."""
 
 
 def default_duration() -> int:
@@ -20,40 +33,83 @@ def display_name(filename: str) -> str:
     return (base or "Untitled")[:200]
 
 
-def create_from_upload(file_storage, user) -> Media:
-    """Store one uploaded file as a Media row. Raises probe.InvalidMediaError."""
+def _store_and_probe(file_storage) -> dict:
+    """Save an upload under a new random name and read its metadata.
+    Raises probe.InvalidMediaError (and removes the saved file) when it is unusable."""
     filename = file_storage.filename or ""
     media_type = storage.media_type_for(filename)
     if media_type is None:
         raise probe.InvalidMediaError(f"{filename or 'File'}: unsupported file type.")
-
-    ext = storage.extension_of(filename)
-    stored, size, checksum = storage.save_upload(file_storage, ext)
+    stored, size, checksum = storage.save_upload(file_storage, storage.extension_of(filename))
     path = storage.media_dir() / stored
     try:
         info = probe.probe_image(path) if media_type == MEDIA_IMAGE else probe.probe_video(path)
     except probe.InvalidMediaError as exc:
         storage.remove_file(storage.media_dir(), stored)
         raise probe.InvalidMediaError(f"{filename}: {exc}") from exc
+    return {
+        "media_type": media_type,
+        "original_filename": filename[:255],
+        "stored_name": stored,
+        "mime_type": storage.mime_for(filename),
+        "file_size": size,
+        "checksum_sha256": checksum,
+        "width": info.get("width"),
+        "height": info.get("height"),
+        "duration_seconds": info.get("duration_seconds"),
+        "path": path,
+    }
 
-    media = Media(
-        name=display_name(filename),
-        media_type=media_type,
-        original_filename=filename[:255],
-        stored_name=stored,
-        mime_type=storage.mime_for(filename),
-        file_size=size,
-        checksum_sha256=checksum,
-        width=info.get("width"),
-        height=info.get("height"),
-        duration_seconds=info.get("duration_seconds"),
-        default_duration=default_duration(),
-        uploaded_by_id=getattr(user, "id", None),
-    )
+
+def _apply_file(media: Media, fields: dict) -> None:
+    path = fields.pop("path")
+    for key, value in fields.items():
+        setattr(media, key, value)
     media.thumbnail_name = thumbnails.build_file_thumbnail(media, path)
     media.thumbnail_status = THUMB_OK if media.thumbnail_name else THUMB_FAILED
+
+
+def create_from_upload(file_storage, user) -> Media:
+    """Store one uploaded file as a Media row (no commit). Raises probe.InvalidMediaError."""
+    fields = _store_and_probe(file_storage)
+    media = Media(name=display_name(fields["original_filename"]),
+                  default_duration=default_duration(),
+                  uploaded_by_id=getattr(user, "id", None))
+    _apply_file(media, fields)
     db.session.add(media)
     return media
+
+
+def replace_file(media: Media, file_storage) -> tuple[str | None, str | None]:
+    """Swap the file behind an uploaded media item, keeping its id, name, default
+    duration and playlist items (images and videos may switch type). No commit.
+    Returns the old (stored_name, thumbnail_name) for remove_files() after the commit.
+    Raises NotReplaceableError for web pages and probe.InvalidMediaError for bad files."""
+    if media.media_type == MEDIA_WEB:
+        raise NotReplaceableError("Web pages cannot be replaced with a file.")
+    old = (media.stored_name, media.thumbnail_name)
+    _apply_file(media, _store_and_probe(file_storage))
+    return old
+
+
+def commit_replace(media: Media, old: tuple[str | None, str | None]) -> None:
+    """Commit a replace_file() change, then delete the old files. If the commit fails,
+    the new files are removed and the error is re-raised."""
+    new = (media.stored_name, media.thumbnail_name)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        remove_files(new)
+        raise
+    remove_files(old)
+
+
+def remove_files(names: tuple[str | None, str | None]) -> None:
+    """Delete a (stored_name, thumbnail_name) pair; missing or locked files are skipped."""
+    stored, thumb = names
+    storage.remove_file(storage.media_dir(), stored)
+    storage.remove_file(storage.thumbs_dir(), thumb)
 
 
 def create_web_page(name: str, url: str, duration: int | None, user) -> Media:
@@ -69,9 +125,55 @@ def create_web_page(name: str, url: str, duration: int | None, user) -> Media:
 
 
 def delete_media(media: Media) -> None:
-    """Delete the row (playlist items cascade) and its files."""
-    stored, thumb = media.stored_name, media.thumbnail_name
+    """Delete the row (playlist items cascade) and its files. Audited as media.delete."""
+    old = (media.stored_name, media.thumbnail_name)
+    audit.record("media.delete", media)
     db.session.delete(media)
     db.session.commit()
-    storage.remove_file(storage.media_dir(), stored)
-    storage.remove_file(storage.thumbs_dir(), thumb)
+    remove_files(old)
+
+
+# --- housekeeping -----------------------------------------------------------------------
+
+def _old_enough(path, min_age_s: float, now: float) -> bool:
+    try:
+        return now - path.stat().st_mtime >= min_age_s
+    except OSError:
+        return False
+
+
+def _delete(path) -> bool:
+    try:
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+        return True
+    except OSError as exc:  # e.g. locked on Windows; try again next run
+        log.warning("could not delete %s: %s", path, exc)
+        return False
+
+
+def orphan_job() -> str:
+    """Job: delete files in media/ and thumbs/ that no Media row references (older than
+    1 h, so uploads still being saved are left alone) and anything in tmp/ older than 24 h."""
+    now = time.time()
+    rows = db.session.query(Media.stored_name, Media.thumbnail_name).all()
+    referenced = {name for row in rows for name in row if name}
+    removed = skipped = 0
+    for folder in (storage.media_dir(), storage.thumbs_dir()):
+        for path in folder.iterdir():
+            if path.name in referenced or not path.is_file():
+                continue
+            if _old_enough(path, ORPHAN_MIN_AGE_S, now):
+                if _delete(path):
+                    removed += 1
+                else:
+                    skipped += 1
+    for path in storage.work_dir().iterdir():
+        if _old_enough(path, TMP_MIN_AGE_S, now):
+            if _delete(path):
+                removed += 1
+            else:
+                skipped += 1
+    return f"removed {removed} file(s)" + (f", {skipped} locked" if skipped else "")

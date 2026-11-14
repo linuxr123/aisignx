@@ -6,6 +6,7 @@ from flask import abort, current_app, flash, redirect, render_template, request,
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
+from ..audit import service as audit
 from ..auth.decorators import editor_required
 from ..emergency import service as emergency_service
 from ..extensions import db
@@ -52,7 +53,17 @@ def _save(group: DisplayGroup, form: GroupForm) -> int:
     return moved
 
 
+def _target(group: DisplayGroup) -> tuple:
+    """Audit target for a group: type "group" (matches the History link)."""
+    if group.id is None:
+        db.session.flush()
+    return ("group", group.id, group.name)
+
+
 def _saved(group: DisplayGroup, moved: int, verb: str):
+    action = "group.create" if verb == "created" else "group.update"
+    audit.record(action, _target(group),
+                 detail={"members": len(group.displays), "moved_from_other_groups": moved})
     db.session.commit()
     current_app.logger.info("group %s (%s) %s by user %s", group.id, group.name, verb,
                             current_user.id)
@@ -106,6 +117,9 @@ def delete(group_id: int):
     # Keep emergency history: clear the group's live messages instead of orphaning them.
     # Members stay; the database sets their group_id to NULL and removes the schedules.
     cleared = emergency_service.clear_for_target(group=group)
+    audit.record("group.delete", _target(group),
+                 detail={"members": len(group.displays), "schedules_removed": schedules,
+                         "emergencies_cleared": len(cleared)})
     for display in list(group.displays):
         display.group = None
     db.session.delete(group)

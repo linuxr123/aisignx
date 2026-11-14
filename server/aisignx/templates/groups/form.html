@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "audit/_history.html" import history_link with context %}
 {% from "_form.html" import field %}
 {% block title %}{{ "Edit " ~ group.name if group else "New group" }}{% endblock %}
 {% block content %}
@@ -34,6 +35,7 @@
     </fieldset>
     <button class="btn btn-primary" type="submit">Save</button>
     <a class="btn btn-link" href="{{ url_for('groups.index') }}">Cancel</a>
+    {% if group %}{{ history_link('group', group.id, 'btn btn-link') }}{% endif %}
   </form>
 </div></div>
 {% endblock %}

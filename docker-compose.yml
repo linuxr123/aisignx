@@ -1,0 +1,49 @@
+# AiSignX with Docker Compose.
+#   docker compose up -d                    plain HTTP on port 5000
+#   docker compose --profile https up -d    adds Caddy for HTTPS on ports 80/443
+#
+# One replica only: live updates, jobs and rate limits live in one process.
+# The setup wizard runs on the first visit; there are no default credentials.
+# See docs/docker.md and docs/https.md.
+
+services:
+  aisignx:
+    build: .
+    image: aisignx:latest
+    restart: unless-stopped
+    ports:
+      - "5000:5000"   # with the https profile, you can remove this so only Caddy is exposed
+    environment:
+      # Empty: a key is generated once and kept in /data/instance/secret_key.
+      AISIGNX_SECRET_KEY: ${AISIGNX_SECRET_KEY:-}
+      # Set to 1 with the https profile (Caddy is one proxy hop). Keep 0 without a proxy.
+      AISIGNX_PROXY_HOPS: ${AISIGNX_PROXY_HOPS:-0}
+      # Set to 1 once the admin is reached over https:// only.
+      AISIGNX_SECURE_COOKIES: ${AISIGNX_SECURE_COOKIES:-0}
+      AISIGNX_MAX_UPLOAD_MB: ${AISIGNX_MAX_UPLOAD_MB:-2048}
+      # Alert e-mail password (Settings > Alerts holds the rest of the SMTP settings).
+      AISIGNX_SMTP_PASSWORD: ${AISIGNX_SMTP_PASSWORD:-}
+    volumes:
+      - aisignx-data:/data
+
+  caddy:
+    image: caddy:2
+    profiles: [https]
+    restart: unless-stopped
+    depends_on:
+      - aisignx
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      AISIGNX_DOMAIN: ${AISIGNX_DOMAIN:-localhost}
+    volumes:
+      - ./docker/Caddyfile.example:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  aisignx-data:
+  caddy-data:
+  caddy-config:

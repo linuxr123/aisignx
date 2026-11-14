@@ -1,0 +1,17 @@
+{% macro status_badge(token, status) %}
+{% set s = status(token) %}
+{% if s == "active" %}<span class="badge text-bg-success">Active</span>
+{% elif s == "expired" %}<span class="badge text-bg-secondary">Expired</span>
+{% else %}<span class="badge text-bg-danger">Revoked</span>{% endif %}
+{% endmacro %}
+
+{% macro revoke_button(token, revoke_form, back="") %}
+{% if not token.revoked_at %}
+<form class="d-inline" method="post" action="{{ url_for('tokens.revoke', token_id=token.id) }}"
+      data-confirm="Revoke {{ token.name }}? Programs using it stop working at once.">
+  {{ revoke_form.hidden_tag() }}
+  {% if back %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
+  <button class="btn btn-sm btn-outline-danger" type="submit">Revoke</button>
+</form>
+{% endif %}
+{% endmacro %}

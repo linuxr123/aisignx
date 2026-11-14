@@ -1,7 +1,8 @@
 """Screenshots of web pages using an installed Chromium-based browser (Edge, Chrome, Chromium).
 
 No Python browser library is needed: the browser's own headless mode writes a PNG.
-Set AISIGNX_BROWSER to choose a specific browser executable.
+Set AISIGNX_BROWSER to choose a specific browser executable, and
+AISIGNX_BROWSER_NO_SANDBOX=1 where the browser's sandbox cannot start (containers).
 """
 import os
 import platform
@@ -74,8 +75,8 @@ def capture(url: str, dest: Path, timeout: int | None = None) -> bool:
             "--virtual-time-budget=5000",  # let scripts run ~5s of page time before the shot
             f"--screenshot={dest}",
         ]
-        if _running_as_root():
-            cmd.append("--no-sandbox")  # Chromium refuses to start as root otherwise (e.g. Docker)
+        if _needs_no_sandbox():
+            cmd.append("--no-sandbox")
         cmd.append(url)
         try:
             subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
@@ -83,6 +84,12 @@ def capture(url: str, dest: Path, timeout: int | None = None) -> bool:
             current_app.logger.warning("web screenshot failed for %s: %s", url, exc)
             return False
     return dest.exists() and dest.stat().st_size > 0
+
+
+def _needs_no_sandbox() -> bool:
+    """Chromium refuses to start as root without --no-sandbox, and in most containers its
+    sandbox cannot start for a non-root user either (AISIGNX_BROWSER_NO_SANDBOX=1)."""
+    return bool(current_app.config.get("BROWSER_NO_SANDBOX")) or _running_as_root()
 
 
 def _running_as_root() -> bool:

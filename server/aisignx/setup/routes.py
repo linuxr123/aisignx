@@ -1,6 +1,7 @@
 from flask import abort, flash, redirect, render_template, url_for
 from flask_login import login_user
 
+from ..audit import service as audit
 from ..extensions import db
 from ..models import Setting, User
 from ..models.user import ROLE_ADMIN
@@ -27,6 +28,9 @@ def wizard():
         db.session.add(admin)
         Setting.set("org_name", form.org_name.data.strip())
         Setting.set("timezone", form.timezone.data)
+        audit.record("setup.admin_created", admin, user=admin,
+                     detail={"org_name": form.org_name.data.strip(),
+                             "timezone": form.timezone.data})
         db.session.commit()
         login_user(admin)
         flash("Setup complete. Welcome to AiSignX!", "success")

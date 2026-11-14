@@ -2,7 +2,7 @@
 
 Two blueprints:
     player      /player/          the standalone browser player page
-    player_api  /api/player/v1    pairing, manifest, heartbeat, media and live events
+    player_api  /api/player/v1    pairing, manifest, heartbeat, media, plays and live events
 """
 import hashlib
 from pathlib import Path
@@ -42,4 +42,4 @@ def _compute_build(app: Flask) -> str:
     return f"{__version__}-{digest.hexdigest()[:8]}"
 
 
-from . import api, routes, stream  # noqa: E402,F401
+from . import api, plays, routes, stream  # noqa: E402,F401

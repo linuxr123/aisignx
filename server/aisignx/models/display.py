@@ -74,6 +74,9 @@ class Display(db.Model):
     screenshot_request = db.Column(db.String(32), nullable=True)
     screenshot_requested_at = db.Column(db.DateTime(timezone=True), nullable=True)
     screenshot_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    # Alerts: a muted display never raises "display offline". Written with Core UPDATE.
+    alerts_muted = db.Column(db.Boolean, nullable=False, default=False,
+                             server_default=sa.false())
 
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
 

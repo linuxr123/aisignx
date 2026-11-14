@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "audit/_history.html" import history_link with context %}
 {% from "media/_thumb.html" import thumb, type_badge %}
 {% block title %}{{ playlist.name }}{% endblock %}
 {% block content %}
@@ -16,6 +17,7 @@
   </div>
   {% if editable %}
   <div class="d-flex gap-2">
+    {{ history_link('playlist', playlist.id) }}
     <a class="btn btn-outline-secondary" href="{{ url_for('playlists.edit', playlist_id=playlist.id) }}">Playlist settings</a>
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMedia">Add media</button>
   </div>

@@ -26,6 +26,9 @@ from .ticker import ensure_started
 
 MAX_BODY = 8192
 SCREENSHOT_MAX = 4 * 1024 * 1024  # POST /screenshot only
+PLAYS_MAX = 64 * 1024  # POST /plays only
+# Request body limit per endpoint; everything else gets MAX_BODY.
+_BODY_LIMITS = {"player_api.screenshot": SCREENSHOT_MAX, "player_api.plays": PLAYS_MAX}
 _SCREENSHOT_TYPES = ("image/jpeg", "image/png")
 _REQUEST_ID = re.compile(r"^[0-9a-f]{16}$")
 POLL_AFTER_S = 3
@@ -61,8 +64,7 @@ def http_error_response(e: HTTPException):
 
 @api_bp.before_request
 def _before():
-    request.max_content_length = (SCREENSHOT_MAX if request.endpoint == "player_api.screenshot"
-                                  else MAX_BODY)
+    request.max_content_length = _BODY_LIMITS.get(request.endpoint, MAX_BODY)
     if setup_required():
         return api_error(503, "setup_required",
                          "AiSignX is not set up yet. Finish the setup wizard in the admin.",
