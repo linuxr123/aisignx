@@ -46,8 +46,9 @@ A quick overview. The detailed list of every change follows further down.
    - better-organized menus (system settings, admin settings, logs);
    - the media library as a grid with filters, and drag-and-drop upload of many files at once;
    - a nicer display edit page.
-6. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
-7. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+6. **Synced playback** between displays (from v2). Player controls are turned off on synced displays, because pause, next or previous on one screen would break the sync.
+7. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
+8. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
 
 ## Unreleased: Player controls and Lock player
 
