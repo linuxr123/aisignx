@@ -1,7 +1,7 @@
 {
   "name": "aisignx-player",
   "productName": "AiSignX Player",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "AiSignX v3 display client",
   "license": "AGPL-3.0-or-later",
   "private": true,
@@ -29,7 +29,12 @@
     "win": {
       "icon": "assets/icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
@@ -44,8 +49,18 @@
       "category": "Utility",
       "maintainer": "AiSignX",
       "target": [
-        { "target": "AppImage", "arch": ["x64"] },
-        { "target": "deb", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     }
   },
