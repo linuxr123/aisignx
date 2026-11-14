@@ -23,6 +23,7 @@ A quick overview. The detailed list of every change follows further down.
 ### Planned (in this order)
 1. **Player fixes:**
    - The arrow keys always mean fast forward/rewind (smaller steps for short videos), and the hints say "Fast forward"/"Rewind". "Next"/"Previous" only appear when changing slides.
+   - Going to the next or previous slide by hand slides left or right, whatever the playlist's transition is. Automatic changes keep the playlist's transition.
    - Back on Android can exit when Lock player is off.
    - The offline banner shows sooner (setting).
    - The apps' video caches handle range requests correctly.
