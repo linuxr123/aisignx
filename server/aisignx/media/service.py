@@ -48,6 +48,11 @@ def _store_and_probe(file_storage) -> dict:
     except probe.InvalidMediaError as exc:
         storage.remove_file(storage.media_dir(), stored)
         raise probe.InvalidMediaError(f"{filename}: {exc}") from exc
+    # Videos with the MP4 index at the end can't start until the player fetches the end
+    # of the file; the kiosk apps' caches stalled on them. Move the index to the front
+    # (lossless, no re-encode) so every player starts at once.
+    if media_type != MEDIA_IMAGE and probe.faststart(path):
+        size, checksum = storage.size_and_sha256(path)
     return {
         "media_type": media_type,
         "original_filename": filename[:255],

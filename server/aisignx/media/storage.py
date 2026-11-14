@@ -76,11 +76,17 @@ def save_upload(file_storage, ext: str) -> tuple[str, int, str]:
     stored = new_stored_name(ext)
     path = media_dir() / stored
     file_storage.save(path)
+    size, checksum = size_and_sha256(path)
+    return stored, size, checksum
+
+
+def size_and_sha256(path: Path) -> tuple[int, str]:
+    """(size in bytes, sha256 hex) of a file on disk."""
     digest = hashlib.sha256()
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1024 * 1024), b""):
             digest.update(chunk)
-    return stored, path.stat().st_size, digest.hexdigest()
+    return path.stat().st_size, digest.hexdigest()
 
 
 def remove_file(folder: Path, name: str | None) -> None:

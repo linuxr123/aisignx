@@ -27,6 +27,76 @@ def ffmpeg_available() -> bool:
     return _tool("FFMPEG_PATH") is not None and _tool("FFPROBE_PATH") is not None
 
 
+_ISO_EXTS = {".mp4", ".m4v", ".mov"}
+
+
+def _top_level_boxes(path: Path, limit: int = 64) -> list[str]:
+    """Names of the top-level ISO BMFF boxes ("ftyp", "mdat", "moov", ...), in file order."""
+    names, size_total = [], path.stat().st_size
+    with open(path, "rb") as fh:
+        pos = 0
+        while pos + 8 <= size_total and len(names) < limit:
+            fh.seek(pos)
+            header = fh.read(16)
+            if len(header) < 8:
+                break
+            size = int.from_bytes(header[:4], "big")
+            name = header[4:8].decode("latin-1")
+            if size == 1 and len(header) >= 16:  # 64-bit size follows
+                size = int.from_bytes(header[8:16], "big")
+            elif size == 0:  # box runs to the end of the file
+                size = size_total - pos
+            if size < 8:
+                break
+            names.append(name)
+            pos += size
+    return names
+
+
+def needs_faststart(path: Path) -> bool:
+    """True for an MP4/MOV whose index ("moov") comes after the media data ("mdat").
+    Such files make a player fetch the end of the file before it can start, which the
+    kiosk apps' caches and many slow networks handle badly."""
+    if path.suffix.lower() not in _ISO_EXTS:
+        return False
+    try:
+        boxes = _top_level_boxes(path)
+    except OSError:
+        return False
+    return "moov" in boxes and "mdat" in boxes and boxes.index("moov") > boxes.index("mdat")
+
+
+def faststart(path: Path) -> bool:
+    """Move the MP4 index to the front without re-encoding (ffmpeg -c copy +faststart).
+    Returns True when the file was rewritten. Missing ffmpeg or any failure leaves the
+    file untouched."""
+    if not needs_faststart(path):
+        return False
+    ffmpeg = _tool("FFMPEG_PATH")
+    if not ffmpeg:
+        return False
+    tmp = path.with_name(path.stem + ".faststart" + path.suffix)
+    cmd = [ffmpeg, "-y", "-v", "error", "-i", str(path), "-map", "0", "-c", "copy",
+           "-movflags", "+faststart", str(tmp)]
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=_TIMEOUT * 5, check=False)
+        if result.returncode != 0 or not tmp.exists() or tmp.stat().st_size == 0 \
+                or needs_faststart(tmp):
+            current_app.logger.warning("faststart failed for %s: %s", path.name,
+                                       (result.stderr or b"")[-300:])
+            tmp.unlink(missing_ok=True)
+            return False
+        tmp.replace(path)
+        return True
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        current_app.logger.warning("faststart failed for %s: %s", path.name, exc)
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+
+
 def probe_image(path: Path) -> dict:
     """Return width/height, or raise InvalidMediaError if it isn't an image."""
     try:
