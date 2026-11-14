@@ -1,5 +1,52 @@
 # Changelog
 
+## Project status (updated 2026-11-14)
+
+A quick overview. The detailed list of every change follows further down.
+
+### Done
+- **Core:** setup wizard (no default passwords), sign-in, users and roles (admin, editor, viewer), settings.
+- **Content:** media library (images, videos, web pages with screenshot previews), playlists with drag-and-drop, durations, transitions and fit modes.
+- **Screens:** pairing with a short code, browser player at `/player/`, live updates within about a second, online/offline status.
+- **Scheduling:** schedules by day, time and date, display groups, emergency messages.
+- **Player apps:** Windows (Electron, current installer 3.1.0) and Android (phones and TVs), with offline caching and certificate pinning.
+- **Display options:** orientation, volume, offline banner, location, exit PIN, Identify, remote screenshots, diagnostics.
+- **Player controls:** pause, next/previous and seek by keyboard, mouse, touch and TV remote. **Lock player** kiosk mode with remote unlock.
+- **Operations:** backup and restore, audit log, alerts by e-mail, proof of play, API tokens and a media upload API, health checks and logs, Docker, HTTPS guide.
+- **Fixed today:** videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
+
+### In progress
+- **Plugins:** the framework, then clock, weather, weather radar, RSS, stocks, YouTube and image library.
+- **PowerPoint add-in:** export a presentation to MP4 in PowerPoint and upload or replace it with an API token.
+- **Designs being written:** the device agent/watchdog, and content extras.
+
+### Planned (in this order)
+1. **Player fixes:**
+   - The arrow keys always mean fast forward/rewind (smaller steps for short videos), and the hints say "Fast forward"/"Rewind". "Next"/"Previous" only appear when changing slides.
+   - Back on Android can exit when Lock player is off.
+   - The offline banner shows sooner (setting).
+   - The apps' video caches handle range requests correctly.
+2. **Web pages that refuse to be embedded** (e.g. google.com):
+   - a warning when added;
+   - a "Show as screenshot" option with periodic refresh;
+   - an automatic fallback in the player;
+   - optional live mode in the Windows app.
+3. **Device agent and watchdog** (Windows and Android):
+   - restarts the player when needed, installs signed updates, reboots, collects logs;
+   - Windows kiosk setup (auto-login, replace the shell), all controlled from the display settings.
+4. **Emergency improvements:**
+   - saved emergency templates;
+   - scheduled emergencies;
+   - triggering an emergency from another device (API, button or webhook).
+5. **Admin interface makeover:**
+   - a navigation bar on the left that collapses to icons;
+   - light and dark themes;
+   - better-organized menus (system settings, admin settings, logs);
+   - the media library as a grid with filters, and drag-and-drop upload of many files at once;
+   - a nicer display edit page.
+6. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
+7. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+
 ## Unreleased: Player controls and Lock player
 
 ### Added
