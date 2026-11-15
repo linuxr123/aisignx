@@ -61,6 +61,13 @@ object TvKeys {
             keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 ||
             keyCode in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9
 
+    /**
+     * Whether the Back key leaves the player. With Lock player on it never does (a viewer must
+     * not be able to leave); with it off, Back closes the app like on any other Android app.
+     * The mouse's side "back" button arrives as KEYCODE_BACK too and is a control, not an exit.
+     */
+    fun backLeaves(lockPlayer: Boolean, fromMouse: Boolean): Boolean = !lockPlayer && !fromMouse
+
     /** Keys whose 1.5 s long press opens the exit-to-setup dialog. */
     fun isExitKey(keyCode: Int): Boolean =
         keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_MENU

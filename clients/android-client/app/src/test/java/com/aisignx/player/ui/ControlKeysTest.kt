@@ -56,3 +56,13 @@ class ControlKeysTest {
         )) assertNull("key $code", ControlKeys.action(code))
     }
 }
+
+class BackKeyTest {
+    @org.junit.Test
+    fun backLeavesOnlyWhenLockPlayerIsOffAndItIsNotTheMouseButton() {
+        org.junit.Assert.assertTrue(TvKeys.backLeaves(lockPlayer = false, fromMouse = false))
+        org.junit.Assert.assertFalse(TvKeys.backLeaves(lockPlayer = true, fromMouse = false))
+        org.junit.Assert.assertFalse(TvKeys.backLeaves(lockPlayer = false, fromMouse = true))
+        org.junit.Assert.assertFalse(TvKeys.backLeaves(lockPlayer = true, fromMouse = true))
+    }
+}

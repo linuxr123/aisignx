@@ -364,6 +364,15 @@ class PlayerActivity : AppCompatActivity() {
                 return true
             }
         }
+        if (code == KeyEvent.KEYCODE_BACK &&
+            TvKeys.backLeaves(lock.kioskLock, event.isFromSource(InputDevice.SOURCE_MOUSE))) {
+            // Lock player is off: Back closes the app, as the admin expects of any Android app.
+            if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) {
+                FileLog.i(TAG, "back key: leaving the player (Lock player is off)")
+                finish()
+            }
+            return true
+        }
         if (TvKeys.consumes(code)) return true
         return super.dispatchKeyEvent(event)
     }
@@ -397,10 +406,10 @@ class PlayerActivity : AppCompatActivity() {
         return super.dispatchGenericMotionEvent(ev)
     }
 
-    @Deprecated("Kiosk: the back key never leaves the player")
+    @Deprecated("Kiosk: the back key leaves the player only when Lock player is off (dispatchKeyEvent)")
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        // Swallowed on purpose.
+        // Swallowed on purpose: dispatchKeyEvent decides whether Back leaves.
     }
 
     /**
