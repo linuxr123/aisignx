@@ -25,6 +25,19 @@ the VSTO build targets and the Office interop assemblies.
 3. Press **F5** to debug (starts PowerPoint with the add-in), or build from a Developer Command
    Prompt: `msbuild AiSignXPowerPoint\AiSignXPowerPoint.csproj /p:Configuration=Release`.
 
+**Command-line build and installer** (verified with Visual Studio 2026 and the Office/SharePoint
+development workload, from any PowerShell, no Developer Prompt needed):
+
+```powershell
+& "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" `
+  AiSignXPowerPoint\AiSignXPowerPoint.csproj "/t:Rebuild,Publish" /p:Configuration=Release
+```
+
+The installer is written to `AiSignXPowerPoint\bin\Release\app.publish\` (`setup.exe`, the
+`.vsto` and `Application Files\`). Copy that folder to the target PC, or zip it. The project adds
+the Visual Studio `ReferenceAssemblies4.0` folder to its search path and ships
+`Microsoft.Office.Tools.Common.v4.0.Utilities.dll` next to the add-in (it is not installed system-wide).
+
 Without the Office workload the project still compiles the DLL (with a warning), which is enough
 to catch code errors but produces no installable package.
 

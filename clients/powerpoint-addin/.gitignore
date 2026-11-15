@@ -12,3 +12,4 @@ TestResults/
 *.p12
 *.snk
 signing.local.props
+*.zip

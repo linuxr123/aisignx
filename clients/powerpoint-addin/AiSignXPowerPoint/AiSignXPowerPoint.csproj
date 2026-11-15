@@ -94,6 +94,9 @@
     <Reference Include="Microsoft.Office.Tools, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <Private>False</Private>
     </Reference>
+    <Reference Include="Microsoft.Office.Tools.Common.v4.0.Utilities, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
     <Reference Include="Microsoft.Office.Tools.Common, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <Private>False</Private>
     </Reference>
@@ -152,6 +155,12 @@
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">17.0</VisualStudioVersion>
     <VSToolsPath Condition="'$(VSToolsPath)' == ''">$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
     <OfficeToolsTargets>$(VSToolsPath)\OfficeTools\Microsoft.VisualStudio.Tools.Office.targets</OfficeToolsTargets>
+  </PropertyGroup>
+  <!-- The VSTO runtime reference assemblies ship with the Office workload of Visual Studio; a plain
+       msbuild (outside a Developer Prompt) does not search that folder, so add it. -->
+  <PropertyGroup>
+    <VstoReferenceAssemblies>$(MSBuildToolsPath)\..\..\..\Common7\IDE\ReferenceAssemblies\v4.0</VstoReferenceAssemblies>
+    <ReferencePath Condition="Exists('$(VstoReferenceAssemblies)')">$(ReferencePath);$(VstoReferenceAssemblies)</ReferencePath>
   </PropertyGroup>
   <!-- Manifest signing: signing.local.props (gitignored, made by tools/New-DevCert.ps1) sets
        ManifestCertificateThumbprint and, optionally, ManifestKeyFile. -->
