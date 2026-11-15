@@ -51,6 +51,7 @@ ACTIONS = OrderedDict([
     ("media.create_plugin", "Plugin item added"),
     ("media.update", "Media updated"),
     ("media.replace", "Media file replaced"),
+    ("media.convert", "Video converted (TV-friendly copy)"),
     ("media.delete", "Media deleted"),
     ("playlist.", "Playlists (all)"),
     ("playlist.create", "Playlist created"),

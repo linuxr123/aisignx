@@ -56,6 +56,38 @@
         <div class="form-text">Keeps the name, ID, duration and playlist placements. An image can be replaced with a video and the other way round.</div>
       </form>
       {% endif %}
+      {% if media.is_video and media.stored_name %}
+      <hr>
+      <div id="convert-card" data-convert-url="{{ url_for('media.convert_status', media_id=media.id) }}"
+           data-convert-state="{{ convert.state }}">
+        <div class="form-label">Make a TV-friendly copy</div>
+        <p class="form-text mt-0">Re-encodes to Full HD H.264 at about 8 Mbps and 30 frames per second at most, with a keyframe every 2 seconds, so it plays smoothly on TV boxes and fast forward and rewind are quick.
+          Your original is kept unless you tick Replace.</p>
+        {% if convert.state in ("queued", "running") %}
+        <div class="progress mb-2" role="progressbar" aria-label="Conversion progress"><div class="progress-bar" style="width: {{ convert.pct }}%"></div></div>
+        <div class="small text-secondary" data-convert-message>{{ convert.message }} {{ convert.pct }}%</div>
+        {% elif convert.state == "failed" %}
+        <div class="alert alert-danger py-2 small">Conversion failed: {{ convert.message }}</div>
+        {% elif convert.state == "done" %}
+        <div class="alert alert-success py-2 small">{{ convert.message }}
+          {% if convert.result_id and convert.result_id != media.id %}<a href="{{ url_for('media.edit', media_id=convert.result_id) }}">Open it</a>{% endif %}</div>
+        {% endif %}
+        {% if can_convert %}
+        {% if convert.state not in ("queued", "running") %}
+        <form method="post" action="{{ url_for('media.convert_video', media_id=media.id) }}" class="d-flex flex-wrap gap-3 align-items-center">
+          {{ convert_form.hidden_tag() }}
+          <button class="btn {{ 'btn-warning' if media.playback_warnings else 'btn-outline-primary' }}" type="submit">Make TV-friendly copy</button>
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" name="replace" value="y" id="convert-replace">
+            <label class="form-check-label small" for="convert-replace">Replace this video (keeps playlist placements; the original file is deleted)</label>
+          </div>
+        </form>
+        {% endif %}
+        {% else %}
+        <div class="form-text text-warning-emphasis">ffmpeg was not found on the server.</div>
+        {% endif %}
+      </div>
+      {% endif %}
       <hr>
       <form method="post" action="{{ url_for('media.refresh_thumbnail', media_id=media.id) }}" class="d-inline">
         {{ delete_form.hidden_tag() }}

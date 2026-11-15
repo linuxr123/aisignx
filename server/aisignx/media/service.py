@@ -42,22 +42,35 @@ def _store_and_probe(file_storage) -> dict:
     media_type = storage.media_type_for(filename)
     if media_type is None:
         raise probe.InvalidMediaError(f"{filename or 'File'}: unsupported file type.")
-    stored, size, checksum = storage.save_upload(file_storage, storage.extension_of(filename))
-    path = storage.media_dir() / stored
+    stored, _size, _checksum = storage.save_upload(file_storage, storage.extension_of(filename))
+    try:
+        return fields_for_stored(storage.media_dir() / stored, filename)
+    except probe.InvalidMediaError:
+        storage.remove_file(storage.media_dir(), stored)
+        raise
+
+
+def fields_for_stored(path, filename: str) -> dict:
+    """Media fields for a file already saved in the media folder: reads its size, checksum and
+    metadata. `filename` is the original name (its extension decides the type and MIME).
+    Raises probe.InvalidMediaError (the file is left for the caller to remove)."""
+    media_type = storage.media_type_for(filename)
+    if media_type is None:
+        raise probe.InvalidMediaError(f"{filename or 'File'}: unsupported file type.")
     try:
         info = probe.probe_image(path) if media_type == MEDIA_IMAGE else probe.probe_video(path)
     except probe.InvalidMediaError as exc:
-        storage.remove_file(storage.media_dir(), stored)
         raise probe.InvalidMediaError(f"{filename}: {exc}") from exc
     # Videos with the MP4 index at the end can't start until the player fetches the end
     # of the file; the kiosk apps' caches stalled on them. Move the index to the front
     # (lossless, no re-encode) so every player starts at once.
-    if media_type != MEDIA_IMAGE and probe.faststart(path):
-        size, checksum = storage.size_and_sha256(path)
+    if media_type != MEDIA_IMAGE:
+        probe.faststart(path)
+    size, checksum = storage.size_and_sha256(path)
     return {
         "media_type": media_type,
         "original_filename": filename[:255],
-        "stored_name": stored,
+        "stored_name": path.name,
         "mime_type": storage.mime_for(filename),
         "file_size": size,
         "checksum_sha256": checksum,
@@ -69,7 +82,7 @@ def _store_and_probe(file_storage) -> dict:
     }
 
 
-def _apply_file(media: Media, fields: dict) -> None:
+def apply_file(media: Media, fields: dict) -> None:
     path = fields.pop("path")
     for key, value in fields.items():
         setattr(media, key, value)
@@ -83,7 +96,7 @@ def create_from_upload(file_storage, user) -> Media:
     media = Media(name=display_name(fields["original_filename"]),
                   default_duration=default_duration(),
                   uploaded_by_id=getattr(user, "id", None))
-    _apply_file(media, fields)
+    apply_file(media, fields)
     db.session.add(media)
     return media
 
@@ -96,7 +109,7 @@ def replace_file(media: Media, file_storage) -> tuple[str | None, str | None]:
     if media.media_type == MEDIA_WEB:
         raise NotReplaceableError("Web pages cannot be replaced with a file.")
     old = (media.stored_name, media.thumbnail_name)
-    _apply_file(media, _store_and_probe(file_storage))
+    apply_file(media, _store_and_probe(file_storage))
     return old
 
 

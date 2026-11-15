@@ -46,6 +46,25 @@
     });
   });
 
+  // Media edit page: follow a running video conversion, reload when it ends.
+  const convertCard = document.getElementById("convert-card");
+  if (convertCard && ["queued", "running"].includes(convertCard.dataset.convertState)) {
+    const bar = convertCard.querySelector(".progress-bar");
+    const text = convertCard.querySelector("[data-convert-message]");
+    const follow = async () => {
+      try {
+        const response = await fetch(convertCard.dataset.convertUrl, { headers: { Accept: "application/json" } });
+        const data = await response.json();
+        if (data.state === "queued" || data.state === "running") {
+          if (bar) bar.style.width = data.pct + "%";
+          if (text) text.textContent = data.message + " " + data.pct + "%";
+        } else { window.location.reload(); return; }
+      } catch (e) { /* try again */ }
+      setTimeout(follow, 2000);
+    };
+    setTimeout(follow, 2000);
+  }
+
   // Reload once background thumbnails (web page screenshots) are ready.
   const pending = [...document.querySelectorAll("[data-thumb-pending]")].map((el) => el.dataset.thumbPending);
   if (pending.length) {

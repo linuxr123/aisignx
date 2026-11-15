@@ -2,7 +2,7 @@ from urllib.parse import urlsplit
 
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, MultipleFileField
-from wtforms import IntegerField, StringField, ValidationError
+from wtforms import BooleanField, IntegerField, StringField, ValidationError
 from wtforms.validators import DataRequired, Length, NumberRange, Optional
 
 MAX_DURATION = 24 * 3600
@@ -34,6 +34,11 @@ class MediaEditForm(FlaskForm):
 
 class ReplaceForm(FlaskForm):
     file = FileField("New file")
+
+
+class ConvertForm(FlaskForm):
+    """CSRF token and the "replace the original" choice of a TV-friendly conversion."""
+    replace = BooleanField("Replace the original")
 
 
 class DeleteForm(FlaskForm):

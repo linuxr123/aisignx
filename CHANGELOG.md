@@ -57,6 +57,7 @@ A quick overview. The detailed list of every change follows further down.
 
 ### Added
 - The server records each video's codec, profile, level, pixel format, frame rate and bitrate (ffprobe). Videos that many players cannot decode smoothly (4K or other frames over Full HD, bitrate above 20 Mbps, HEVC/VP9/AV1, 10-bit or 4:2:2, over 60 fps) get a **May stutter** badge in the media library, a Playback note on the edit page, and a warning after upload. Videos uploaded earlier are read in the background (job `media.probe`). Database migration `0011_video_info`.
+- **Make TV-friendly copy** (media edit page, needs ffmpeg on the server): re-encodes a video in the background to Full HD H.264 at about 8 Mbps and at most 30 frames per second, with a keyframe every 2 seconds (fast forward and rewind stay quick) and the index at the front. A progress bar follows it. The original is kept, or replaced in place (playlist placements stay) if you tick **Replace**. One conversion runs at a time. Audited as `media.convert`.
 
 ## Unreleased: Plugins
 

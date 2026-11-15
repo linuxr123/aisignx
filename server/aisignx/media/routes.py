@@ -1,4 +1,4 @@
-from flask import abort, flash, redirect, render_template, request, send_from_directory, url_for
+from flask import abort, flash, jsonify, redirect, render_template, request, send_from_directory, url_for
 from flask_login import current_user, login_required
 
 from ..audit import service as audit
@@ -6,8 +6,8 @@ from ..auth.decorators import editor_required
 from ..extensions import db
 from ..models import MEDIA_TYPES, Media
 from ..models.media import MEDIA_IMAGE, MEDIA_PLUGIN, MEDIA_VIDEO, MEDIA_WEB, THUMB_PENDING
-from . import bp, service, storage, thumbnails, webshot
-from .forms import DeleteForm, MediaEditForm, ReplaceForm, UploadForm, WebPageForm
+from . import bp, convert, service, storage, thumbnails, webshot
+from .forms import ConvertForm, DeleteForm, MediaEditForm, ReplaceForm, UploadForm, WebPageForm
 from .probe import InvalidMediaError, ffmpeg_available
 
 
@@ -118,7 +118,9 @@ def edit(media_id: int):
             return redirect(url_for("media.index"))
     usage = sorted({item.playlist.name for item in media.playlist_items})
     return render_template("media/edit.html", form=form, media=media, usage=usage,
-                           delete_form=DeleteForm(), replace_form=ReplaceForm())
+                           delete_form=DeleteForm(), replace_form=ReplaceForm(),
+                           convert_form=ConvertForm(), can_convert=convert.available(),
+                           convert=convert.status(media.id))
 
 
 @bp.route("/<int:media_id>/replace", methods=["POST"])
@@ -159,6 +161,33 @@ def delete(media_id: int):
     service.delete_media(media)
     flash(f"Deleted {name}.", "success")
     return redirect(url_for("media.index"))
+
+
+@bp.route("/<int:media_id>/convert", methods=["POST"])
+@editor_required
+def convert_video(media_id: int):
+    """Make a TV-friendly copy of a video in the background (media/convert.py)."""
+    form = ConvertForm()
+    if not form.validate_on_submit():
+        abort(400)
+    media = _get_media_or_404(media_id)
+    if media.media_type != MEDIA_VIDEO or not media.stored_name:
+        flash("Only uploaded videos can be converted.", "danger")
+    elif not convert.available():
+        flash("ffmpeg was not found on the server, so videos cannot be converted.", "danger")
+    elif convert.start(media, current_user, bool(form.replace.data)):
+        flash("Converting. This can take a few minutes for a long video; you can leave this page.",
+              "info")
+    else:
+        flash("This video is already being converted.", "warning")
+    return redirect(url_for("media.edit", media_id=media.id))
+
+
+@bp.route("/<int:media_id>/convert.json")
+@login_required
+def convert_status(media_id: int):
+    _get_media_or_404(media_id)
+    return jsonify(convert.status(media_id))
 
 
 @bp.route("/<int:media_id>/thumbnail/refresh", methods=["POST"])

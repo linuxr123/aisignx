@@ -13,7 +13,7 @@ for a home, a small business, or a company with a few dozen screens.
 ## Requirements
 
 - Python 3.10 or newer
-- [ffmpeg](https://ffmpeg.org/): reads video length and resolution and makes video thumbnails.
+- [ffmpeg](https://ffmpeg.org/): reads video length, resolution, codec and bitrate, makes video thumbnails, and makes TV-friendly copies of heavy videos (4K, very high bitrate).
 - A Chromium-based browser (Microsoft Edge, Google Chrome or Chromium): takes screenshots of web
   pages for their previews. It runs in headless mode, so no browser window opens.
 
