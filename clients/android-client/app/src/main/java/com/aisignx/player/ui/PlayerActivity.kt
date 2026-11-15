@@ -29,6 +29,7 @@ import com.aisignx.player.BuildConfig
 import com.aisignx.player.FileLog
 import com.aisignx.player.R
 import com.aisignx.player.databinding.ActivityPlayerBinding
+import com.aisignx.player.shell.Agent
 import com.aisignx.player.shell.Capture
 import com.aisignx.player.shell.DisplaySettings
 import com.aisignx.player.shell.ShellInfo
@@ -51,6 +52,22 @@ class PlayerActivity : AppCompatActivity() {
     private var webView: WebView? = null
     private var webClient: PlayerWebClient? = null
     private var shellPort: ShellPort? = null
+
+    /** Hang watchdog, command poll and capability report (shell/Agent.kt). */
+    private var agent: Agent? = null
+    private val agentHost = object : Agent.Host {
+        override fun pageHealthy(): Boolean {
+            val url = webView?.url ?: return false
+            return url.startsWith(webClient?.playerUrl ?: return false)
+        }
+        override fun reloadPage() { webView?.reload() }
+        override fun recreateWebView() {
+            if (isFinishing || isDestroyed) return
+            destroyWebView()
+            createWebView()
+        }
+        override fun recreateActivity() { if (!isFinishing && !isDestroyed) recreate() }
+    }
     private val main = Handler(Looper.getMainLooper())
 
     private var exitKeyDownAt = 0L
@@ -93,6 +110,7 @@ class PlayerActivity : AppCompatActivity() {
         Kiosk.keepAwake(this)
         Kiosk.hideSystemUi(this)
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+        agent = Agent(this, agentHost).also { it.start() }
         createWebView()
     }
 
@@ -129,6 +147,7 @@ class PlayerActivity : AppCompatActivity() {
             onManifest = { json -> onManifest(json) },
             onCapture = { _, reply -> Capture.capture(this, worker, reply) },
             onCommand = { c -> main.post { if (!isFinishing && !isDestroyed) onRemoteCommand(c) } },
+            onAlive = { agent?.onAlive() },
         )
         val attached = port.attach(view, services.origin)
         shellPort = port
@@ -150,6 +169,8 @@ class PlayerActivity : AppCompatActivity() {
                 main.post { recoverFromRendererCrash(view) }
                 return true
             }
+
+            override fun onPlayerPageLoaded() { agent?.onPageLoaded() }
         })
         view.webViewClient = client
         b.playerRoot.addView(view, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -169,6 +190,7 @@ class PlayerActivity : AppCompatActivity() {
         } catch (e: Exception) {
             FileLog.w(TAG, "display settings: ${e.message}")
         }
+        agent?.onManifest(json)
         app.services()?.mediaCache?.onManifest(json)
     }
 
@@ -259,7 +281,7 @@ class PlayerActivity : AppCompatActivity() {
         val cache = AiSignXApp.from(this).services()?.mediaCache
         val free = try { filesDir.usableSpace } catch (_: Exception) { -1L }
         val lockNow = lock.state(LockTask.inLockTask(this), lockOwner, lockFailed)
-        return ShellInfo.statsJson(uptime, cache?.fileCount() ?: 0, cache?.totalBytes() ?: 0L, free, lockNow)
+        return ShellInfo.statsJson(uptime, cache?.fileCount() ?: 0, cache?.totalBytes() ?: 0L, free, lockNow, agent?.report())
     }
 
     private fun destroyWebView() {
@@ -295,6 +317,7 @@ class PlayerActivity : AppCompatActivity() {
         webView?.onResume()
         webView?.resumeTimers()
         resumed = true
+        agent?.onResume()
         if (::b.isInitialized) {
             Kiosk.hideSystemUi(this)
             updateLock()
@@ -303,6 +326,7 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onPause() {
         resumed = false
+        agent?.onPause()
         main.removeCallbacks(lockWatchdog)
         webView?.onPause()
         webView?.pauseTimers()
@@ -313,6 +337,8 @@ class PlayerActivity : AppCompatActivity() {
     override fun onDestroy() {
         main.removeCallbacksAndMessages(null)
         exitDialog?.dismiss()
+        agent?.stop()
+        agent = null
         worker.shutdownNow()
         if (::b.isInitialized) destroyWebView()
         super.onDestroy()

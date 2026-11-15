@@ -18,16 +18,19 @@ import com.aisignx.player.ui.PlayerActivity
 class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        val replaced = intent.action == Intent.ACTION_MY_PACKAGE_REPLACED
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED && !replaced) return
         val app = AiSignXApp.from(context)
         if (!app.config.isConfigured) return
+        // After an update the app is stopped; restart it only where that is the intended kiosk.
+        if (replaced && !(app.config.homeMode || app.config.kioskLock)) return
         try {
             context.startActivity(
                 Intent(context, PlayerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
-            FileLog.i(TAG, "boot: player start requested")
+            FileLog.i(TAG, if (replaced) "update: player start requested" else "boot: player start requested")
         } catch (e: Exception) {
-            FileLog.w(TAG, "boot: player start refused: ${e.message}")
+            FileLog.w(TAG, "${if (replaced) "update" else "boot"}: player start refused: ${e.message}")
         }
     }
 

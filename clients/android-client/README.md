@@ -155,6 +155,66 @@ in the current playlist are never evicted; others are evicted least recently use
 
 Media for a schedule that has not played since the server went away is not cached.
 
+## Device agent
+
+A small agent inside the player app. Everything is **off by default** and switched per display in the
+admin (Displays > display > Edit). The app reports what it can do (`stats().agent`, cap `agent`);
+the admin page hides the rest. Design: `docs/device-agent-design.md`.
+
+- **Watchdog** (switch "watchdog"). The page sends `alive` about every 10 s. If it stops, the app
+  escalates: 45 s reload the page, 90 s recreate the WebView, 180 s recreate the activity, 300 s
+  restart the process. The last two together at most once per hour; after that the app logs it and
+  reports `gave_up`. Time does not count while the screen is off, the app is paused, the offline
+  page is showing, or in the first 60 s after a page load.
+- **Restart player** (switch "restart") and **Collect logs** (switch "logs"). While a switch is on and
+  the player is running, the app asks the server for commands about every 20 s with
+  `Authorization: Bearer <display token>` over its normal (pinned) TLS connection. The token is the
+  HttpOnly `aisignx_display` cookie, read from the WebView cookie store, kept only for one request,
+  never logged. Only the verbs `restart_player` and `collect_logs` exist; anything else is answered
+  "unsupported", a switched-off verb "switched off". Each command id is stored before the command
+  runs, so it runs at most once. `restart_player` acks first, then recreates the activity (and
+  restarts the process only with Device Owner or Home mode). `collect_logs` redacts tokens, cookies,
+  certificate pin, PIN hash and config values, keeps the newest part (gzip at most 900 KB) and uploads it.
+- **Crashes.** An uncaught exception is written to the log; with the watchdog on, the app asks for a
+  relaunch (at most once per 10 min). At start the previous exit reasons (Android 11+) are logged.
+- **Update.** After an app update the player is started again, but only with Home mode or Lock player on.
+
+### Honest limits
+
+- Without **Device Owner** or **Home mode**, Android 10+ may refuse to start the app from the
+  background. A process restart, a crash relaunch and the update start then can leave the screen dark
+  until someone opens the app. That is why `restart_player` only recreates the activity on a plain device.
+- The relaunch alarm is inexact (a few seconds late, more in Doze) because exact alarms need a
+  permission Play policy restricts.
+- A user's **Force stop** cannot be undone by the app; nothing runs until it is opened again.
+- No reboot and no app update in this version (`can_reboot` and `can_update` are false).
+- Not added: `LOCKED_BOOT_COMPLETED` (settings live in credential-protected storage, which is
+  unreadable before the first unlock) and `QUICKBOOT_POWERON` (vendor-specific, unverified).
+- The watchdog relies on the page sending `alive`; a server older than this version never does, so
+  its switch is off.
+
+### Manual test checklist (real device; nothing here was run on hardware yet)
+
+Do it on an Android TV box (Shield TV) and on a phone. Debug builds log to the file under "Logs".
+
+1. Switches off: no `GET /commands` in the server log, no restart, whatever you send.
+2. Switch "logs" on, press Collect logs: the display page offers a download within ~30 s; open the
+   gzip: no token, cookie, PIN hash or certificate pin; the newest lines are present.
+3. Switch "restart" on, press Restart: the player comes back by itself (check the screen is not dark);
+   the command shows as done once. Repeat in Home mode and (if available) as Device Owner.
+4. Switch "restart" off, send Restart: it fails with "switched off".
+5. Watchdog on: block the page's timers (Chrome remote debugging on a debug build, pause in
+   DevTools, or `adb shell am` to freeze) and watch the log: reload at ~45 s, WebView at ~90 s,
+   activity at ~180 s; a second heavy step within the hour reports `gave_up`.
+6. Turn the screen off for 10 minutes (TV standby): no watchdog action on wake.
+7. Unplug the network: the offline page shows, no watchdog action.
+8. Crash: with the watchdog on, force a crash (debug only) and check the stack in the log and the relaunch
+   (plain device: note whether Android allowed it).
+9. Install an update over the app (`adb install -r`) in Home mode: the player starts; on a plain
+   device nothing starts.
+10. Force stop in Settings: confirm nothing restarts (expected).
+11. Heartbeat diag on the display page shows the agent tier, `watchdog`, `restarts_1h`, `gave_up`.
+
 ## Logs and debugging
 
 The log is at `Android/data/com.aisignx.player/files/logs/aisignx-player.log` (1 MB,
@@ -169,6 +229,7 @@ app/src/main/java/com/aisignx/player/
   net/      Tls.kt (pinning trust manager, capture), Http.kt (OkHttp, /healthz)
   cache/    PageCache.kt  MediaCache.kt  MediaDownloader.kt  Range.kt  Served.kt
   shell/    ShellInfo.kt (window.AiSignXShellInfo)  ShellPort.kt (window.AiSignXShellPort)
+            Agent.kt (watchdog, command poll)  AgentRules.kt (pure rules)  AgentStore.kt  AgentRestart.kt
   ui/       SetupActivity.kt  PlayerActivity.kt  PlayerWebClient.kt  Kiosk.kt  TvKeys.kt
             ControlKeys.kt (keys -> control actions)  LockPolicy.kt  LockTask.kt (lock task, Device Owner)
   AisignxDeviceAdminReceiver.kt   Device Owner receiver

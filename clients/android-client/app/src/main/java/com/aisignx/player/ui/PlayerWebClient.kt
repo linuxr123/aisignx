@@ -41,6 +41,8 @@ class PlayerWebClient(
     interface Callbacks {
         fun offlineReason(certChanged: Boolean): String
         fun onRenderProcessGone(view: WebView): Boolean
+        /** The player page finished loading (the device agent judges it after a grace period). */
+        fun onPlayerPageLoaded() {}
     }
 
     private val origin = services.origin
@@ -82,6 +84,7 @@ class PlayerWebClient(
 
     override fun onPageFinished(view: WebView, url: String?) {
         if (url?.startsWith(playerUrl) != true || loadFailed) return
+        callbacks.onPlayerPageLoaded()
         if (!playerLoaded) {
             playerLoaded = true
             main.removeCallbacksAndMessages(null)

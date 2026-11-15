@@ -58,6 +58,7 @@ class ShellInfo(
         const val CAP_PIN_EXIT = "pin-exit"
         const val CAP_CONTROLS = "controls"
         const val CAP_KIOSK_LOCK = "kiosk-lock"
+        const val CAP_AGENT = "agent"
 
         /**
          * Capabilities: settings and capture requests arrive through the port, so
@@ -71,6 +72,7 @@ class ShellInfo(
                 if (!isTv) add(CAP_ROTATE)
                 add(CAP_CONTROLS)
                 add(CAP_KIOSK_LOCK)
+                add(CAP_AGENT)
             }
         }
 
@@ -78,11 +80,12 @@ class ShellInfo(
          * The JSON returned by stats(). Negative values are left out. [lock] is one of
          * off, locked, unlocked, pinned, owner, failed (left out when null).
          */
-        fun statsJson(uptimeS: Long, cacheFiles: Int, cacheBytes: Long, freeBytes: Long, lock: String? = null): String {
+        fun statsJson(uptimeS: Long, cacheFiles: Int, cacheBytes: Long, freeBytes: Long, lock: String? = null, agent: JSONObject? = null): String {
             val o = JSONObject().put("uptime_s", maxOf(0L, uptimeS))
                 .put("cache", JSONObject().put("files", maxOf(0, cacheFiles)).put("bytes", maxOf(0L, cacheBytes)))
             if (freeBytes >= 0) o.put("storage_free_bytes", freeBytes)
             if (lock != null) o.put("lock", lock.take(16))
+            if (agent != null) o.put("agent", agent)
             return o.toString()
         }
 

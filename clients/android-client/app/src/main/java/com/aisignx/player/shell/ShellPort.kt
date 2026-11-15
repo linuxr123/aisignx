@@ -22,6 +22,7 @@ import java.util.concurrent.Executors
  *   {"t":"controls"}              -> keep this message's reply proxy; control actions from keys
  *                                    and remote buttons go back on it as
  *                                    {"t":"control","a":"next","r":false} (see sendControl)
+ *   {"t":"alive","a":{...}}       -> the page runs (about every 10 s); feeds the hang watchdog
  *   {"t":"command","c":{...}}     -> an SSE command the page forwards: unlock or lock (onCommand)
  *
  * The listener is registered for the server origin only and ignores sub-frames,
@@ -33,6 +34,7 @@ class ShellPort(
     private val onManifest: (String) -> Unit,
     private val onCapture: (id: Int, reply: (String?) -> Unit) -> Unit = { _, reply -> reply(null) },
     private val onCommand: (Command) -> Unit = {},
+    private val onAlive: () -> Unit = {},
 ) {
     private val main = Handler(Looper.getMainLooper())
 
@@ -87,6 +89,7 @@ class ShellPort(
                 onCapture(id) { jpeg -> main.post { reply(replyProxy, captureReply(id, jpeg)) } }
             }
             "controls" -> controlProxy = replyProxy
+            "alive" -> onAlive() // the page is running; only the arrival counts, the payload is ignored
             "command" -> {
                 val c = msg.optJSONObject("c") ?: return
                 parseCommand(c)?.let(onCommand)

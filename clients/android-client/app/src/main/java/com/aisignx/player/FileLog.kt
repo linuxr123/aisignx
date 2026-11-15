@@ -46,6 +46,12 @@ object FileLog {
         write("E", tag, msg + trace)
     }
 
+    /** The log files that exist, oldest first (the rotated ".1" file, then the current one). */
+    fun files(): List<File> {
+        val f = logFile ?: return emptyList()
+        return listOf(File(f.parentFile, "$FILENAME.1"), f).filter { it.isFile }
+    }
+
     fun path(): String = logFile?.absolutePath ?: "(not started)"
 
     @Synchronized
