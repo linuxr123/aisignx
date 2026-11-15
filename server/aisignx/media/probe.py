@@ -134,6 +134,31 @@ def probe_video(path: Path) -> dict:
         "width": _to_int(video.get("width")),
         "height": _to_int(video.get("height")),
         "duration_seconds": duration if duration and duration > 0 else None,
+        "video_info": video_facts(video, data.get("format") or {}, duration),
+    }
+
+
+def _fps(text) -> float | None:
+    try:
+        num, _, den = str(text).partition("/")
+        value = float(num) / float(den or 1)
+    except (ValueError, ZeroDivisionError):
+        return None
+    return round(value, 2) if 0 < value < 1000 else None
+
+
+def video_facts(stream: dict, fmt: dict, duration: float | None) -> dict:
+    """The few ffprobe facts that decide whether a player can decode a video smoothly."""
+    bitrate = _to_int(stream.get("bit_rate")) or _to_int(fmt.get("bit_rate"))
+    if not bitrate and duration and _to_int(fmt.get("size")):
+        bitrate = int(_to_int(fmt.get("size")) * 8 / duration)
+    return {
+        "codec": str(stream.get("codec_name") or "")[:20] or None,
+        "profile": str(stream.get("profile") or "")[:30] or None,
+        "level": _to_int(stream.get("level")),
+        "pix_fmt": str(stream.get("pix_fmt") or "")[:20] or None,
+        "fps": _fps(stream.get("avg_frame_rate")) or _fps(stream.get("r_frame_rate")),
+        "bitrate": bitrate,
     }
 
 

@@ -53,6 +53,11 @@ A quick overview. The detailed list of every change follows further down.
 8. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
 9. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
 
+## Unreleased: Video playback warnings
+
+### Added
+- The server records each video's codec, profile, level, pixel format, frame rate and bitrate (ffprobe). Videos that many players cannot decode smoothly (4K or other frames over Full HD, bitrate above 20 Mbps, HEVC/VP9/AV1, 10-bit or 4:2:2, over 60 fps) get a **May stutter** badge in the media library, a Playback note on the edit page, and a warning after upload. Videos uploaded earlier are read in the background (job `media.probe`). Database migration `0011_video_info`.
+
 ## Unreleased: Plugins
 
 ### Added

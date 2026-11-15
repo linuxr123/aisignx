@@ -20,7 +20,9 @@
           {% if media.original_filename %}<dt class="col-5">File</dt><dd class="col-7 text-break">{{ media.original_filename }}</dd>{% endif %}
           {% if media.file_size %}<dt class="col-5">Size</dt><dd class="col-7">{{ media.file_size|filesize }}</dd>{% endif %}
           {% if media.resolution %}<dt class="col-5">Resolution</dt><dd class="col-7">{{ media.resolution }}</dd>{% endif %}
+          {% if media.video_summary %}<dt class="col-5">Video</dt><dd class="col-7">{{ media.video_summary }}</dd>{% endif %}
           {% if media.is_video %}<dt class="col-5">Length</dt><dd class="col-7">{{ media.duration_seconds|duration if media.duration_seconds else "Unknown" }}</dd>{% endif %}
+          {% if media.playback_warnings %}<dt class="col-5 text-warning-emphasis">Playback</dt><dd class="col-7 text-warning-emphasis">{% for w in media.playback_warnings %}<div>{{ w }}</div>{% endfor %}</dd>{% endif %}
           <dt class="col-5">Uploaded</dt><dd class="col-7">{{ media.created_at.strftime('%Y-%m-%d %H:%M') }} UTC{% if media.uploaded_by %} by {{ media.uploaded_by.username }}{% endif %}</dd>
           <dt class="col-5">Used in</dt><dd class="col-7">{{ usage|join(", ") if usage else "No playlists" }}</dd>
         </dl>

@@ -74,6 +74,7 @@
         <div class="small text-secondary d-flex flex-wrap gap-2 align-items-center">
           <span title="Media ID (for the API and the PowerPoint add-in)">ID {{ m.id }}</span>
           {{ type_badge(m) }} {{ preview_warning(m) }}
+          {% if m.playback_warnings %}<span class="badge text-bg-warning" title="{{ m.playback_warnings|join(' ') }}">May stutter</span>{% endif %}
           <span>{{ m.effective_duration|duration }}</span>
           {% if m.resolution %}<span>{{ m.resolution }}</span>{% endif %}
           {% if m.file_size %}<span>{{ m.file_size|filesize }}</span>{% endif %}

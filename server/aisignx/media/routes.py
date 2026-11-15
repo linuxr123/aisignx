@@ -49,17 +49,22 @@ def upload():
         flash("Choose at least one file to upload.", "warning")
         return redirect(url_for("media.index"))
 
-    added, errors = 0, []
+    added, errors, heavy = 0, [], []
     for file_storage in files:
         try:
             media = service.create_from_upload(file_storage, current_user)
             audit.record("media.upload", media)
             added += 1
+            if media.playback_warnings:
+                heavy.append(media)
         except InvalidMediaError as exc:
             errors.append(str(exc))
     db.session.commit()
     if added:
         flash(f"Uploaded {added} file{'s' if added != 1 else ''}.", "success")
+    for media in heavy:
+        flash(f"{media.name}: may not play smoothly on every screen. "
+              + " ".join(media.playback_warnings), "warning")
     for message in errors:
         flash(message, "danger")
     return redirect(url_for("media.index"))

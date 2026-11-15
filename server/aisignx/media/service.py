@@ -7,7 +7,8 @@ import time
 from ..audit import service as audit
 from ..extensions import db
 from ..models import Media, Setting
-from ..models.media import DEFAULT_DURATION, MEDIA_IMAGE, MEDIA_WEB, THUMB_FAILED, THUMB_OK
+from ..models.media import (DEFAULT_DURATION, MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB, THUMB_FAILED,
+                            THUMB_OK)
 from . import probe, storage, thumbnails
 
 log = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ def _store_and_probe(file_storage) -> dict:
         "width": info.get("width"),
         "height": info.get("height"),
         "duration_seconds": info.get("duration_seconds"),
+        "video_info": info.get("video_info"),
         "path": path,
     }
 
@@ -158,6 +160,31 @@ def _delete(path) -> bool:
     except OSError as exc:  # e.g. locked on Windows; try again next run
         log.warning("could not delete %s: %s", path, exc)
         return False
+
+
+PROBE_BATCH = 10
+
+
+def probe_missing_job() -> str | None:
+    """Job: read the codec, size, bitrate and frame rate of videos uploaded before those facts
+    were recorded (a few per run). A file that cannot be probed gets {} so it is not retried."""
+    if not probe.ffmpeg_available():
+        return "ffprobe not found"
+    rows = (Media.query.filter(Media.media_type == MEDIA_VIDEO, Media.video_info.is_(None),
+                               Media.stored_name.isnot(None)).limit(PROBE_BATCH).all())
+    done = 0
+    for media in rows:
+        path = storage.media_dir() / media.stored_name
+        info = {}
+        try:
+            if path.is_file():
+                info = probe.probe_video(path).get("video_info") or {}
+        except probe.InvalidMediaError:
+            info = {}
+        media.video_info = info
+        done += 1
+    db.session.commit()
+    return f"probed {done} video(s)" if done else None
 
 
 def orphan_job() -> str:

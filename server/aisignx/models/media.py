@@ -44,6 +44,9 @@ class Media(db.Model):
     width = db.Column(db.Integer, nullable=True)
     height = db.Column(db.Integer, nullable=True)
     duration_seconds = db.Column(db.Float, nullable=True)  # videos only
+    # Videos: codec, profile, level, pix_fmt, fps, bitrate from ffprobe (media/probe.py). NULL
+    # until probed; {} when the file could not be probed.
+    video_info = db.Column(db.JSON(none_as_null=True), nullable=True)
 
     # Plugin items: the registry key and the validated config (always assign a new dict;
     # in-place changes to a JSON column are not detected).
@@ -95,6 +98,29 @@ class Media(db.Model):
         if self.width and self.height:
             return f"{self.width}×{self.height}"
         return None
+
+    @property
+    def playback_warnings(self) -> list[str]:
+        """Why this video may not play smoothly on a TV box (media/compat.py); empty if fine
+        or not yet probed."""
+        if not self.is_video or not self.video_info:
+            return []
+        from ..media import compat
+
+        return compat.warnings(self.video_info, self.width, self.height)
+
+    @property
+    def video_summary(self) -> str | None:
+        """"H.264 High · 25 fps · 41 Mbps" for the edit page; None when unknown."""
+        info = self.video_info or {}
+        if not info.get("codec"):
+            return None
+        parts = [str(info["codec"]).upper() + (f" {info['profile']}" if info.get("profile") else "")]
+        if info.get("fps"):
+            parts.append(f"{info['fps']:g} fps")
+        if info.get("bitrate"):
+            parts.append(f"{info['bitrate'] / 1_000_000:.1f} Mbps")
+        return " · ".join(parts)
 
     def __repr__(self) -> str:
         return f"<Media {self.id} {self.media_type} {self.name!r}>"
