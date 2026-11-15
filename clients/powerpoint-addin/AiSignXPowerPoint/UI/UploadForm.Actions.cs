@@ -48,6 +48,21 @@ namespace AiSignXPowerPoint.UI
             return new MediaApiClient(baseUri, token, pin);
         }
 
+        /// <summary>Runs an async button action. An exception that escaped an async void handler
+        /// would vanish inside PowerPoint and the dialog would look dead; show it instead.</summary>
+        private async void RunSafe(Func<Task> work)
+        {
+            try
+            {
+                await work();
+            }
+            catch (Exception ex)
+            {
+                SetStatus("Failed.");
+                ShowError("Something unexpected went wrong: " + ex.Message + "\n\n(" + ex.GetType().Name + ")");
+            }
+        }
+
         private async Task TestConnectionAsync()
         {
             if (IsBusy) return;
@@ -59,12 +74,16 @@ namespace AiSignXPowerPoint.UI
                 try
                 {
                     MediaPage page = await Task.Run(() => client.ListMediaAsync(1, 1, _cancel.Token));
-                    SetStatus("Connected. The token works and can see " + page.Total + " media item(s).");
+                    string ok = "Connected. The token works and can see " + page.Total + " media item(s).";
+                    SetStatus(ok);
+                    ShowInfo(ok);
                 }
                 catch (ApiException ex) when (ex.Code == "insufficient_scope")
                 {
-                    SetStatus("Connected and the token is valid. It cannot list media (no media:read), "
-                              + "which is fine for uploading as long as it has media:write.");
+                    string ok = "Connected and the token is valid. It cannot list media (no media:read), "
+                                + "which is fine for uploading as long as it has media:write.";
+                    SetStatus(ok);
+                    ShowInfo(ok);
                 }
                 catch (ApiException ex)
                 {
@@ -327,6 +346,11 @@ namespace AiSignXPowerPoint.UI
         }
 
         private void SetStatus(string text) => lblStatus.Text = text;
+
+        private void ShowInfo(string text)
+        {
+            MessageBox.Show(this, text, Caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
 
         private void ShowError(string text)
         {

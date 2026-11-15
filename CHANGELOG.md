@@ -45,7 +45,7 @@ A quick overview. The detailed list of every change follows further down.
 - **Android:** the Back key now closes the app when **Lock player** is off (with it on, Back still does nothing). The mouse's side button remains a control.
 
 ### Added
-- **PowerPoint add-in** (VSTO, `clients/powerpoint-addin`): exports the open presentation to MP4 and uploads it, or replaces an existing media item, through the API with a token. The API layer is checked against a real server by a smoke test (`tests/ApiSmoke`); a README covers building, installing and a manual test checklist for PowerPoint itself, which has not been run yet.
+- **PowerPoint add-in** (VSTO, `clients/powerpoint-addin`): exports the open presentation to MP4 and uploads it, or replaces an existing media item, through the API with a token. The API layer is checked against a real server by a smoke test (`tests/ApiSmoke`); a README covers building, installing and a manual test checklist for PowerPoint itself, which has not been run yet. Version 3.0.1: the dialog scrolls and keeps its status line and buttons pinned at the bottom (on a small or scaled screen they were off the edge, so **Test connection** seemed to do nothing); **Test connection** now also answers in a message box, and an unexpected error in a button is shown instead of being lost.
 
 ## Unreleased: Synchronized playback
 

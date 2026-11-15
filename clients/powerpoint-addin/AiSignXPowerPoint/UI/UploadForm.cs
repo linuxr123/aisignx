@@ -64,28 +64,29 @@ namespace AiSignXPowerPoint.UI
             Text = "AiSignX: export and upload";
             Font = SystemFonts.MessageBoxFont;
             AutoScaleMode = AutoScaleMode.Font;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.Sizable;
             MaximizeBox = false;
             MinimizeBox = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterScreen;
-            AutoSize = true;
-            AutoSizeMode = AutoSizeMode.GrowAndShrink;
             Padding = new Padding(10);
 
-            var root = new TableLayoutPanel { ColumnCount = 1, AutoSize = true, Dock = DockStyle.Fill };
-            root.Controls.Add(BuildServerGroup());
-            root.Controls.Add(BuildTargetGroup());
-            root.Controls.Add(BuildVideoGroup());
+            // The settings scroll; the progress bar, status line and buttons stay pinned at the
+            // bottom. (The dialog used to grow with its content, so on a small or scaled screen the
+            // status line and the buttons were off the bottom edge and nothing could be reached.)
+            var content = new TableLayoutPanel { ColumnCount = 1, AutoSize = true, Dock = DockStyle.Top };
+            content.Controls.Add(BuildServerGroup());
+            content.Controls.Add(BuildTargetGroup());
+            content.Controls.Add(BuildVideoGroup());
+            var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+            scroll.Controls.Add(content);
 
             progress = new ProgressBar { Width = 520, Height = 18, Margin = new Padding(3, 10, 3, 3) };
             lblStatus = new Label { AutoSize = true, MaximumSize = new Size(520, 0), Text = "Ready." };
-            root.Controls.Add(progress);
-            root.Controls.Add(lblStatus);
 
             btnRun = new Button { Text = "Export and upload", AutoSize = true, Padding = new Padding(6, 2, 6, 2) };
             btnClose = new Button { Text = "Close", AutoSize = true, Padding = new Padding(6, 2, 6, 2) };
-            btnRun.Click += async (s, e) => await RunAsync();
+            btnRun.Click += (s, e) => RunSafe(RunAsync);
             btnClose.Click += (s, e) => OnCloseClicked();
             var buttons = new FlowLayoutPanel
             {
@@ -94,9 +95,26 @@ namespace AiSignXPowerPoint.UI
             };
             buttons.Controls.Add(btnClose);
             buttons.Controls.Add(btnRun);
-            root.Controls.Add(buttons);
 
-            Controls.Add(root);
+            var bottom = new TableLayoutPanel { ColumnCount = 1, AutoSize = true, Dock = DockStyle.Bottom };
+            bottom.Controls.Add(progress);
+            bottom.Controls.Add(lblStatus);
+            bottom.Controls.Add(buttons);
+
+            Controls.Add(scroll);
+            Controls.Add(bottom);
+            scroll.BringToFront(); // docked last, so it takes what the bottom bar leaves
+
+            // As tall as the content needs, but never taller than the screen's usable area.
+            Rectangle area = Screen.FromPoint(Cursor.Position).WorkingArea;
+            int wanted = content.PreferredSize.Height + bottom.PreferredSize.Height + Padding.Vertical + 8;
+            int width = Math.Max(content.PreferredSize.Width, bottom.PreferredSize.Width)
+                        + SystemInformation.VerticalScrollBarWidth + Padding.Horizontal + 8;
+            int caption = SystemInformation.CaptionHeight + 2 * SystemInformation.FrameBorderSize.Height;
+            ClientSize = new Size(Math.Min(width, area.Width - 20),
+                                  Math.Min(wanted, Math.Max(300, area.Height - caption - 40)));
+            MinimumSize = new Size(Math.Min(width, area.Width - 20), Math.Min(320, area.Height - 40));
+
             AcceptButton = btnRun;
             FormClosing += OnFormClosing;
         }
@@ -124,7 +142,7 @@ namespace AiSignXPowerPoint.UI
             AddRow(grid, null, Hint("Optional. Only for a self-signed HTTPS certificate; leave empty to let Windows decide."));
 
             btnTest = new Button { Text = "Test connection", AutoSize = true };
-            btnTest.Click += async (s, e) => await TestConnectionAsync();
+            btnTest.Click += (s, e) => RunSafe(TestConnectionAsync);
             AddRow(grid, null, btnTest);
             return Group("AiSignX server", grid);
         }
