@@ -22,7 +22,7 @@ A quick overview. The detailed list of every change follows further down.
 - **Designs being written:** the device agent/watchdog, and content extras.
 
 ### Planned (in this order)
-1. **Device agent and watchdog** (Windows and Android; design in [docs/device-agent-design.md](docs/device-agent-design.md)). Done: the server side (settings, capability reporting, durable commands). Next: the Windows watchdog (heartbeat file and a scheduled task), the Android watchdog, `restart_player`, `collect_logs`. Later phases (need decisions): command signing, reboot, signed updates, kiosk helpers.
+1. **Device agent and watchdog** (Windows and Android; design in [docs/device-agent-design.md](docs/device-agent-design.md)). First release done (settings, durable commands, watchdogs, restart, collect logs). Later phases need decisions: command signing, reboot, signed updates, kiosk helpers.
 2. **Server installers** for Windows, Linux and macOS: one script each that installs everything and starts the server with the system (service, scheduled task or launchd), with upgrade and uninstall.
 3. **Downloads area** on the server: after logging in, users download the Windows player, the Android app and the PowerPoint add-in (versions and checksums); admins upload new builds.
 4. **Update check and signed one-click update:** the server checks GitHub releases, shows admins "update available" with release notes, and a button downloads, verifies a signature (public key built into the server), backs up the database, upgrades and restarts. Works for servers set up by the installer scripts; other setups get the notice only.
@@ -34,13 +34,17 @@ A quick overview. The detailed list of every change follows further down.
 7. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
 8. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
 
-## Unreleased: Device agent (server side, first part)
+## Unreleased: Device agent
 
 ### Added
 - **Device agent settings** (admins, **Displays > Edit > Device agent**, all off by default): watchdog, allow "Restart the player", allow "Collect logs". They reach the apps in the manifest (`settings.agent`).
 - **Durable command queue** for the apps' device agent: an admin issues a command from the display page, it is stored (the database row is the truth), the screen is told to look, fetches only its own commands (`GET /commands`), runs each at most once and acknowledges it (`POST /commands/<id>/ack`). Commands expire by server time, there is one open command per action and a cap per hour, and every step is audited. A command needs the admin's switch **and** the app reporting that it can do it. Database migration `0014_device_agent`, job `agent.commands`.
 - The display page shows what each screen's app reports (agent version, privilege tier, watchdog activity) and the last commands.
-- The apps' side (watchdog, restart, collect logs) follows; see [docs/device-agent-design.md](docs/device-agent-design.md).
+- **Collect logs:** an admin asks for a screen's log from the display page; the app uploads it (redacted, gzip, at most 1 MB) only for that open request. The server stores it as is, keeps the newest 5 per display for 7 days, and admins download it from the display page.
+- **Windows app:** the device agent. A per-user Scheduled Task watchdog (no administrator needed) restarts the player after a crash or hang within about a minute, at most 6 times per hour, then reports that it gave up. Admins can restart the player and collect logs from the display page. The log rotates to a `.1` file instead of truncating.
+- **Android app:** the device agent. A hang watchdog (reload the page after 45 s without a sign of life, then a new WebView, a new activity, a process restart, capped per hour), remote **Restart the player** and **Collect logs**, a crash handler, the previous exit reasons in the log, and the player starts after an app update when kiosk mode is configured. A process restart is only reliable as Device Owner or in Home mode; without them Android may refuse to start the app from the background.
+- The web player tells the app it is alive every 10 seconds (`alive` on the shell hook) and the app reports its abilities (`stats().agent`) in the diagnostics. Everything is **off by default** per display and admin-only. No reboot or update commands yet (they need signed commands; see the design).
+- Not run on real hardware yet: both apps' watchdogs and commands are covered by unit tests, and the Windows watchdog script and Scheduled Task were exercised on this PC with a stand-in process. Manual test checklists are in each app's README.
 
 ## Unreleased: Player fixes and the PowerPoint add-in
 
