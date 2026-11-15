@@ -29,23 +29,12 @@
   var EVENTS = ["onReady", "onStateChange", "onError"];
   var seq = 0;
 
-  // ---- Online state. host.js keeps the player's offline flag (the same rule as the banner);
-  // read it through offline() when host.js has one, else follow setOffline() calls.
-  var hostOffline = false;
-  function trackOffline() {
-    var PH = A.pluginHost;
-    if (!PH || typeof PH.setOffline !== "function" || PH.setOffline.ytTracked) return;
-    var orig = PH.setOffline;
-    var wrapped = function (on) { hostOffline = !!on; return orig.apply(this, arguments); };
-    wrapped.ytTracked = true;
-    PH.setOffline = wrapped;
-  }
+  // ---- Online state. Only the device's own network matters here: the embed comes straight
+  // from YouTube, so the AiSignX server being down or restarting must not stop it. (The
+  // player's offline flag measures the link to the server, not the internet.) Anything else
+  // that stops the embed is caught by watchStart() below.
+  function trackOffline() { /* kept for callers; nothing to track any more */ }
   function isOffline() {
-    var PH = A.pluginHost;
-    if (PH && typeof PH.offline === "function") {
-      try { if (PH.offline()) return true; } catch (e) { /* ignore */ }
-    }
-    if (hostOffline) return true;
     return typeof navigator !== "undefined" && navigator.onLine === false;
   }
 
@@ -150,8 +139,17 @@
     send(st, mutedNow(st) ? "mute" : "unMute");
     send(st, "setVolume", [Math.round(Math.max(0, Math.min(1, st.volume)) * 100)]);
   }
+  // cc_load_policy=0 only means "do not force captions on": YouTube still shows them when the
+  // viewer's own setting (device or account) has them on. With captions off here, unload the
+  // captions module, for every video the embed starts.
+  function applyCaptions(st) {
+    if (st.embed.captions) return;
+    send(st, "unloadModule", ["captions"]);
+    send(st, "unloadModule", ["cc"]);
+  }
   function play(st) {
     applySound(st);
+    applyCaptions(st);
     if (st.embed.list && st.embed.shuffle && !st.shuffled) {
       st.shuffled = true;
       send(st, "setShuffle", [true]);
@@ -190,7 +188,7 @@
     if (typeof f.state !== "number") return;
     st.state = f.state;
     if (f.state === PLAYING || f.state === BUFFERING || f.state === UNSTARTED) {
-      if (f.state !== UNSTARTED) st.started = true;
+      if (f.state !== UNSTARTED) { st.started = true; applyCaptions(st); }
       if (st.endTimer) { clearTimeout(st.endTimer); st.endTimer = null; }  // the next video started
     }
     if (f.state !== ENDED || !st.ctx || st.paused) return;
@@ -216,8 +214,19 @@
   function watchStart(st) {
     if (st.dead || st.started || st.paused) return;
     if (!st.heard) {
-      if (st.reloaded) return;
+      if (st.reloaded) {
+        // Still no answer after the reload (no internet, YouTube blocked): this slide shows
+        // nothing useful, so let the playlist move on instead of holding it for the full
+        // duration.
+        if (!st.degradedSent && st.ctx) {
+          st.degradedSent = true;
+          st.ctx.degraded();
+          st.ctx.note("youtube: no answer from the player, moving on");
+        }
+        return;
+      }
       st.reloaded = true;
+      st.timers.push(setTimeout(function () { watchStart(st); }, START_MS));
       try {
         var u = new URL(st.src);
         u.searchParams.set("autoplay", "1");

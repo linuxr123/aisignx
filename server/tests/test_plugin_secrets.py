@@ -87,3 +87,11 @@ def test_editor_cannot_save_a_key(app):
     login(c, "ed")
     assert _save(c, **{"secret-finnhub_key": KEY}).status_code in (302, 303, 403)
     assert _value(app) is None
+
+
+def test_plugin_runner_files_are_cacheable_for_offline_starts(app):
+    c = app.test_client()
+    r = c.get("/static/player/plugins/rss/index.html")
+    assert r.status_code == 200 and "max-age=3600" in r.headers["Cache-Control"]
+    other = c.get("/static/player/player.js")
+    assert "max-age=3600" not in (other.headers.get("Cache-Control") or "")

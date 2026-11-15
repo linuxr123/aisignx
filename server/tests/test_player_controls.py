@@ -147,3 +147,11 @@ def test_net_adapter_has_control_hooks():
     assert 'controls: 1, "kiosk-lock": 1' in net
     assert '{ t: "controls" }' in net and 't: "command"' in net
     assert "onCommand:" in net and "onControl:" in net
+
+
+@needs_node
+def test_failing_items_keep_the_current_slide(harness):
+    r = harness["offlineKeeps"]
+    assert r["stuck"]["cur"] == 1 and r["onlyWorking"] is True  # only the working slide played
+    assert r["stuck"]["noContent"] is False                    # never a blank message
+    assert {2, 3} <= set(r["after"])                           # the others play again once they load

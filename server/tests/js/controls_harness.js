@@ -10,6 +10,7 @@ const vm = require("vm");
 const DIR = process.argv[2];
 const read = (f) => fs.readFileSync(path.join(DIR, f), "utf-8");
 const CONTROLS = read("controls.js"), PLAYER = read("player.js"), RENDER = read("render.js");
+const quiet = { log() {}, info() {}, warn() {}, error() {}, debug() {} };  // stdout is the JSON result
 const flush = () => new Promise((r) => setImmediate(r));
 
 function element(id) {
@@ -75,6 +76,11 @@ async function make(items, opts) {
   const R = {
     init() {}, clear() { active = null; }, teardown() {}, resume() {},
     prepare(item) {
+      if (opts.failIds && opts.failIds.includes(item.id) && opts.failNow && opts.failNow()) {
+        const bad = Promise.reject(new Error("offline"));
+        bad.slide = null;
+        return bad;
+      }
       const slide = { item, media: item.type === "video" ? video(item.media_duration_ms / 1000) : { tagName: "IMG" } };
       const p = Promise.resolve(slide);
       p.slide = slide;
@@ -128,10 +134,10 @@ async function make(items, opts) {
   const window = {
     AiSignX: { net, render: R, emergency: EM, device: D }, AiSignXPop: POP,
     addEventListener(t, fn) { (winListeners[t] = winListeners[t] || []).push(fn); },
-    innerWidth: 1000, innerHeight: 500, console,
+    innerWidth: 1000, innerHeight: 500, console: quiet,
   };
   const ctx = {
-    window, document, console, navigator: { userAgent: "" },
+    window, document, console: quiet, navigator: { userAgent: "" },
     location: { search: opts.debug ? "?debug=1" : "", origin: "http://x", host: "x", pathname: "/player/" },
     performance: { now: () => clock.t },
     setTimeout: (fn, ms) => addTimer(fn, ms, false), clearTimeout: clearTimer,
@@ -438,6 +444,20 @@ async function main() {
     const nb = await make(three());
     nb.handlers.command({ action: "unlock", minutes: 15, request_id: "0123456789abcdef" });
     out.browserUnlock = { debugHint: b.hint(), plainHintHidden: nb.els.hint.hidden };
+  }
+
+  // Every other item fails to load (server down): the slide on screen keeps playing instead of
+  // the screen going blank, and the others are tried again; once they load, playback moves on.
+  {
+    let down = true;
+    const h = await make([IMG(1, 5000), IMG(2, 5000), IMG(3, 5000)],
+      { failIds: [2, 3], failNow: () => down });
+    await h.advance(60000);
+    const stuck = { cur: h.cur(), swaps: h.calls.swaps.length, noContent: !!h.els.screen.hidden === false };
+    down = false;
+    await h.advance(30000);
+    const after = h.calls.swaps.slice(stuck.swaps);
+    out.offlineKeeps = { stuck, onlyWorking: h.calls.swaps.slice(0, stuck.swaps).every((id) => id === 1), after };
   }
 
   // render.js helpers on a fake video.

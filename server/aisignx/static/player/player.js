@@ -22,6 +22,7 @@
   var CLIENT_ID = net.clientId();
 
   var TICK_MS = 250, PRELOAD_MS = 3000, FAIL_DWELL_MS = 2000, DEFAULT_DURATION_MS = 10000;
+  var RETRY_AFTER_FAIL_MS = 10000;  // all other items failed: try them again this soon
   var NO_CONTENT_RETRY_MS = 30000, SETUP_RETRY_MS = 10000, PAIRED_SHOW_MS = 2000, DIAG_EVERY = 10;
   var TYPES = { image: 1, video: 1, web: 1, plugin: 1 };
   var SEEK_S = 10, SCRUB_SPAN_S = 120, SCRUB_STEP_MS = 100;
@@ -246,6 +247,14 @@
   function countFailure() {
     S.failures++;
     if (S.failures < S.items.length) return false;
+    if (S.cur && !S.cur.failed) {
+      // Every other item failed to load (server or network down), but this one is on screen:
+      // keep it playing, and try the others again after its next full run. Blanking the
+      // screen to a message would look like a freeze and lose a working slide.
+      S.failures = 0;
+      S.cur.deadline = now() + RETRY_AFTER_FAIL_MS;
+      return false;
+    }
     showNoContent(true);
     return true;
   }

@@ -78,6 +78,13 @@ A quick overview. The detailed list of every change follows further down.
 ### Changed
 - Changing a plugin's organization setting (for example the weather provider or radar source) makes screens show the new provider's data on their next refresh instead of after the old data expires.
 
+### Fixed (offline and server restarts)
+- The player no longer blanks to "None of the items could be played" when every other item fails to load (server down); it keeps the slide that is playing and tries the others again every ~10 s, and carries on as soon as they load.
+- YouTube only shows "This screen is offline" when the device itself has no network. The AiSignX server being down or restarting no longer stops it, because the video comes straight from YouTube. A YouTube slide that never answers (no internet) now moves on after a few seconds instead of holding the playlist for its full duration.
+- YouTube captions are really off when the option is off. Before, YouTube still showed them whenever the screen's or account's own caption setting was on.
+- Plugin runner files can be reused by the browser for an hour, so a plugin with saved data can still start while the server restarts.
+- Still open: the plain web player cannot start a *new* plugin slide when the server has been down for more than an hour (the apps are better placed; their plugin data and asset caching is planned with the device agent work).
+
 ### Removed (compared with v2 plugins)
 - Weather: NWS and zippopotam lookups, the debug overlay. Radar: nowcast and on-screen controls. Stocks: the `loops` option (the playlist sets the duration). YouTube: playback rate, quality, branding and per-session modes. Per-tenant plugin policy, signing and zip upload.
 

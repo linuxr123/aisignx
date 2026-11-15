@@ -314,7 +314,7 @@ def test_js_frame_and_bridge(js):
     assert b["listening"] >= 1 and b["subscribed"]
     assert b["targets"] == ["https://www.youtube-nocookie.com"]
     assert b["beforeReady"] == "pending" and b["prepared"] == "resolved"
-    assert b["runCommands"] == ["mute", "setVolume", "playVideo"]
+    assert b["runCommands"] == ["mute", "setVolume", "unloadModule", "unloadModule", "playVideo"]
     assert b["controls"] == [["pauseVideo", []], ["playVideo", []], ["setVolume", [25]],
                              ["mute", []], ["mute", []]]  # the item itself is muted
     assert b["got"] == ["done@10"]  # only after the last of the three videos
@@ -337,12 +337,19 @@ def test_js_failures_and_fallbacks(js):
     assert f["errorBeforeReady"].startswith("rejected:youtube error 101")
     assert f["silentPrepared"] == "resolved"
     assert _qs(f["reloadSrc"])[1]["autoplay"] == "1" and "reloaded" in f["reloadNote"][0]
+    assert "degraded" in f["silentGaveUp"] and any("moving on" in n for n in f["silentGaveUp"])
     assert f["autoMuted"]["mute"] and "playing muted" in f["autoMuted"]["note"][0]
+
+
+def test_js_captions_off_unloads_the_captions_module(js):
+    # cc_load_policy=0 alone leaves captions on when the viewer's own setting has them on.
+    assert js["captions"]["off"][:2] == ["captions", "cc"] and len(js["captions"]["off"]) >= 4
+    assert js["captions"]["on"] == []
 
 
 def test_js_offline_card(js):
     o = js["offline"]
-    assert o["res"] == "resolved" and o["frames"] == 0 and o["hostSaw"]
-    assert o["cards"] == [["Video unavailable", "This screen is offline"]]
-    assert o["got"] == ["degraded"]
+    # Server unreachable but the device online: the embed still plays.
+    assert o["res"] == "resolved" and o["frames"] == 1 and o["hostSaw"] and o["cards"] == []
+    # The device itself has no network: a card, and the slide does not hold the playlist.
     assert o["navigator"] == ["resolved", [["Video unavailable", "This screen is offline"]], 0]

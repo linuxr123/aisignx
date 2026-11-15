@@ -454,3 +454,18 @@ def geocode():
     except FetchError as exc:
         return api_error(502, exc.code, "The place lookup service did not answer.")
     return jsonify(results=results[:geo.MAX_RESULTS])
+
+
+# A frame plugin's runner files (index.html, sdk.js, main.js) are fetched every time its slide
+# is prepared. Without a freshness lifetime a browser must ask the server each time, so while
+# the server is down or restarting even a plugin that has saved data cannot start. An hour of
+# reuse covers restarts and short outages; after it the browser revalidates (cheap 304).
+RUNNER_MAX_AGE_S = 3600
+
+
+@bp.after_app_request
+def _runner_files_cacheable(resp):
+    if (request.endpoint == "static" and resp.status_code == 200
+            and str((request.view_args or {}).get("filename", "")).startswith("player/plugins/")):
+        resp.headers["Cache-Control"] = f"public, max-age={RUNNER_MAX_AGE_S}"
+    return resp

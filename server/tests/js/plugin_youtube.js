@@ -221,7 +221,9 @@ async function failures() {
   w2.Y.run(s2, c.ctx);
   await w2.advance(3100);
   out.reloadSrc = w2.frames[0].src;
-  out.reloadNote = c.got;
+  out.reloadNote = c.got.slice();
+  await w2.advance(3100);  // still silent: the slide must not hold the playlist
+  out.silentGaveUp = c.got.slice();
   // Answers but never plays: asks again, then mutes.
   const w3 = world();
   const s3 = { item: item({}, { muted: false }) };
@@ -235,11 +237,33 @@ async function failures() {
   return out;
 }
 
+async function captionCommands() {
+  const out = {};
+  for (const on of [false, true]) {
+    const w = world();
+    const slide = { item: item({ embed: { video_ids: ["aaaaaaaaaaa"], list: null, channel: null, shuffle: false,
+      captions: on, play_to_end: true, live: false } }) };
+    const p = w.Y.prepare(slide, w.api);
+    w.message({ event: "onReady" });
+    await p;
+    w.frames[0].posted.length = 0;
+    w.Y.run(slide, ctxFor(w).ctx);
+    w.message({ event: "onStateChange", info: 1 });  // playing: a new video loaded its modules
+    out[on ? "on" : "off"] = w.frames[0].posted.filter((x) => x.msg.event === "command" && x.msg.func === "unloadModule")
+      .map((x) => x.msg.args[0]);
+  }
+  return out;
+}
+
 async function offline() {
+  // The AiSignX server being unreachable (the player's offline flag) must NOT stop YouTube:
+  // the embed comes from YouTube directly, so the frame is still created.
   const w = world();
   w.setHostOffline(true);
   const slide = { item: item() };
-  const res = await outcome(w.Y.prepare(slide, w.api));
+  const pending = outcome(w.Y.prepare(slide, w.api));
+  w.message({ event: "onReady" });
+  const res = await pending;
   const c = ctxFor(w);
   w.Y.run(slide, c.ctx);
   w.Y.teardown(slide);
@@ -250,7 +274,7 @@ async function offline() {
 
 (async () => {
   const out = { util: utilCases(), filter: messageFilter(), bridge: await frameAndBridge(), endings: await endings(),
-    failures: await failures(), offline: await offline() };
+    failures: await failures(), offline: await offline(), captions: await captionCommands() };
   process.stdout.write(JSON.stringify(out));
   process.exit(0);
 })().catch((e) => { process.stderr.write(String(e && e.stack)); process.exit(1); });
