@@ -23,7 +23,7 @@
 
   var TICK_MS = 250, PRELOAD_MS = 3000, FAIL_DWELL_MS = 2000, DEFAULT_DURATION_MS = 10000;
   var NO_CONTENT_RETRY_MS = 30000, SETUP_RETRY_MS = 10000, PAIRED_SHOW_MS = 2000, DIAG_EVERY = 10;
-  var TYPES = { image: 1, video: 1, web: 1 };
+  var TYPES = { image: 1, video: 1, web: 1, plugin: 1 };
   var SEEK_S = 10, SCRUB_SPAN_S = 120, SCRUB_STEP_MS = 100;
 
   var S = {
@@ -44,6 +44,8 @@
   // and a 304 never reaches shell.onManifest, so a freshly started (or upgraded) shell
   // would otherwise lack its PIN, orientation and input lock until the content changes.
   var shellFed = false;
+  var PH = A.pluginHost || null;  // plugins/host.js: frame plugin data, server clock, online state
+  var STARTED = Date.now();
 
   function now() { return window.performance && performance.now ? performance.now() : Date.now(); }
   function note(msg) { S.note = msg; D.noteError(msg); if (window.console) console.info("[player] " + msg); }
@@ -131,6 +133,7 @@
     if (res.kind === "unauthorized") goPairing();
     else if (res.kind === "setup") goSetup();
     else if (res.kind === "ok" && res.data.manifest_version && res.data.manifest_version !== S.version) fetchManifest();
+    if (res.kind === "ok" && PH) PH.setServerTime(res.data.server_time_ms);
     // network errors: keep playing
   });
   function startLive() {
@@ -156,6 +159,8 @@
     if (res.kind === "setup") { goSetup(); return; }
     if (res.kind === "ok" && typeof res.data.version === "string") {
       manifestBackoff.reset();
+      // Only a manifest fresh from the server sets the plugin clock (a cached one is old).
+      if (PH) PH.setServerTime(res.data.server_time_ms);
       store.local.set(K.manifest, withoutUnlock(res.data));
       applyManifest(res.data);
       if (shell) { shell.onManifest(JSON.stringify(res.data)); shellFed = true; }
@@ -297,8 +302,19 @@
     pop("end", true); pop("begin", item);
     S.cur = { slide: n.slide, item: item, shownAt: t, deadline: t + durationOf(item), failed: false };
     EM.sync();  // a fullscreen emergency keeps the new video silent
-    if (!R.isVideo(n.slide)) return;
     var guard = function (fn) { return function (x) { if (g === S.gen) fn(x); }; };
+    if (R.isPlugin && R.isPlugin(n.slide)) {
+      R.runPlugin(n.slide, {
+        loop: function () { return loops(item); },
+        // A plugin that ends itself while the viewer has it paused waits for the resume.
+        done: guard(function () { if (S.paused) return; S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
+        fail: guard(slideFailed),
+        note: note,
+        every: every,
+      });
+      return;
+    }
+    if (!R.isVideo(n.slide)) return;
     R.runVideo(n.slide, {
       loop: function () { return loops(item); },
       done: guard(function () { S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
@@ -346,6 +362,7 @@
     var t = now();
     S.paused = { resumeAt: t + D.config().resume_after_s * 1000, remaining: Math.max(0, cur.deadline - t), video: curVideo() };
     if (S.paused.video) R.pauseVideo(cur.slide);
+    else if (R.pause) R.pause(cur.slide);
     pop("pause");
     CT.showPaused(S.paused.resumeAt);
     return "paused";
@@ -359,6 +376,7 @@
     if (!cur) return null;
     cur.deadline = now() + p.remaining;
     if (p.video && !S.scrub) playCur();
+    else if (!p.video) R.resume(cur.slide);
     pop("resume");
     return "playing";
   }
@@ -370,6 +388,7 @@
     CT.hidePaused();
     pop("resume");
     if (playAgain && p.video && S.cur) playCur();
+    else if (!p.video && S.cur) R.resume(S.cur.slide);  // a plugin restarted in place must not stay frozen
   }
   function clearControls() {
     if (S.scrub) clearTimeout(S.scrub.timer);
@@ -602,6 +621,8 @@
   function housekeeping() {
     if (S.reloadPending && S.state !== "PLAYING") guardedReload();
     D.checkOffline(hb, events, S.state);
+    // Plugins hear the same offline state as the banner (without the banner setting).
+    if (PH) PH.setOffline(events.status !== "live" && Date.now() - (hb.lastOkAt || STARTED) > 2.5 * hb.seconds * 1000);
     if (!dbg) return;
     var age = hb.lastAt ? Math.round((Date.now() - hb.lastAt) / 1000) + "s ago (" + hb.lastKind + ")" : "never";
     dbg.textContent = "state      " + S.state + (S.reloadPending ? " (reload pending)" : "") +

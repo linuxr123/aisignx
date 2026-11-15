@@ -5,7 +5,7 @@ from ..audit import service as audit
 from ..auth.decorators import editor_required
 from ..extensions import db
 from ..models import MEDIA_TYPES, Media
-from ..models.media import MEDIA_WEB, THUMB_PENDING
+from ..models.media import MEDIA_IMAGE, MEDIA_PLUGIN, MEDIA_VIDEO, MEDIA_WEB, THUMB_PENDING
 from . import bp, service, storage, thumbnails, webshot
 from .forms import DeleteForm, MediaEditForm, ReplaceForm, UploadForm, WebPageForm
 from .probe import InvalidMediaError, ffmpeg_available
@@ -87,6 +87,8 @@ def add_web():
 @editor_required
 def edit(media_id: int):
     media = _get_media_or_404(media_id)
+    if media.media_type == MEDIA_PLUGIN:  # plugin items have their own form
+        return redirect(url_for("plugins.edit_item", media_id=media.id))
     form = MediaEditForm(obj=media)
     is_web = media.media_type == MEDIA_WEB
     if form.validate_on_submit():
@@ -121,6 +123,9 @@ def replace(media_id: int):
     if not form.validate_on_submit():
         abort(400)
     media = _get_media_or_404(media_id)
+    if media.media_type not in (MEDIA_IMAGE, MEDIA_VIDEO):
+        flash("Only uploaded files can be replaced.", "danger")
+        return redirect(url_for("media.edit", media_id=media.id))
     file_storage = form.file.data
     if not file_storage or not file_storage.filename:
         flash("Choose a file to upload.", "warning")

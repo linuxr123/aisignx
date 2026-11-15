@@ -43,3 +43,4 @@ def _compute_build(app: Flask) -> str:
 
 
 from . import api, plays, routes, stream  # noqa: E402,F401
+from ..plugins import data_api  # noqa: E402,F401  (plugin data routes on api_bp)

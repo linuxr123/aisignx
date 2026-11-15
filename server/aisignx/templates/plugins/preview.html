@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "plugins/_preview.html" import stage, scripts %}
+{% block title %}Preview {{ media.name }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="h3 mb-0">Preview: {{ media.name }}</h1>
+  <div class="d-flex gap-2">
+    {% if current_user.can_edit %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('plugins.edit_item', media_id=media.id) }}">Edit</a>{% endif %}
+    <a class="btn btn-sm btn-link" href="{{ url_for('media.index') }}">Back to media</a>
+  </div>
+</div>
+{% if not enabled %}<div class="alert alert-warning">The {{ plugin.name }} plugin is turned off, so screens skip this item.</div>{% endif %}
+{% if entry is none %}
+<div class="alert alert-danger">This item's settings are no longer valid for {{ plugin.name }} {{ plugin.version }}. Edit it to fix them.</div>
+{% else %}
+{{ stage(entry, server_time) }}
+{{ scripts(plugin) }}
+{% endif %}
+{% endblock %}

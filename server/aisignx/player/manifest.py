@@ -6,6 +6,8 @@ Display options added `settings` (orientation, volume, offline banner, input, un
 hash; see displays/options.py); a display's fit override replaces every item's `fit`.
 Player controls added `settings.kiosk_lock` (lock the native apps) and
 `settings.resume_after_s` (auto-resume after a pause).
+Plugins added items of type "plugin" with a `plugin` block (see plugins/service.py and
+docs/player-api.md); older players drop types they do not know.
 
 `fit` keeps the domain vocabulary; the browser player maps it to CSS object-fit:
     fit -> contain, fill -> cover, stretch -> fill
@@ -18,7 +20,7 @@ from datetime import datetime
 from flask import current_app, url_for
 
 from ..models import Display, Playlist
-from ..models.media import MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB
+from ..models.media import MEDIA_IMAGE, MEDIA_PLUGIN, MEDIA_VIDEO, MEDIA_WEB
 from ..models.playlist import FIT_MODES
 
 MANIFEST_SCHEMA = 1
@@ -42,7 +44,26 @@ def is_playable(item) -> bool:
         return bool(media.stored_name)
     if media.media_type == MEDIA_WEB:
         return (media.url or "").strip().lower().startswith(("http://", "https://"))
+    if media.media_type == MEDIA_PLUGIN:
+        from ..plugins.service import is_playable_plugin
+
+        return is_playable_plugin(media)
     return False
+
+
+def _file_entry(media) -> dict:
+    """The file fields of an uploaded image or video (also used inside plugin blocks)."""
+    return {
+        "url": url_for("player_api.media_file", media_id=media.id, name=media.stored_name),
+        "mime": media.mime_type,
+        "sha256": media.checksum_sha256,
+        "size": media.file_size,
+        "width": media.width,
+        "height": media.height,
+    }
+
+
+file_entry = _file_entry  # public name for plugin hooks (manifest_extra)
 
 
 def _item_entry(item, fit: str | None = None) -> dict | None:
@@ -51,15 +72,17 @@ def _item_entry(item, fit: str | None = None) -> dict | None:
         return None
     media = item.media
     is_video = media.media_type == MEDIA_VIDEO
+    plugin = None
     if media.media_type in _FILE_TYPES:
-        entry = {
-            "url": url_for("player_api.media_file", media_id=media.id, name=media.stored_name),
-            "mime": media.mime_type,
-            "sha256": media.checksum_sha256,
-            "size": media.file_size,
-            "width": media.width,
-            "height": media.height,
-        }
+        entry = _file_entry(media)
+    elif media.media_type == MEDIA_PLUGIN:
+        from ..plugins.service import manifest_fields
+
+        plugin = manifest_fields(media)
+        if plugin is None:
+            return None
+        entry = {"url": plugin["url"], "mime": None, "sha256": None, "size": None,
+                 "width": None, "height": None}
     else:  # web page
         entry = {"url": media.url.strip(), "mime": None, "sha256": None, "size": None,
                  "width": None, "height": None}
@@ -67,7 +90,7 @@ def _item_entry(item, fit: str | None = None) -> dict | None:
     media_ms = None
     if is_video and media.duration_seconds:
         media_ms = round(media.duration_seconds * 1000)
-    return {
+    result = {
         "id": item.id,
         "media_id": media.id,
         "type": media.media_type,
@@ -78,6 +101,10 @@ def _item_entry(item, fit: str | None = None) -> dict | None:
         "fit": fit or item.fit_mode,
         "muted": bool(item.mute) if is_video else True,
     }
+    if plugin is not None:
+        result["muted"] = plugin["muted"]
+        result["plugin"] = plugin["plugin"]
+    return result
 
 
 def _emergency_entry(res) -> dict | None:

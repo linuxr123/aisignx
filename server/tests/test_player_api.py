@@ -675,9 +675,12 @@ def test_player_page(app, configured, client):
     assert "navbar" not in html
     assert f'data-api="{API}"' in html
     scripts = re.findall(r"<script([^>]*)>(.*?)</script>", html, re.S)
-    names = [re.search(r'src="/static/player/(\w+)\.js\?v=[^"]+"', attrs).group(1)
+    names = [re.search(r'src="/static/player/([\w/]+)\.js\?v=[^"]+"', attrs).group(1)
              for attrs, _ in scripts]
-    assert names == ["net", "render", "emergency", "device", "pop", "controls", "player"]
+    # Native plugins' player scripts follow the plugin host (test_plugins_runner_html.py).
+    names = [n for n in names if not n.startswith("plugins/") or n == "plugins/host"]
+    assert names == ["net", "render", "plugins/host", "emergency", "device", "pop", "controls",
+                     "player"]
     for _, body in scripts:
         assert body.strip() == ""  # no inline script
     assert re.search(r'<div id="emergency" hidden[ >]', html)  # overlay starts hidden

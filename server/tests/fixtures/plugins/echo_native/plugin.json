@@ -1,0 +1,16 @@
+{
+  "key": "echo_native",
+  "name": "Echo native",
+  "version": "1.0.0",
+  "description": "Test fixture: a native plugin.",
+  "render": "native",
+  "player_script": "native.js",
+  "player_style": "native.css",
+  "default_duration": 8,
+  "ends_itself": true,
+  "schema": [
+    {"name": "words", "type": "string", "label": "Words", "default": "hello"},
+    {"name": "mute", "type": "boolean", "label": "Mute", "default": true},
+    {"name": "seconds", "type": "integer", "label": "Seconds each", "min": 1, "max": 60, "default": 5}
+  ]
+}

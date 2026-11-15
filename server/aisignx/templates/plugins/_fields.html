@@ -1,0 +1,76 @@
+{# One macro per plugin field type. Inputs are named after the field; a location uses
+   <name>.q / .lat / .lon / .label, and a media_multi sends one <name> input per id.
+   show_if only hides inputs (plugin_form.js); the server validates every field. #}
+{% macro _wrap_open(f, error) -%}
+<div class="mb-3" data-plugin-field="{{ f.name }}"{% if f.show_if %} data-show-if='{{ f.show_if|tojson }}'{% endif %}>
+{%- endmacro %}
+
+{% macro _help(f, error) -%}
+  {% if f.help %}<div class="form-text">{{ f.help }}</div>{% endif %}
+  {% if error %}<div class="invalid-feedback d-block">{{ error }}</div>{% endif %}
+{%- endmacro %}
+
+{% macro _truthy(value) -%}
+{{ "1" if value in (true, 1, "1", "on", "true", "yes", "y") else "" }}
+{%- endmacro %}
+
+{% macro field(f, value, error, timezones=(), images=(), prefix="pf-") %}
+{% set id = prefix ~ f.name %}
+{% set invalid = " is-invalid" if error else "" %}
+{{ _wrap_open(f, error) }}
+{% if f.type == "boolean" %}
+  <div class="form-check">
+    <input class="form-check-input{{ invalid }}" type="checkbox" id="{{ id }}" name="{{ f.name }}" value="1"{% if _truthy(value) %} checked{% endif %}>
+    <label class="form-check-label" for="{{ id }}">{{ f.label }}</label>
+  </div>
+{% else %}
+  <label class="form-label" for="{{ id }}">{{ f.label }}{% if f.required %} <span class="text-danger" aria-hidden="true">*</span>{% endif %}</label>
+  {% if f.type == "string" %}
+  <input class="form-control{{ invalid }}" type="text" id="{{ id }}" name="{{ f.name }}" value="{{ value if value is not none else '' }}" maxlength="{{ f.max_length }}"{% if f.required %} required{% endif %}>
+  {% elif f.type == "text" %}
+  <textarea class="form-control{{ invalid }}" id="{{ id }}" name="{{ f.name }}" rows="4" maxlength="{{ f.max_length }}"{% if f.required %} required{% endif %}>{{ value if value is not none else '' }}</textarea>
+  {% elif f.type == "integer" %}
+  <input class="form-control{{ invalid }}" type="number" id="{{ id }}" name="{{ f.name }}" value="{{ value if value is not none else '' }}" min="{{ f.min }}" max="{{ f.max }}" step="1"{% if f.required %} required{% endif %}>
+  {% elif f.type == "url" %}
+  <input class="form-control{{ invalid }}" type="url" id="{{ id }}" name="{{ f.name }}" value="{{ value if value is not none else '' }}" maxlength="2048" placeholder="https://"{% if f.required %} required{% endif %}>
+  {% elif f.type == "select" %}
+  <select class="form-select{{ invalid }}" id="{{ id }}" name="{{ f.name }}">
+    {% for o in f.options %}<option value="{{ o.value }}"{% if o.value == value %} selected{% endif %}>{{ o.label }}</option>{% endfor %}
+  </select>
+  {% elif f.type == "timezone" %}
+  <select class="form-select{{ invalid }}" id="{{ id }}" name="{{ f.name }}">
+    <option value="">Organization time zone</option>
+    {% for tz in timezones %}<option value="{{ tz }}"{% if tz == value %} selected{% endif %}>{{ tz }}</option>{% endfor %}
+  </select>
+  {% elif f.type == "location" %}
+  {% set loc = value if value is mapping else {} %}
+  <div class="input-group" data-location="{{ f.name }}">
+    <input class="form-control{{ invalid }}" type="text" id="{{ id }}" name="{{ f.name }}.q" value="{{ loc.q or '' }}" maxlength="100" placeholder="City, postal code, or latitude,longitude" autocomplete="off">
+    <button class="btn btn-outline-secondary" type="button" data-location-find>Find</button>
+  </div>
+  <input type="hidden" name="{{ f.name }}.lat" value="{{ loc.lat if loc.lat is not none else '' }}" data-location-lat>
+  <input type="hidden" name="{{ f.name }}.lon" value="{{ loc.lon if loc.lon is not none else '' }}" data-location-lon>
+  <div class="list-group mt-1" data-location-results hidden></div>
+  <div class="row g-2 mt-1 align-items-center">
+    <div class="col-sm-7">
+      <input class="form-control form-control-sm" type="text" name="{{ f.name }}.label" value="{{ loc.label or '' }}" maxlength="100" aria-label="{{ f.label }}: name shown on screen" placeholder="Name shown on screen (optional)" data-location-label>
+    </div>
+    <div class="col-sm-5 small text-secondary" data-location-point>{% if loc.lat is not none and loc.lon is not none %}{{ loc.lat }}, {{ loc.lon }}{% else %}No place chosen{% endif %}</div>
+  </div>
+  {% elif f.type == "media_multi" %}
+  {% set chosen = value if value is iterable and value is not string else [] %}
+  <div data-media-multi="{{ f.name }}" data-max="{{ f.max }}">
+    <div class="d-flex flex-wrap gap-1 mb-2" data-media-chosen>
+      {% for mid in chosen %}
+      {% set img = images|selectattr("id", "equalto", mid|int)|first %}
+      <span class="badge text-bg-secondary" data-media-chip="{{ mid }}">{{ img.name if img else "#" ~ mid }}<input type="hidden" name="{{ f.name }}" value="{{ mid }}"></span>
+      {% endfor %}
+    </div>
+    <button class="btn btn-sm btn-outline-secondary{{ invalid }}" type="button" id="{{ id }}" data-media-open data-bs-toggle="modal" data-bs-target="#media-picker">Choose images</button>
+    <span class="small text-secondary ms-2" data-media-count>{{ chosen|length }} chosen (at most {{ f.max }})</span>
+  </div>
+  {% endif %}
+{% endif %}
+{{ _help(f, error) }}
+</div>
+{% endmacro %}

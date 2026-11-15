@@ -8,6 +8,7 @@
   <div class="d-flex gap-2">
     <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#uploadPanel">Upload files</button>
     <button class="btn btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#webPanel">Add web page</button>
+    <a class="btn btn-outline-success" href="{{ url_for('plugins.choose') }}">Add plugin</a>
   </div>
   {% endif %}
 </div>
@@ -52,7 +53,7 @@
   <div class="col-sm-4 col-md-3">
     <select class="form-select" name="type" onchange="this.form.submit()">
       <option value="">All types</option>
-      {% for t, label in [("image", "Images"), ("video", "Videos"), ("web", "Web pages")] %}
+      {% for t, label in [("image", "Images"), ("video", "Videos"), ("web", "Web pages"), ("plugin", "Plugins")] %}
       <option value="{{ t }}" {% if media_type == t %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
@@ -66,6 +67,7 @@
   <div class="col">
     <div class="card h-100">
       {% if m.stored_name %}<a href="{{ url_for('media.file', media_id=m.id) }}" target="_blank" rel="noopener">{{ thumb(m, "card-img-top") }}</a>
+      {% elif m.media_type == "plugin" %}<a href="{{ url_for('plugins.preview', media_id=m.id) }}">{{ thumb(m, "card-img-top") }}</a>
       {% else %}<a href="{{ m.url }}" target="_blank" rel="noopener noreferrer">{{ thumb(m, "card-img-top") }}</a>{% endif %}
       <div class="card-body p-2">
         <div class="fw-semibold text-truncate" title="{{ m.name }}">{{ m.name }}</div>

@@ -1,4 +1,5 @@
-"""Media library items: uploaded images and videos, and web pages by URL."""
+"""Media library items: uploaded images and videos, web pages by URL, and plugin items
+(a bundled plugin plus its validated config; see aisignx/plugins)."""
 import math
 from datetime import datetime, timezone
 
@@ -7,7 +8,8 @@ from ..extensions import db
 MEDIA_IMAGE = "image"
 MEDIA_VIDEO = "video"
 MEDIA_WEB = "web"
-MEDIA_TYPES = (MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB)
+MEDIA_PLUGIN = "plugin"
+MEDIA_TYPES = (MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB, MEDIA_PLUGIN)
 
 DEFAULT_DURATION = 10  # seconds, for images and web pages
 
@@ -43,7 +45,12 @@ class Media(db.Model):
     height = db.Column(db.Integer, nullable=True)
     duration_seconds = db.Column(db.Float, nullable=True)  # videos only
 
-    # How long images and web pages show by default (seconds).
+    # Plugin items: the registry key and the validated config (always assign a new dict;
+    # in-place changes to a JSON column are not detected).
+    plugin_key = db.Column(db.String(32), nullable=True, index=True)
+    plugin_config = db.Column(db.JSON, nullable=True)
+
+    # How long images, web pages and plugins show by default (seconds).
     default_duration = db.Column(db.Integer, nullable=False, default=DEFAULT_DURATION)
 
     thumbnail_name = db.Column(db.String(64), nullable=True)
@@ -59,6 +66,10 @@ class Media(db.Model):
     @property
     def is_video(self) -> bool:
         return self.media_type == MEDIA_VIDEO
+
+    @property
+    def is_plugin(self) -> bool:
+        return self.media_type == MEDIA_PLUGIN
 
     @property
     def effective_duration(self) -> int:

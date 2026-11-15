@@ -1,0 +1,43 @@
+{
+  "key": "echo",
+  "name": "Echo",
+  "version": "1.0.0",
+  "icon": "megaphone",
+  "description": "Test fixture: echoes its message back as data.",
+  "render": "frame",
+  "files": ["index.html", "main.js"],
+  "default_duration": 12,
+  "ends_itself": false,
+  "data": {
+    "ttl": 60,
+    "min_ttl": 10,
+    "fetch_budget_s": 5,
+    "keys": ["message", "place.lat", "place.lon"],
+    "hosts": ["echo.example.com"],
+    "rate": {"echo.example.com": 30},
+    "max_bytes": 65536
+  },
+  "schema": [
+    {"name": "message", "type": "string", "label": "Message", "required": true, "max_length": 80},
+    {"name": "note", "type": "string", "label": "Private note", "private": true},
+    {"name": "tz", "type": "timezone", "label": "Time zone"},
+    {"name": "place", "type": "location", "label": "Place"},
+    {"name": "images", "type": "media_multi", "label": "Images", "max": 3},
+    {"name": "count", "type": "integer", "label": "Count", "min": 1, "max": 10, "default": 3},
+    {"name": "shout", "type": "boolean", "label": "Shout"},
+    {"name": "color", "type": "select", "label": "Color",
+     "options": [{"value": "red", "label": "Red"}, {"value": "blue", "label": "Blue"}]},
+    {"name": "link", "type": "url", "label": "Link"},
+    {"name": "body", "type": "text", "label": "Body", "show_if": {"shout": true}},
+    {"name": "refresh", "type": "integer", "label": "Refresh (s)", "min": 10, "max": 3600, "default": 60}
+  ],
+  "settings": [
+    {"name": "provider", "type": "select", "label": "Provider",
+     "options": [{"value": "basic", "label": "Basic"},
+                 {"value": "contact", "label": "Needs contact", "requires_contact": true}]},
+    {"name": "allow_private_hosts", "type": "text", "label": "Private hosts"}
+  ],
+  "secrets": [{"name": "token", "env": "AISIGNX_ECHO_TOKEN", "label": "Echo token"}],
+  "attribution": "Echo data: nobody",
+  "terms": "Test data only."
+}

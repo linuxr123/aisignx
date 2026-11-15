@@ -14,8 +14,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 from ..extensions import db
 from ..models import Media
-from ..models.media import (MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB, THUMB_FAILED, THUMB_OK,
-                            THUMB_PENDING)
+from ..models.media import (MEDIA_IMAGE, MEDIA_PLUGIN, MEDIA_VIDEO, MEDIA_WEB, THUMB_FAILED,
+                            THUMB_OK, THUMB_PENDING)
 from . import probe, storage, webshot
 
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="aisignx-thumbs")
@@ -61,6 +61,12 @@ def _run_in_app(app: Flask, media_id: int) -> None:
 def regenerate(media_id: int) -> None:
     media = db.session.get(Media, media_id)
     if media is None:
+        return
+    if media.media_type == MEDIA_PLUGIN:  # a title card: plugin items have nothing to capture
+        from ..plugins.service import draw_thumbnail
+
+        draw_thumbnail(media)
+        db.session.commit()
         return
     old = media.thumbnail_name
     if media.media_type == MEDIA_WEB:

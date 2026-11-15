@@ -49,8 +49,9 @@ def create_app(test_config: dict | None = None) -> Flask:
     maintenance.register(app)  # first: answers 503 before any other hook runs
 
     _register_blueprints(app)
-    from . import player, serve, system
+    from . import player, plugins, serve, system
     from .backup import cli as backup_cli
+    plugins.init_app(app)  # before the player: a bad plugin.json fails start-up here
     player.init_app(app)
     system.register(app)
     serve.register(app)
@@ -76,6 +77,7 @@ def _register_blueprints(app: Flask) -> None:
     from .player import api_bp as player_api_bp
     from .player import page_bp as player_bp
     from .playlists import bp as playlists_bp
+    from .plugins import bp as plugins_bp
     from .pop import bp as pop_bp
     from .schedules import bp as schedules_bp
     from .settings import bp as settings_bp
@@ -90,8 +92,8 @@ def _register_blueprints(app: Flask) -> None:
     csrf.exempt(player_api_bp)
     csrf.exempt(api_bp)
     for bp in (alerts_bp, api_bp, audit_bp, auth_bp, backup_bp, displays_bp, emergency_bp,
-               groups_bp, main_bp, media_bp, player_bp, player_api_bp, playlists_bp, pop_bp,
-               schedules_bp, settings_bp, setup_bp, system_bp, tokens_bp, users_bp):
+               groups_bp, main_bp, media_bp, player_bp, player_api_bp, playlists_bp, plugins_bp,
+               pop_bp, schedules_bp, settings_bp, setup_bp, system_bp, tokens_bp, users_bp):
         app.register_blueprint(bp)
 
 

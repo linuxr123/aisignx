@@ -33,6 +33,20 @@ Operations (Phase 6). Everything below is per process: run one server process.
     AISIGNX_LOGIN_WINDOW_MIN    length of the failed sign-in window in minutes (default: 15)
     AISIGNX_BROWSER_NO_SANDBOX  "1" starts the preview browser with --no-sandbox
                           (needed in containers that run as non-root; default: off)
+
+Plugins (see docs/plugins.md). Per process, like everything above.
+
+    AISIGNX_PLUGIN_CACHE_DIR  where fetched plugin data is cached
+                          (default: <instance parent>/plugin-cache; never backed up)
+    AISIGNX_PLUGIN_CACHE_MB   size cap of that folder in MB (default: 500)
+    AISIGNX_PLUGIN_HTTP_PROXY optional http://host:port proxy for outbound plugin requests
+                          (HTTPS CONNECT only; environment proxies are otherwise ignored)
+    Plugin secrets (API keys) use the variable each plugin declares, for example
+    AISIGNX_FINNHUB_KEY. They are read from the environment only; restart to change them.
+
+PLUGIN_FETCH_SYNC (run plugin fetches inline), PLUGIN_DIRS (extra plugin folders) and
+PLUGIN_FETCH_TEST_LOOPBACK (let the HTTP client reach a loopback test server; honoured
+only with TESTING) exist for tests only and are never read from the environment.
 """
 import os
 import secrets
@@ -113,4 +127,11 @@ def build_config(instance_path: str) -> dict:
         "LOGIN_MAX_PER_USER": _env_int("AISIGNX_LOGIN_MAX_PER_USER", 5),
         "LOGIN_WINDOW_SECONDS": _env_int("AISIGNX_LOGIN_WINDOW_MIN", 15) * 60,
         "BROWSER_NO_SANDBOX": _env_flag("AISIGNX_BROWSER_NO_SANDBOX"),
+        # Plugins.
+        "PLUGIN_CACHE_DIR": (os.environ.get("AISIGNX_PLUGIN_CACHE_DIR")
+                             or str(data_root / "plugin-cache")),
+        "PLUGIN_CACHE_MB": _env_int("AISIGNX_PLUGIN_CACHE_MB", 500),
+        "PLUGIN_HTTP_PROXY": (os.environ.get("AISIGNX_PLUGIN_HTTP_PROXY") or "").strip() or None,
+        "PLUGIN_FETCH_SYNC": False,  # tests: run fetches inline instead of on the worker
+        "PLUGIN_DIRS": [],  # tests: extra folders of plugins, scanned after bundled/
     }

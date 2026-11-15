@@ -9,6 +9,9 @@
   <meta name="mobile-web-app-capable" content="yes">
   <title>AiSignX Player</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='player/player.css', v=build) }}">
+  {%- for path in plugins.styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename=path, v=build) }}">
+  {%- endfor %}
 </head>
 <body data-api="{{ request.script_root }}/api/player/v1" data-root="{{ request.script_root }}" data-build="{{ build }}">
   <div id="stage"></div>
@@ -24,9 +27,20 @@
   <div id="identify" hidden aria-live="polite"><div class="id-name"></div><div class="id-sub"></div></div>
   <div id="paused" hidden role="status"><span class="p-icon"></span><span class="p-text">Paused</span><span class="p-sub"></span></div>
   <div id="hint" hidden aria-live="polite"></div>
+  {#- Inert: lists every installed frame plugin's runner files (no query string) so the kiosk
+      shells keep them for offline use; host.js fetches them once in a shell. #}
+  <template id="plugin-files">
+  {%- for path in plugins.files %}
+    <link rel="prefetch" href="{{ url_for('static', filename=path) }}">
+  {%- endfor %}
+  </template>
   <noscript><p class="noscript">The AiSignX player needs JavaScript.</p></noscript>
   <script src="{{ url_for('static', filename='player/net.js', v=build) }}"></script>
   <script src="{{ url_for('static', filename='player/render.js', v=build) }}"></script>
+  <script src="{{ url_for('static', filename='player/plugins/host.js', v=build) }}"></script>
+  {%- for path in plugins.scripts %}
+  <script src="{{ url_for('static', filename=path, v=build) }}"></script>
+  {%- endfor %}
   <script src="{{ url_for('static', filename='player/emergency.js', v=build) }}"></script>
   <script src="{{ url_for('static', filename='player/device.js', v=build) }}"></script>
   <script src="{{ url_for('static', filename='player/pop.js', v=build) }}"></script>

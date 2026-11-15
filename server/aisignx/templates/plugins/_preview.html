@@ -1,0 +1,36 @@
+{# The live preview stage and its scripts (host.js, the plugin's native files, then
+   plugin_preview.js), shared by the item form and the preview page. The page is served
+   with the player's CSP (plus 'self' for admin assets), so nothing here is inline. #}
+{% macro stage(entry, server_time, form_id=None, preview_url=None) %}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+  <div class="btn-group btn-group-sm" role="group" aria-label="Screen shape">
+    <button type="button" class="btn btn-outline-secondary" data-preview-aspect="16:9" aria-pressed="true">16:9</button>
+    <button type="button" class="btn btn-outline-secondary" data-preview-aspect="9:16" aria-pressed="false">9:16</button>
+  </div>
+  {% if form_id %}<button type="button" class="btn btn-sm btn-outline-primary" data-preview-refresh>Refresh preview</button>{% endif %}
+  <span class="small text-secondary" data-plugin-preview-status aria-live="polite"></span>
+</div>
+<div data-plugin-preview data-item='{{ entry|tojson }}' data-server-time="{{ server_time }}"
+     {%- if form_id %} data-form="{{ form_id }}" data-preview-url="{{ preview_url }}"{% endif %}></div>
+{% endmacro %}
+
+{% macro scripts(plugin) %}
+{% if plugin.player_style %}<link rel="stylesheet" href="{{ url_for('static', filename='player/plugins/' ~ plugin.key ~ '/' ~ plugin.player_style) }}">{% endif %}
+<script defer src="{{ url_for('static', filename='player/plugins/host.js') }}"></script>
+{% if plugin.player_script %}<script defer src="{{ url_for('static', filename='player/plugins/' ~ plugin.key ~ '/' ~ plugin.player_script) }}"></script>{% endif %}
+<script defer src="{{ url_for('static', filename='js/plugin_preview.js') }}"></script>
+{% endmacro %}
+
+{% macro about(plugin, hosts, secrets) %}
+<dl class="small mb-0">
+  {% if plugin.description %}<dt>About</dt><dd>{{ plugin.description }}</dd>{% endif %}
+  <dt>Outbound hosts</dt>
+  <dd>{% if hosts %}{% for h in hosts %}<code>{{ h }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}None: this plugin works without the internet.{% endif %}</dd>
+  {% for s in secrets %}
+  <dt>{{ s.label }}</dt>
+  <dd>{% if s.configured %}<span class="badge text-bg-success">configured</span>{% else %}<span class="badge text-bg-warning">missing</span>{% endif %} <code>{{ s.env }}</code></dd>
+  {% endfor %}
+  {% if plugin.attribution %}<dt>Attribution</dt><dd>{{ plugin.attribution }}</dd>{% endif %}
+  {% if plugin.terms %}<dt>Data terms</dt><dd>{{ plugin.terms }}</dd>{% endif %}
+</dl>
+{% endmacro %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "plugins/_fields.html" import field %}
+{% from "plugins/_preview.html" import stage, scripts, about %}
+{% block title %}{{ ("Edit " ~ media.name) if media else ("Add " ~ plugin.name) }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="h3 mb-0">{% if media %}Edit {{ media.name }} <span class="text-secondary fs-6 fw-normal">ID {{ media.id }}</span>{% else %}Add {{ plugin.name }}{% endif %}</h1>
+  <span class="badge text-bg-success">{{ plugin.name }} {{ plugin.version }}</span>
+</div>
+{% if errors.get("_") %}<div class="alert alert-danger">{{ errors.get("_") }}</div>{% endif %}
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card"><div class="card-body">
+      <form method="post" id="plugin-form" novalidate data-plugin-form data-geocode-url="{{ url_for('plugins.geocode') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <label class="form-label" for="pf-name">Name <span class="text-danger" aria-hidden="true">*</span></label>
+          <input class="form-control{{ ' is-invalid' if errors.name }}" type="text" id="pf-name" name="name" value="{{ name or '' }}" maxlength="200" required>
+          {% if errors.name %}<div class="invalid-feedback">{{ errors.name }}</div>{% endif %}
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="pf-duration">Default duration (seconds)</label>
+          <input class="form-control{{ ' is-invalid' if errors.duration }}" type="number" id="pf-duration" name="duration" value="{{ duration or '' }}" min="1" max="86400" placeholder="{{ plugin.default_duration }}">
+          {% if errors.duration %}<div class="invalid-feedback">{{ errors.duration }}</div>{% endif %}
+          <div class="form-text">How long this item shows in a playlist unless the playlist item sets its own time.</div>
+        </div>
+        {% for f in plugin.schema %}
+        {{ field(f, values.get(f.name), errors.get(f.name), timezones=timezones, images=images) }}
+        {% endfor %}
+        <button class="btn btn-primary" type="submit">{{ "Save" if media else "Add to library" }}</button>
+        <a class="btn btn-link" href="{{ url_for('media.index') }}">Cancel</a>
+      </form>
+      {% if media %}
+      <hr>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-secondary" href="{{ url_for('plugins.preview', media_id=media.id) }}">Open preview page</a>
+        <form method="post" action="{{ url_for('media.delete', media_id=media.id) }}" class="ms-auto"
+              data-confirm="Delete this item? It will also be removed from any playlists.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-outline-danger" type="submit">Delete</button>
+        </form>
+      </div>
+      {% endif %}
+    </div></div>
+    <div class="card mt-3"><div class="card-body">{{ about(plugin, hosts, secrets) }}</div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card"><div class="card-body">
+      <h2 class="h6">Preview</h2>
+      {{ stage(entry, server_time, form_id="plugin-form", preview_url=preview_url) }}
+      <p class="form-text mb-0">Refresh preview shows the form as it is now, before you save.</p>
+    </div></div>
+  </div>
+</div>
+
+{% if images %}
+<div class="modal fade" id="media-picker" tabindex="-1" aria-labelledby="media-picker-title" aria-hidden="true"
+     data-images='{{ images|tojson }}'>
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="media-picker-title">Choose images</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input class="form-control mb-3" type="search" placeholder="Search by name" data-media-search aria-label="Search images">
+        <div class="row row-cols-3 row-cols-md-5 g-2" data-media-grid></div>
+      </div>
+      <div class="modal-footer">
+        <span class="small text-secondary me-auto" data-media-picked></span>
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+<script defer src="{{ url_for('static', filename='js/plugin_form.js') }}"></script>
+{{ scripts(plugin) }}
+{% endblock %}

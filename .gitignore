@@ -17,6 +17,7 @@ server/instance/
 server/uploads/
 server/backups/
 server/logs/
+plugin-cache/
 
 # Client builds and signing
 clients/**/node_modules/

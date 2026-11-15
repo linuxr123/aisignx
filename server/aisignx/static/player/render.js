@@ -14,6 +14,8 @@
   var WEB_SHOW_ANYWAY_MS = 8000;
   var TEARDOWN_SAFETY_MS = 1500;
   var STALL_MS = 10000;
+  var PLUGIN_READY_MS = 8000;
+  var DEGRADED_MS = 10000;  // a degraded plugin (fallback or loading card) moves on after 10 s
 
   var stage = null;   // #stage element
   var active = null;  // slide on screen
@@ -134,6 +136,116 @@
     return ready;
   }
 
+  // ---- Plugins. Frame plugins: an opaque-origin iframe driven by plugins/host.js. Native
+  // plugins: first-party code in A.pluginNative[key] = {prepare, run, teardown, pause, resume,
+  // setVolume, setMuted} that draws into the slide itself.
+  var natives = [];  // prepared native plugin slides (for volume and mute)
+  function prepCard(slide, title, msg) {
+    var card = document.createElement("div");
+    card.className = "media plugin-card";
+    var s = card.style;
+    s.display = "flex"; s.alignItems = "center"; s.justifyContent = "center"; s.flexDirection = "column";
+    s.background = "#111"; s.color = "#fff"; s.textAlign = "center";
+    s.fontFamily = "system-ui, sans-serif";
+    var t = card.appendChild(document.createElement("p"));
+    t.textContent = String(title || "");
+    t.style.fontSize = "6vmin"; t.style.margin = "0 0 1.5vmin"; t.style.fontWeight = "600";
+    if (msg) {
+      var m = card.appendChild(document.createElement("p"));
+      m.textContent = String(msg);
+      m.style.fontSize = "3.2vmin"; m.style.margin = "0"; m.style.opacity = "0.7";
+    }
+    attach(slide, card);
+    return Promise.resolve();
+  }
+  function prepPlugin(slide) {
+    var item = slide.item, p = item.plugin;
+    if (!p || typeof p !== "object" || typeof p.key !== "string") throw new Error("bad plugin item");
+    if (p.render === "native") {
+      var N = A.pluginNative && A.pluginNative[p.key];
+      if (!N || typeof N.prepare !== "function") throw new Error("unsupported plugin " + p.key);
+      slide.native = N;
+      natives.push(slide);
+      var api = {
+        attach: attach,
+        fitClass: fitClass,
+        volume: function () { return volume; },
+        prepCard: prepCard,
+      };
+      // A native prepare() that never settles must not hold the playlist.
+      return withTimeout(Promise.resolve(N.prepare(slide, api)), PLUGIN_READY_MS, "plugin");
+    }
+    if (!A.pluginHost) throw new Error("unsupported plugin " + p.key);
+    var f = document.createElement("iframe");
+    f.className = "media plugin";
+    f.setAttribute("sandbox", "allow-scripts");
+    f.setAttribute("referrerpolicy", "no-referrer");
+    f.setAttribute("allow", "");
+    f.setAttribute("scrolling", "no");
+    f.setAttribute("title", "Plugin " + p.key);
+    f.tabIndex = -1;
+    f.style.background = "#000";
+    attach(slide, f);
+    slide.plugin = A.pluginHost.create(f, item, { readyMs: PLUGIN_READY_MS });
+    f.src = item.url;  // after create(): the host must know the frame before it says hello
+    return slide.plugin.ready;
+  }
+  function isPlugin(slide) { return !!(slide && (slide.plugin || slide.native)); }
+  function nativeCall(slide, fn, arg) {
+    var N = slide.native;
+    if (N && typeof N[fn] === "function") {
+      try { N[fn](slide, arg); } catch (e) { if (window.console) console.error(e); }
+    }
+  }
+  function emergencyMuted() {
+    var E = A.emergency;
+    return !!(E && E.shownId !== null && E.shownId !== undefined && E.layout === "fullscreen");
+  }
+
+  // runPlugin(slide, ctx): start an on-screen plugin. ctx as for runVideo; ctx.loop() is true
+  // when the playlist has a single item.
+  function runPlugin(slide, ctx) {
+    if (!isPlugin(slide)) return;
+    var alive = function () { return !slide.dead && active === slide; };
+    var shownAt = Date.now(), degraded = false, cut = false;
+    var onDegraded = function () { degraded = true; };
+    // Degraded (fallback or loading card) in a busy playlist: done at min(duration, 10 s).
+    ctx.every(function () {
+      if (cut || !alive() || !degraded || ctx.loop() || Date.now() - shownAt < DEGRADED_MS) return;
+      cut = true;
+      ctx.done();
+    }, 1000);
+    if (slide.native) {
+      var muted = false;  // setMuted(slide, true) forces silence; false restores the item's own setting
+      ctx.every(function () {  // fullscreen emergency text silences native plugins too
+        var want = emergencyMuted();
+        if (alive() && want !== muted) { muted = want; nativeCall(slide, "setMuted", want); }
+      }, 500);
+      var nctx = {};
+      Object.keys(ctx).forEach(function (k) { nctx[k] = ctx[k]; });
+      nctx.degraded = onDegraded;
+      nctx.done = function () { if (slide.item.plugin.ends_itself) ctx.done(); };
+      if (typeof slide.native.run !== "function") return;
+      try { slide.native.run(slide, nctx); } catch (e) { ctx.fail("plugin failed: " + (e && e.message)); }
+      return;
+    }
+    var h = slide.plugin;
+    h.on("complete", function () { if (alive() && slide.item.plugin.ends_itself) ctx.done(); });
+    h.on("error", function (msg, fatal) {
+      if (!alive()) return;
+      if (fatal) ctx.fail("plugin error: " + msg); else ctx.note("plugin " + slide.item.plugin.key + ": " + msg);
+    });
+    h.on("degraded", onDegraded);
+    if (h.degraded()) degraded = true;
+    h.show();
+  }
+  // pause(slide) / resume(slide) for plugins; videos use pauseVideo / playVideo.
+  function pause(slide) {
+    if (!slide || slide.dead) return;
+    if (slide.plugin) slide.plugin.pause();
+    else if (slide.native && !slide.nativePaused) { slide.nativePaused = true; nativeCall(slide, "pause"); }
+  }
+
   // prepare(item, gen) -> Promise<slide>. Rejects (and cleans up) on failure.
   // The returned promise carries `.slide`, so a caller can teardown() a slide that is
   // still loading (the promise then rejects with "dropped").
@@ -147,6 +259,7 @@
       if (item.type === "image") p = prepImage(slide);
       else if (item.type === "video") p = prepVideo(slide);
       else if (item.type === "web") p = prepWeb(slide);
+      else if (item.type === "plugin") p = prepPlugin(slide);
       else throw new Error("unsupported item type " + item.type);
     } catch (e) {
       p = Promise.reject(e);
@@ -206,6 +319,12 @@
     if (!slide || slide.dead) return;
     slide.dead = true;
     var m = slide.media;
+    if (slide.plugin) { try { slide.plugin.destroy(); } catch (e) { /* ignore */ } }
+    if (slide.native) {
+      nativeCall(slide, "teardown");
+      var n = natives.indexOf(slide);
+      if (n >= 0) natives.splice(n, 1);
+    }
     try {
       if (isVideo(slide)) {
         m.pause();
@@ -284,8 +403,14 @@
     playVideo(v, onError);
   }
 
-  // resume(slide): restart a video the browser paused (e.g. while the tab was hidden).
+  // resume(slide): restart a video the browser paused (e.g. while the tab was hidden), or
+  // resume a paused plugin.
   function resume(slide) {
+    if (slide && !slide.dead && slide.plugin) { slide.plugin.resume(); return; }
+    if (slide && !slide.dead && slide.native) {
+      if (slide.nativePaused) { slide.nativePaused = false; nativeCall(slide, "resume"); }
+      return;
+    }
     if (isVideo(slide) && slide === active && slide.media.paused && !slide.media.ended) {
       playVideo(slide.media, function () { /* ignore; the stall watchdog decides */ });
     }
@@ -337,6 +462,7 @@
     for (var i = 0; i < vids.length; i++) {
       try { vids[i].volume = volume; } catch (e) { /* ignore */ }
     }
+    natives.forEach(function (s) { nativeCall(s, "setVolume", volume); });
   }
 
   A.render = {
@@ -348,6 +474,10 @@
     runVideo: runVideo,
     resume: resume,
     isVideo: isVideo,
+    isPlugin: isPlugin,
+    runPlugin: runPlugin,
+    pause: pause,
+    prepCard: prepCard,
     videoOf: videoOf,
     seekVideo: seekVideo,
     setVideoTime: setVideoTime,

@@ -12,7 +12,7 @@ from ..extensions import db
 from ..media import service, storage
 from ..media.probe import InvalidMediaError
 from ..models import Media
-from ..models.media import MEDIA_WEB
+from ..models.media import MEDIA_IMAGE, MEDIA_PLUGIN, MEDIA_VIDEO
 from ..player.api import api_error, http_error_response
 from ..timeutil import iso_z
 from ..tokens.auth import token_required
@@ -41,7 +41,7 @@ def _server_error(_e):
 
 
 def media_json(media: Media) -> dict:
-    return {
+    body = {
         "id": media.id,
         "name": media.name,
         "type": media.media_type,
@@ -56,6 +56,14 @@ def media_json(media: Media) -> dict:
         "url": media.url,
         "created_at": iso_z(media.created_at),
     }
+    if media.media_type == MEDIA_PLUGIN:  # additive; private config fields never appear
+        from ..plugins import service as plugins
+
+        plugin = plugins.plugin_for(media)
+        config = plugins.stored_config(media, plugin) if plugin is not None else None
+        body["plugin"] = {"key": media.plugin_key,
+                          "config": plugins.public_config(plugin, config) if config else None}
+    return body
 
 
 def _not_found(media_id: int):
@@ -155,9 +163,10 @@ def media_replace(media_id: int):
     media = db.session.get(Media, media_id)
     if media is None:
         return _not_found(media_id)
-    if media.media_type == MEDIA_WEB:
+    if media.media_type not in (MEDIA_IMAGE, MEDIA_VIDEO):
         return api_error(409, "not_replaceable",
-                         f"Media {media_id} is a web page; only uploaded files can be replaced.")
+                         f"Media {media_id} is not an uploaded file; only uploaded files can be "
+                         "replaced.")
     file_storage, name, duration, error = _upload_fields()
     if error is not None:
         return error
