@@ -23,16 +23,21 @@ A quick overview. The detailed list of every change follows further down.
 
 ### Planned (in this order)
 1. **Device agent and watchdog** (Windows and Android; design in [docs/device-agent-design.md](docs/device-agent-design.md)). First release done (settings, durable commands, watchdogs, restart, collect logs). Later phases need decisions: command signing, reboot, signed updates, kiosk helpers.
-2. **Server installers** for Windows, Linux and macOS: one script each that installs everything and starts the server with the system (service, scheduled task or launchd), with upgrade and uninstall.
-3. **Downloads area** on the server: after logging in, users download the Windows player, the Android app and the PowerPoint add-in (versions and checksums); admins upload new builds.
-4. **Update check and signed one-click update:** the server checks GitHub releases, shows admins "update available" with release notes, and a button downloads, verifies a signature (public key built into the server), backs up the database, upgrades and restarts. Works for servers set up by the installer scripts; other setups get the notice only.
-5. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
-6. **Emergency improvements:**
+2. **Downloads area** on the server: after logging in, users download the Windows player, the Android app and the PowerPoint add-in (versions and checksums); admins upload new builds.
+3. **Update check and signed one-click update:** the server checks GitHub releases, shows admins "update available" with release notes, and a button downloads, verifies a signature (public key built into the server), backs up the database, upgrades and restarts. Works for servers set up by the installer scripts; other setups get the notice only.
+4. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
+5. **Emergency improvements:**
    - saved emergency templates;
    - scheduled emergencies;
    - triggering an emergency from another device (API, button or webhook).
-7. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
-8. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+6. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
+7. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+
+## Unreleased: Server installers
+
+### Added
+- **Install the server as a service that starts with the computer:** `scripts\install-server.ps1` (Windows: a Scheduled Task running as the low-privilege `LOCAL SERVICE` account that restarts on failure, a firewall rule for private and domain networks) and `scripts/install-server.sh` (Linux with systemd, hardened, and macOS with launchd). Each finds or installs Python 3.10+, offers ffmpeg and a browser, keeps the program and your data apart, writes a settings file, applies the database migrations, starts the server and prints the address. Run again to upgrade (database backed up first, previous version kept as `app.prev`); `--uninstall` removes it and keeps your data (`--purge` deletes it). See [docs/installing-the-server.md](docs/installing-the-server.md).
+- Tested here: the Windows script's non-elevated parts (copy, environment, migrations, backup, the installed server answering). Not run yet: the Scheduled Task, firewall rule and permissions (need administrator), and the Linux/macOS script on a real machine.
 
 ## Unreleased: Device agent
 

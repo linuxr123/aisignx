@@ -33,6 +33,10 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 ./scripts/install.sh
 ```
 
+**To run the server as a service that starts with the computer** (Windows, Linux, macOS), use
+`scripts\install-server.ps1` or `sudo ./scripts/install-server.sh`; see
+[docs/installing-the-server.md](docs/installing-the-server.md). The scripts above set up a development copy.
+
 Add `-Yes` (Windows) or `-y` (Linux/macOS) to install without asking. The scripts are safe to
 run again. Then start the server:
 
