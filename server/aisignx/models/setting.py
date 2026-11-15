@@ -41,6 +41,8 @@ DEFAULTS = {
     "alerts.disk_min_free_pct": "5",
     "alerts.login_burst": "20",
     "alerts.retention_days": "90",
+    # Update check (GitHub releases). Off with AISIGNX_UPDATE_CHECK=0 as well.
+    "updates.enabled": "1",
     # Proof of play.
     "pop.enabled": "0",
     "pop.raw_days": "14",

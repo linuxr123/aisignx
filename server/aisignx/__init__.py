@@ -85,6 +85,7 @@ def _register_blueprints(app: Flask) -> None:
     from .setup import bp as setup_bp
     from .system import bp as system_bp
     from .tokens import bp as tokens_bp
+    from .updates import bp as updates_bp
     from .users import bp as users_bp
 
     # The player API authenticates with display tokens and the JSON API with Bearer API
@@ -94,7 +95,7 @@ def _register_blueprints(app: Flask) -> None:
     csrf.exempt(api_bp)
     for bp in (alerts_bp, api_bp, audit_bp, auth_bp, backup_bp, displays_bp, downloads_bp, emergency_bp,
                groups_bp, main_bp, media_bp, player_bp, player_api_bp, playlists_bp, plugins_bp,
-               pop_bp, schedules_bp, settings_bp, setup_bp, system_bp, tokens_bp, users_bp):
+               pop_bp, schedules_bp, settings_bp, setup_bp, system_bp, tokens_bp, updates_bp, users_bp):
         app.register_blueprint(bp)
 
 
@@ -120,6 +121,23 @@ def _register_jobs_starter(app: Flask) -> None:
     @app.before_request
     def start_jobs():
         jobs.ensure_started(app)
+
+
+def _update_available() -> str:
+    """The newer version number, for the admin banner ("" when none or not an admin)."""
+    from flask_login import current_user
+
+    from .models import Setting
+    from .updates.service import enabled, is_newer
+
+    if not current_user or not current_user.is_authenticated or not current_user.is_admin:
+        return ""
+    try:
+        latest = Setting.get("updates.latest") or ""
+        return latest if latest and enabled() and is_newer(latest) else ""
+    except Exception:  # DB not migrated yet
+        db.session.rollback()
+        return ""
 
 
 def _open_alert_count() -> int:
@@ -151,7 +169,8 @@ def _register_template_context(app: Flask) -> None:
         except Exception:  # DB not migrated yet
             org_name = "AiSignX"
         return {"org_name": org_name, "app_version": __version__,
-                "open_alert_count": _open_alert_count()}
+                "open_alert_count": _open_alert_count(),
+                "update_available": _update_available()}
 
 
 def _register_error_pages(app: Flask) -> None:

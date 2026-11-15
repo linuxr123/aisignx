@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Updates{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Updates</h1>
+<div class="card mb-3"><div class="card-body">
+  <dl class="row mb-0">
+    <dt class="col-sm-3">Installed</dt><dd class="col-sm-9">{{ st.current }}</dd>
+    <dt class="col-sm-3">Latest release</dt>
+    <dd class="col-sm-9">{% if st.latest %}{{ st.latest }}
+      {% if st.available %}<span class="badge text-bg-warning">Update available</span>
+      {% else %}<span class="badge text-bg-success">Up to date</span>{% endif %}
+      {% else %}<span class="text-secondary">Unknown</span>{% endif %}</dd>
+    <dt class="col-sm-3">Last checked</dt>
+    <dd class="col-sm-9">{{ st.checked_at|localtime if st.checked_at else "Never" }}
+      {% if st.error %}<div class="text-danger small">{{ st.error }}</div>{% endif %}</dd>
+    <dt class="col-sm-3">Source</dt><dd class="col-sm-9">github.com/{{ st.repo }}</dd>
+  </dl>
+</div></div>
+
+{% if st.available %}
+<div class="card mb-3 border-warning">
+  <div class="card-header fw-semibold">AiSignX {{ st.latest }} is available</div>
+  <div class="card-body">
+    {% if st.notes %}<pre class="small mb-3" style="white-space:pre-wrap">{{ st.notes }}</pre>{% endif %}
+    <a class="btn btn-primary" href="{{ st.url }}" target="_blank" rel="noopener noreferrer">Open the release on GitHub</a>
+    <p class="text-secondary small mt-3 mb-0">To upgrade, get the new version and run the server installer again
+      (<code>docs/installing-the-server.md</code>): it backs up the database first and keeps your data.
+      One-click install from this page is planned; it will only install files signed by the publisher.</p>
+  </div>
+</div>
+{% endif %}
+
+<div class="d-flex gap-2">
+  <form method="post" action="{{ url_for('updates.check_now') }}">{{ form.csrf_token }}
+    <button class="btn btn-outline-primary" type="submit" {% if not st.enabled %}disabled{% endif %}>Check now</button></form>
+  <form method="post" action="{{ url_for('updates.toggle') }}">{{ form.csrf_token }}
+    <button class="btn btn-outline-secondary" type="submit">{{ "Turn the check off" if st.enabled else "Turn the check on" }}</button></form>
+</div>
+<p class="text-secondary small mt-3">The check is one anonymous request to the public GitHub releases page about once a day.
+  It sends no information about your installation. Switch it off here, or with <code>AISIGNX_UPDATE_CHECK=0</code>.</p>
+{% endblock %}

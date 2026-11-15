@@ -32,6 +32,13 @@ A quick overview. The detailed list of every change follows further down.
 5. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
 6. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
 
+## Unreleased: Update check
+
+### Added
+- **Update check** (Admin > Updates): a daily anonymous look at the GitHub releases page; admins see a banner and the release notes when a newer version exists. Can be switched off (setting or `AISIGNX_UPDATE_CHECK=0`).
+- **Release signing:** Ed25519 verification built into the server and `tools/release-sign.py` (keygen, sign, verify). See [docs/updates.md](docs/updates.md).
+- Not yet: the one-click download-and-install button (needs a privileged helper and a published signed release).
+
 ## Unreleased: Downloads area
 
 ### Added

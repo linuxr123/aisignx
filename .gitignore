@@ -46,3 +46,7 @@ keystorepass.txt
 .idea/
 Thumbs.db
 .DS_Store
+
+# Release signing key (publisher only, never commit)
+release-key.private
+*.private

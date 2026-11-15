@@ -61,6 +61,7 @@ JOBS = (
     Job("media.probe", 300, "aisignx.media.service:probe_missing_job"),
     Job("media.webpages", 60, "aisignx.media.webpage:job"),
     Job("agent.commands", 60, "aisignx.displays.agent:job"),
+    Job("updates.check", 86400, "aisignx.updates.service:check_job"),
     Job("plugin_cache_prune", 86400, "aisignx.plugins.cache:prune_job"),
 )
 

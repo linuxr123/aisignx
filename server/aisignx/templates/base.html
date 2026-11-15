@@ -71,6 +71,7 @@
         {{ nav_link('tokens.admin_index', 'key', 'All API tokens', ep == 'tokens.admin_index') }}
         {{ nav_link('audit.index', 'file', 'Audit log', ep.startswith('audit.')) }}
         {{ nav_link('backup.index', 'archive', 'Backups', ep.startswith('backup.')) }}
+        {{ nav_link('updates.index', 'download', 'Updates', ep.startswith('updates.')) }}
         {{ nav_link('system.index', 'cpu', 'System', ep.startswith('system.') and ep != 'system.logs') }}
         {{ nav_link('system.logs', 'terminal', 'Logs', ep == 'system.logs') }}
       </ul>
@@ -128,6 +129,12 @@
           </div>
         {% endfor %}
       {% endwith %}
+      {% if update_available and current_user.is_admin and not ep.startswith('updates.') %}
+        <div class="alert alert-warning py-2 d-flex align-items-center gap-2" role="status">
+          <span>AiSignX {{ update_available }} is available (you have {{ app_version }}).</span>
+          <a class="ms-auto" href="{{ url_for('updates.index') }}">See what's new</a>
+        </div>
+      {% endif %}
       {% block content %}{% endblock %}
 {% if current_user.is_authenticated %}
     </main>
