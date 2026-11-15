@@ -75,6 +75,8 @@
   function clockSample(res) {
     if (SY && res && res.kind === "ok" && res.data && typeof res.data.server_time_ms === "number" && res.sentAt) {
       SY.clock.sample(res.data.server_time_ms, res.sentAt, res.recvAt);
+      // Plugins read the same round-trip-corrected clock, so their timing agrees across screens.
+      if (PH && PH.setOffset && SY.clock.ready()) PH.setOffset(SY.clock.offset());
     }
   }
 
@@ -367,6 +369,12 @@
     if (R.isPlugin && R.isPlugin(n.slide)) {
       R.runPlugin(n.slide, {
         loop: function () { return loops(item); },
+        // In sync: how far into this slide the shared clock says we are (ms), else null. A plugin
+        // that plays something with its own timeline (YouTube) uses it to stay in step.
+        syncElapsed: function () {
+          var p = S.sync ? syncAt() : null;
+          return p && S.cur && S.cur.item === item && p.index === S.pos ? p.elapsedMs : null;
+        },
         // A plugin that ends itself while the viewer has it paused waits for the resume.
         done: guard(function () { if (S.paused || S.sync) return; S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
         fail: guard(slideFailed),

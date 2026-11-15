@@ -61,7 +61,28 @@
     timers[t.id] = t;
     return t.id;
   }
+  // aligned(fn, ms): fn runs at every multiple of ms on the SERVER clock (ctx.now()), not every ms
+  // after this frame happened to load. Screens that load a moment apart then rotate and repaint
+  // together, which synchronized playback needs. Cleared with ctx.clear like the others.
+  var aligned = {}, alignedSeq = 0;
+  function addAligned(fn, ms) {
+    ms = Math.max(100, Number(ms) || 1000);
+    var token = "al" + (++alignedSeq);
+    var arm = function () {
+      if (dead) return;
+      var wait = ms - (ctx.now() % ms);               // to the next boundary (a whole interval at most)
+      aligned[token] = addTimer(function () { arm(); fn(); }, wait + 2, false);
+    };
+    arm();
+    return token;
+  }
   function clearTimer(id) {
+    if (typeof id === "string" && aligned[id] !== undefined) {
+      var inner = aligned[id];
+      delete aligned[id];
+      clearTimer(inner);
+      return;
+    }
     var t = timers[id];
     if (!t) return;
     if (t.repeat) clearInterval(id); else clearTimeout(id);
@@ -106,6 +127,7 @@
       data: null, stale: false, warming: false, fetchedAt: 0, offline: !!m.offline, assets: [],
       now: function () { return Date.now() + offset; },
       every: function (fn, ms) { return addTimer(fn, ms, true); },
+      aligned: addAligned,
       later: function (fn, ms) { return addTimer(fn, ms, false); },
       clear: clearTimer,
       format: format,

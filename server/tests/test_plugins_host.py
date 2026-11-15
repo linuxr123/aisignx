@@ -103,6 +103,11 @@ def test_end_to_end_with_sdk(r):
     assert e["unknown"] == "rejected:asset unavailable"  # not in the data's asset list
     assert e["assetFetches"] == ["/api/player/v1/plugins/7/assets/" + "a" * 32]
     assert e["ticksBefore"] == 2 and e["ticksAfter"] == 2  # destroy stops ctx.every timers
+    # ctx.aligned fires on whole seconds of the SERVER clock (5 s ahead of this frame's), a hair after the
+    # boundary, so frames that loaded at different moments tick together; destroy stops it too.
+    hits = e["aligned"]["hits"]
+    assert len(hits) >= 1 and all(h % 1000 in (2, 3) for h in hits), hits
+    assert e["aligned"]["after"] == 0
 
 
 def test_sdk_fallback_is_ready_and_degraded(r):

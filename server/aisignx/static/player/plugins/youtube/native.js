@@ -17,6 +17,9 @@
   var LISTEN_MS = 400;       // "listening" is repeated until the frame answers...
   var LISTEN_TRIES = 40;     // ...for at most this many times
   var START_MS = 3000;       // not playing this long after run(): try the fallbacks
+  var SYNC_DRIFT_S = 0.6;     // synchronized playback: seek when the video is this far off the shared timeline
+  var SYNC_LEAD_S = 0.3;      // a seek takes a moment to start playing: aim a little ahead
+  var SYNC_GAP_MS = 4000;     // at most one correction this often (every seek makes YouTube rebuffer)
   var END_GRACE_MS = 2500;   // "ended" with nothing new playing this long after: the list is done
   var MAX_MESSAGE = 65536;   // larger bridge messages are ignored unread
   var VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -108,6 +111,8 @@
       if (typeof info.playerState === "number") out.state = info.playerState;
       if (typeof info.playlistIndex === "number") out.index = info.playlistIndex;
       if (Array.isArray(info.playlist)) out.count = info.playlist.length;
+      if (typeof info.currentTime === "number" && isFinite(info.currentTime)) out.time = info.currentTime;
+      if (typeof info.duration === "number" && info.duration > 0 && isFinite(info.duration)) out.length = info.duration;
     }
     return out;
   }
@@ -158,6 +163,54 @@
       send(st, "playVideo");
     }
   }
+  // ---- Looping a clip. With loop=1 YouTube ignores the end time (and restarts from 0, not from the
+  // start time), so a video set to play "from 0:30 to 1:30" would play to its real end. When the
+  // slide loops a single video (synced screens, or "end the slide when the video ends" off) the
+  // player keeps it inside its clip itself: at the end time it goes back to the start time.
+  var LOOP_GAP_MS = 1000;
+  function loopGuard(st, f) {
+    var e = st.embed || {};
+    if (e.play_to_end !== false || e.list || e.live || !Array.isArray(e.video_ids) || e.video_ids.length !== 1) return;
+    if (!(e.end > 0) && !(e.start > 0)) return;
+    if (st.paused || st.dead || st.state !== PLAYING || typeof f.time !== "number") return;
+    var start = e.start > 0 ? e.start : 0;
+    var past = e.end > 0 && f.time >= e.end - 0.25;      // at or after the end time
+    var before = start > 0 && f.time < start - 0.75;     // YouTube restarted from 0
+    if (!past && !before) return;
+    var t = Date.now();
+    if (st.loopAt !== undefined && t - st.loopAt < LOOP_GAP_MS) return;
+    st.loopAt = t;
+    send(st, "seekTo", [start, true]);
+  }
+
+  // ---- Synchronized playback. The slide knows where the shared timeline is (ctx.syncElapsed); a
+  // single video can be held there by seeking it when it drifts. The embed only reports its
+  // position about once a second and a seek makes it rebuffer, so this is close (a few tenths
+  // of a second), not frame-exact. A list or playlist has no position we can compute: those
+  // simply start together.
+  function syncCheck(st, f) {
+    var ctx = st.ctx;
+    if (!ctx || typeof ctx.syncElapsed !== "function" || st.paused || st.dead || st.state !== PLAYING) return;
+    var e = st.embed || {};
+    if (e.list || e.live || !Array.isArray(e.video_ids) || e.video_ids.length !== 1) return;
+    if (typeof f.time !== "number" || typeof f.length !== "number") return;
+    var elapsed = ctx.syncElapsed();
+    if (elapsed === null || elapsed === undefined) return;
+    var start = e.start > 0 ? e.start : 0;
+    var end = e.end > 0 && e.end <= f.length ? e.end : f.length;
+    var span = end - start;
+    if (!(span > 1)) return;
+    var want = start + (elapsed / 1000) % span;
+    var drift = f.time - want;
+    if (drift > span / 2) drift -= span;        // across the loop point the shorter way round
+    else if (drift < -span / 2) drift += span;
+    if (Math.abs(drift) < SYNC_DRIFT_S) return;
+    var t = Date.now();
+    if (st.syncAt !== undefined && t - st.syncAt < SYNC_GAP_MS) return;
+    st.syncAt = t;
+    send(st, "seekTo", [Math.min(want + SYNC_LEAD_S, end), true]);
+  }
+
   // finish(st): the list played to its end. The bridge reports "ended" twice (infoDelivery and
   // onStateChange); the slide ends once.
   function finish(st) {
@@ -185,8 +238,9 @@
     // Commands sent before the player was ready may be lost: send play again once it answers.
     if ((first || f.ready) && st.ctx && !st.started && !st.paused) play(st);
     if (typeof f.error === "number" && !isNaN(f.error) && ERRORS[f.error]) { fail(st, f.error); return; }
+    if (typeof f.state === "number") st.state = f.state;
+    if (f.time !== undefined) { loopGuard(st, f); syncCheck(st, f); }
     if (typeof f.state !== "number") return;
-    st.state = f.state;
     if (f.state === PLAYING || f.state === BUFFERING || f.state === UNSTARTED) {
       if (f.state !== UNSTARTED) { st.started = true; applyCaptions(st); }
       if (st.endTimer) { clearTimeout(st.endTimer); st.endTimer = null; }  // the next video started

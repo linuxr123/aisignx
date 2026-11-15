@@ -347,6 +347,21 @@ def test_js_captions_off_unloads_the_captions_module(js):
     assert js["captions"]["on"] == []
 
 
+def test_js_synchronized_playback_holds_a_single_video_on_the_shared_timeline(js):
+    s = js["sync"]
+    assert s["joined"] == [95.3]                 # 95 s into the slide, aimed 0.3 s ahead
+    assert s["noSecond"] == 1                    # one correction per 4 s: a seek makes YouTube rebuffer
+    assert s["close"] == 1                       # 0.4 s off is close enough: no new seek
+    assert s["drifted"] == 2                     # 1.1 s off after the gap: corrected
+    assert s["wrap"] == [1.3]                    # 213 s into a 212 s video is 1 s: seek over the loop point
+    assert s["start"] == [40.3]                  # start=30 plus 10 s into the slide
+    assert s["left"] == [0, 0, 0, 0]             # not synced, a list, a playlist and a live stream: left alone
+    # A looping clip stays inside "from 0:30 to 1:30": YouTube ignores the end time when it loops.
+    assert s["loopEnd"] == [] and s["loopAtEnd"] == [30] and s["loopPast"] == [30] and s["loopRestart"] == [30]
+    assert s["loopOnce"] == [30]
+    assert s["noLoopGuard"] == [[], [], []]      # ending the slide at the end time, a list, no clip: nothing to guard
+
+
 def test_js_offline_card(js):
     o = js["offline"]
     # Server unreachable but the device online: the embed still plays.

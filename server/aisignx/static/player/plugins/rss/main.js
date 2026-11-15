@@ -267,11 +267,13 @@
   function runProgress() {
     var bar = S.progress;
     if (!bar) return;
+    // The bar shows the time to the next change on the shared clock, so it fills in step on every screen.
+    var phase = (S.ctx.now() % S.cfg.rotateMs) / S.cfg.rotateMs;
     bar.style.transition = "none";
-    bar.style.width = S.slides.length > 1 ? "0%" : "100%";
+    bar.style.width = S.slides.length > 1 ? (phase * 100).toFixed(1) + "%" : "100%";
     if (S.slides.length < 2 || !S.shown || S.paused) return;
     void bar.offsetWidth;
-    bar.style.transition = "width " + S.cfg.rotateMs + "ms linear";
+    bar.style.transition = "width " + Math.round(S.cfg.rotateMs * (1 - phase)) + "ms linear";
     bar.style.width = "100%";
   }
 
@@ -279,7 +281,8 @@
     stopRotation();
     if (S.slides.length < 2 || !S.shown || S.paused) return;
     runProgress();
-    S.timer = S.ctx.every(function () { show(S.index + 1); }, S.cfg.rotateMs);
+    // On the shared clock: every screen changes to the same headline at the same moment.
+    S.timer = S.ctx.aligned(function () { show(startIndex(S.ctx.now(), S.cfg.rotateMs, S.slides.length)); }, S.cfg.rotateMs);
   }
 
   function stopRotation() {
@@ -314,7 +317,10 @@
     } while (width > 0 && width < viewW && copies < 20);
     var once = Array.prototype.slice.call(track.childNodes);
     once.forEach(function (n) { track.appendChild(n.cloneNode(true)); });
-    track.style.animationDuration = tickerSeconds(width || viewW, vmin()).toFixed(2) + "s";
+    var seconds = tickerSeconds(width || viewW, vmin());
+    track.style.animationDuration = seconds.toFixed(2) + "s";
+    // Start the scroll where the shared clock says it is, so every screen shows the same part.
+    track.style.animationDelay = "-" + ((S.ctx.now() / 1000) % seconds).toFixed(2) + "s";
   }
 
   // The band carries the headlines after the lead (all of them when there is only one).

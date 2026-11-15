@@ -158,6 +158,8 @@ function SdkFrame(w, ready) {
         __rec("init", { data: ctx.data, warming: ctx.warming, stale: ctx.stale, offline: ctx.offline,
           config: ctx.config, tz: ctx.tz, offset: ctx.now() - Date.now(), key: ctx.key });
         ctx.every(function () { ticks++; }, 1000);
+        window.alignedHits = [];
+        window.alignedId = ctx.aligned(function () { window.alignedHits.push(ctx.now()); }, 1000);
         if (__ready) ctx.ready();
       },
       data: function (ctx) { __rec("data", { data: ctx.data, stale: ctx.stale }); },
@@ -353,9 +355,11 @@ async function endToEnd() {
   });
   const assetFetches = io.calls.filter((c) => c.url.indexOf("/assets/") >= 0).map((c) => c.url);
   const ticksBefore = s.win.ticks;
+  const hitsBefore = Array.from(s.win.alignedHits);
   h.destroy();
   await w.clock.advance(5000);
-  return { readyState, rec: s.rec, url: typeof url === "string" && url.slice(0, 5), same: url === again, unknown,
+  const aligned = { hits: hitsBefore, after: s.win.alignedHits.length - hitsBefore.length };
+  return { aligned, readyState, rec: s.rec, url: typeof url === "string" && url.slice(0, 5), same: url === again, unknown,
     assetFetches, ticksBefore, ticksAfter: s.win.ticks };
 }
 

@@ -365,6 +365,9 @@
   }
 
   function setServerTime(ms) { var n = Number(ms); if (n > 0 && isFinite(n)) offset = n - Date.now(); }
+  // setOffset(ms): the server clock minus the local one from the player's round-trip-corrected
+  // estimate (sync.js), better than setServerTime's raw reading of one response.
+  function setOffset(ms) { var n = Number(ms); if (isFinite(n)) offset = n; }
   function setOffline(on) {
     if (!!on === offline) return;
     offline = on = !!on;
@@ -391,7 +394,7 @@
     })();
   }
 
-  A.pluginHost = { create: create, setServerTime: setServerTime, setOffline: setOffline, warm: warm,
+  A.pluginHost = { create: create, setServerTime: setServerTime, setOffset: setOffset, setOffline: setOffline, warm: warm,
     offset: function () { return offset; } };
   setTimeout(warm, 5000);
 })();

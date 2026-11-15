@@ -36,15 +36,27 @@ decoders can be a little behind while a new slide loads.
   new timeline at the same moment.
 - Emergency messages still show on every screen as usual.
 
+## Plugins
+
+The news reader and the stock ticker change headlines and scroll on the shared clock, so they match
+on every screen. The clock plugin shows the server's time. The image library's slideshow and the
+weather radar's animation still run on each screen's own timer and can be out of step. Plugin
+authors: `ctx.now()` is the shared server time and `ctx.aligned(fn, ms)` runs `fn` on every
+multiple of `ms` of it.
+
 ## Tips
 
 - Put screens that should match in one group and give them the **same playlist** (the same default
   playlist, or the same schedule). Screens of a group that play different playlists are each in
   step with themselves only.
 - Use **images, videos and plugins with a fixed duration** for the best result. Live web pages are
-  fine, but each screen loads them on its own. **YouTube is not frame-accurate:** each screen starts
-  its own copy when its slide begins, so copies can be a second or two apart. For a video wall use
-  an uploaded video instead.
+  fine, but each screen loads them on its own. **YouTube is close, not frame-accurate.** A single
+  YouTube video is held on the shared timeline: each screen compares the position the embed reports
+  with where the timeline says it should be, and seeks it back when it is more than about 0.6 s off
+  (at most every 4 s, because a seek makes YouTube rebuffer for a moment). Expect screens within
+  roughly half a second of each other. A YouTube *list*, *playlist* or *live stream* has no position
+  that can be worked out, so those only start together. For a video wall, or anything that must be
+  frame-exact, use an uploaded video (download your own videos and upload the MP4s).
 - The display page shows each synced screen's clock offset and round trip (Diagnostics).
 
 ## Player API

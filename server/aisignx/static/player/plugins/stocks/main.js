@@ -323,7 +323,10 @@
       } while (runA.scrollWidth < bandW && copies < 12);
       T.clone = track.appendChild(runA.cloneNode(true));
       T.clone.setAttribute("aria-hidden", "true");
-      track.style.animationDuration = tickerSeconds(runA.scrollWidth, vmin(), S.cfg.speed).toFixed(2) + "s";
+      var seconds = tickerSeconds(runA.scrollWidth, vmin(), S.cfg.speed);
+      track.style.animationDuration = seconds.toFixed(2) + "s";
+      // Start the scroll where the shared clock says it is (every screen shows the same part).
+      track.style.animationDelay = "-" + ((S.ctx.now() / 1000) % seconds).toFixed(2) + "s";
       track.classList.add("stk-go");
       track.style.animationPlayState = S.paused ? "paused" : "running";
       return T;

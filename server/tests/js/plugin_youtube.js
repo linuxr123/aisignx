@@ -56,7 +56,7 @@ function world(opts) {
     setTimeout: (fn, ms) => add(fn, ms), clearTimeout: clear,
     addEventListener: (n, fn) => { (winListeners[n] = winListeners[n] || []).push(fn); },
     removeEventListener: (n, fn) => { winListeners[n] = (winListeners[n] || []).filter((x) => x !== fn); },
-    Math, JSON, Promise, Array, Number, String, Error, isNaN,
+    Math, JSON, Promise, Array, Number, String, Error, isNaN, Date: { now: () => clock.t },
   };
   win.window = win;
   let hostOff = false;
@@ -255,6 +255,66 @@ async function captionCommands() {
   return out;
 }
 
+async function sync() {
+  const out = {};
+  async function player(embed, elapsedMs) {
+    const w = world();
+    const slide = { item: item({ embed: Object.assign({ video_ids: ["aaaaaaaaaaa"], list: null, channel: null, shuffle: false,
+      captions: false, play_to_end: false, live: false, start: null, end: null }, embed || {}) }) };
+    const p = w.Y.prepare(slide, w.api);
+    w.message({ event: "onReady" });
+    await p;
+    const c = ctxFor(w);
+    let el = elapsedMs;
+    c.ctx.syncElapsed = () => el;
+    w.Y.run(slide, c.ctx);
+    w.message({ event: "onStateChange", info: 1 });           // playing
+    w.frames[0].posted.length = 0;
+    const seeks = () => w.frames[0].posted.filter((x) => x.msg.func === "seekTo").map((x) => x.msg.args[0]);
+    const tell = (time, length) => w.message({ event: "infoDelivery", info: { currentTime: time, duration: length || 212 } });
+    return { w, seeks, tell, set: (v) => { el = v; } };
+  }
+  // Joined 95 s into the slide: the video is at 3 s, so it is sent to 95 s (a little ahead).
+  let a = await player({}, 95000);
+  a.tell(3.2);
+  out.joined = a.seeks();
+  a.tell(4.0);                                             // within the gap: no second seek yet
+  out.noSecond = a.seeks().length;
+  // Close enough: no seek. Drifted again after the gap: another one.
+  await a.w.advance(5000);
+  a.set(100000); a.tell(100.4);
+  out.close = a.seeks().length;
+  a.set(120000); a.tell(118.9);
+  out.drifted = a.seeks().length;
+  // The video repeats: 213 s into a 212 s video is 1 s in; at 211.5 s it is just before the loop point.
+  a = await player({}, 213000);
+  a.tell(211.5);
+  out.wrap = a.seeks();
+  // A start offset counts: start=30, 10 s into the slide means 40 s in the video.
+  a = await player({ start: 30 }, 10000);
+  a.tell(30.1);
+  out.start = a.seeks();
+  // Not synchronized (no position), a list, a playlist and a live stream are left alone.
+  a = await player({}, null); a.tell(3.2);
+  const b = await player({ video_ids: ["aaaaaaaaaaa", "bbbbbbbbbbb"] }, 95000); b.tell(3.2);
+  const c2 = await player({ list: "PLx" }, 95000); c2.tell(3.2);
+  const d = await player({ live: true }, 95000); d.tell(3.2);
+  out.left = [a.seeks().length, b.seeks().length, c2.seeks().length, d.seeks().length];
+  // A clip that loops (start 30, end 90) stays in its clip: YouTube ignores the end time with loop=1.
+  const lp = async (embed, times) => {
+    const x = await player(Object.assign({ start: 30, end: 90, play_to_end: false }, embed), null);
+    times.forEach((t) => x.tell(t));
+    return x.seeks();
+  };
+  out.loopEnd = await lp({}, [60]);                          // inside the clip: nothing
+  out.loopAtEnd = await lp({}, [89.9]);                      // at the end time: back to the start
+  out.loopPast = await lp({}, [101]);                        // YouTube played on past it: back to the start
+  out.loopRestart = await lp({}, [2]);                       // YouTube looped to 0: to the start time
+  out.loopOnce = await lp({}, [89.9, 90.4]);                 // not twice within a second
+  out.noLoopGuard = [await lp({ play_to_end: true }, [95]), await lp({ video_ids: ["a", "b"] }, [95]), await lp({ start: null, end: null }, [95])];
+  return out;
+}
+
 async function offline() {
   // The AiSignX server being unreachable (the player's offline flag) must NOT stop YouTube:
   // the embed comes from YouTube directly, so the frame is still created.
@@ -274,7 +334,7 @@ async function offline() {
 
 (async () => {
   const out = { util: utilCases(), filter: messageFilter(), bridge: await frameAndBridge(), endings: await endings(),
-    failures: await failures(), offline: await offline(), captions: await captionCommands() };
+    failures: await failures(), offline: await offline(), captions: await captionCommands(), sync: await sync() };
   process.stdout.write(JSON.stringify(out));
   process.exit(0);
 })().catch((e) => { process.stderr.write(String(e && e.stack)); process.exit(1); });
