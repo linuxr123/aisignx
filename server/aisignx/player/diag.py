@@ -83,6 +83,20 @@ def _size(value):
 MAX_SUPPORT = 20
 
 
+def _bool(value) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
+def _agent(value) -> dict | None:
+    """What the device's agent says about itself: its version, privilege tier and what it can do
+    (the admin page hides what the device cannot), and what its watchdog has been doing."""
+    return _obj(value, {
+        "version": lambda x: _str(x, 20), "tier": lambda x: x if x in ("plain", "device_owner", "admin") else None,
+        "can_restart": _bool, "can_collect_logs": _bool, "can_reboot": _bool, "can_update": _bool,
+        "watchdog": _bool, "restarts_1h": _int, "gave_up": _bool, "last_restart_ms": _int,
+    })
+
+
 def _support(value) -> dict | None:
     """Which of the playlist's videos this screen says it cannot decode smoothly:
     {"checked": n, "problems": [{"id": media id, "s": "no" | "rough"}]}."""
@@ -115,6 +129,7 @@ _FIELDS = {
     "errors": _errors,
     "media_support": _support,
     "sync": lambda v: _obj(v, {"offset_ms": _sint, "rtt_ms": _int}),
+    "agent": _agent,
 }
 
 

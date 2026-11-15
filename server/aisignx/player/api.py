@@ -12,13 +12,14 @@ from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import HTTPException, NotFound
 
-from ..displays import pairing, screenshots
+from ..displays import agent, pairing, screenshots
+from ..audit import service as audit
 from ..extensions import db
 from ..media import storage
 from ..models import Display, Media
 from ..models.media import MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB
 from ..setup.service import setup_required
-from ..timeutil import utcnow
+from ..timeutil import as_utc, utcnow
 from . import api_bp, diag
 from .auth import display_required, set_display_cookie
 from .manifest import build_manifest
@@ -243,8 +244,39 @@ def heartbeat():
         .execution_options(synchronize_session=False)
     )
     db.session.commit()
+    # `commands`: how many device-agent commands wait for this display (it then GETs /commands).
     return jsonify(server_time_ms=int(time.time() * 1000), manifest_version=version,
-                   heartbeat_s=_heartbeat_s())
+                   heartbeat_s=_heartbeat_s(), commands=agent.pending_count(g.display.id))
+
+
+# --- device agent commands (docs/device-agent-design.md) ----------------------------------------
+# A display can only see and acknowledge its own commands. The page never carries these: the
+# native app fetches them itself with its display token.
+
+@api_bp.get("/commands")
+@display_required
+def commands():
+    cmds = agent.deliver(g.display)
+    db.session.commit()
+    return jsonify(commands=[{"id": c.request_id, "action": c.action, "params": c.params or {},
+                              "expires_in_s": max(0, int((as_utc(c.expires_at) - utcnow()).total_seconds()))}
+                             for c in cmds])
+
+
+@api_bp.post("/commands/<request_id>/ack")
+@display_required
+def command_ack(request_id: str):
+    body = _body()
+    if body is None:
+        return _bad("Expected a JSON object.")
+    cmd, error = agent.acknowledge(g.display, request_id, str(body.get("state") or ""),
+                                   _text(body.get("result"), agent.MAX_RESULT))
+    db.session.commit()
+    if cmd is None:
+        status = 404 if error == "unknown command" else 409 if error in ("expired", "already acknowledged", "not open") else 400
+        return api_error(status, "command_" + error.replace(" ", "_"), error)
+    audit.record_now("display.agent_result", g.display, detail={"command": cmd.action, "state": cmd.state})
+    return jsonify(ok=True, state=cmd.state)
 
 
 @api_bp.get("/media/<int:media_id>/<name>")

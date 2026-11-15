@@ -22,7 +22,8 @@ VECTORS = [
     ("12345678", 1000, "42b99a197a7d9cafa9fa5b60091da410edb6f3c1cc4e159a5f901b5348abb716"),
 ]
 DEFAULTS = {"orientation": 0, "volume": 100, "show_offline_banner": True,
-            "allow_input": False, "kiosk_lock": False, "resume_after_s": 300, "unlock": None}
+            "allow_input": False, "kiosk_lock": False, "resume_after_s": 300, "unlock": None,
+            "agent": {"watchdog": False, "restart": False, "logs": False}}
 
 
 def _form(**overrides) -> dict:

@@ -22,16 +22,25 @@ A quick overview. The detailed list of every change follows further down.
 - **Designs being written:** the device agent/watchdog, and content extras.
 
 ### Planned (in this order)
-1. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
-2. **Device agent and watchdog** (Windows and Android):
-   - restarts the player when needed, installs signed updates, reboots, collects logs;
-   - Windows kiosk setup (auto-login, replace the shell), all controlled from the display settings.
-3. **Emergency improvements:**
+1. **Device agent and watchdog** (Windows and Android; design in [docs/device-agent-design.md](docs/device-agent-design.md)). Done: the server side (settings, capability reporting, durable commands). Next: the Windows watchdog (heartbeat file and a scheduled task), the Android watchdog, `restart_player`, `collect_logs`. Later phases (need decisions): command signing, reboot, signed updates, kiosk helpers.
+2. **Server installers** for Windows, Linux and macOS: one script each that installs everything and starts the server with the system (service, scheduled task or launchd), with upgrade and uninstall.
+3. **Downloads area** on the server: after logging in, users download the Windows player, the Android app and the PowerPoint add-in (versions and checksums); admins upload new builds.
+4. **Update check and signed one-click update:** the server checks GitHub releases, shows admins "update available" with release notes, and a button downloads, verifies a signature (public key built into the server), backs up the database, upgrades and restarts. Works for servers set up by the installer scripts; other setups get the notice only.
+5. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
+6. **Emergency improvements:**
    - saved emergency templates;
    - scheduled emergencies;
    - triggering an emergency from another device (API, button or webhook).
-4. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
-5. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+7. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
+8. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+
+## Unreleased: Device agent (server side, first part)
+
+### Added
+- **Device agent settings** (admins, **Displays > Edit > Device agent**, all off by default): watchdog, allow "Restart the player", allow "Collect logs". They reach the apps in the manifest (`settings.agent`).
+- **Durable command queue** for the apps' device agent: an admin issues a command from the display page, it is stored (the database row is the truth), the screen is told to look, fetches only its own commands (`GET /commands`), runs each at most once and acknowledges it (`POST /commands/<id>/ack`). Commands expire by server time, there is one open command per action and a cap per hour, and every step is audited. A command needs the admin's switch **and** the app reporting that it can do it. Database migration `0014_device_agent`, job `agent.commands`.
+- The display page shows what each screen's app reports (agent version, privilege tier, watchdog activity) and the last commands.
+- The apps' side (watchdog, restart, collect logs) follows; see [docs/device-agent-design.md](docs/device-agent-design.md).
 
 ## Unreleased: Player fixes and the PowerPoint add-in
 

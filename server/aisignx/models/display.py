@@ -75,6 +75,13 @@ class Display(db.Model):
                            server_default=sa.false())
     resume_after_s = db.Column(db.Integer, nullable=False, default=RESUME_DEFAULT_S,
                                server_default="300")
+    # Device agent (docs/device-agent-design.md). Admin-only, all off by default: the watchdog
+    # restarts the player when it hangs; the allow_* switches let an admin issue that command.
+    agent_watchdog = db.Column(db.Boolean, nullable=False, default=False, server_default=sa.false())
+    agent_allow_restart = db.Column(db.Boolean, nullable=False, default=False,
+                                    server_default=sa.false())
+    agent_allow_logs = db.Column(db.Boolean, nullable=False, default=False,
+                                 server_default=sa.false())
 
     # Device-reported data and screenshot requests. These are written only with Core
     # UPDATE; an ORM write broadcasts a manifest hint to every screen.

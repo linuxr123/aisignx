@@ -10,12 +10,12 @@ from ..audit import service as audit
 from ..auth.decorators import admin_required, editor_required
 from ..extensions import db
 from ..emergency.service import clear_for_target
-from ..models import Display, Media, Schedule
+from ..models import DeviceCommand, Display, Media, Schedule
 from ..player.broker import get_broker
 from ..player.manifest import build_manifest
 from ..pop import service as pop_service
 from ..schedules.resolve import load_context, resolve, split_by_day, week_segments
-from . import bp, options, pairing, screenshots, service
+from . import agent, bp, options, pairing, screenshots, service
 from .forms import ActionForm, DisplayForm, PairForm, UnlockForm
 
 
@@ -125,6 +125,9 @@ def detail(display_id: int):
                            awaiting=(not display.is_paired
                                      and pairing.awaiting_claim(display)),
                            diag=diag, support=_support_rows(diag),
+                           agent_caps=agent.capabilities(display),
+                           agent_cmds=DeviceCommand.query.filter_by(display_id=display.id)
+                           .order_by(DeviceCommand.id.desc()).limit(5).all(),
                            pin_set=bool(display.unlock_pin_hash),
                            screenshot_pending=bool(screenshots.pending(display)),
                            has_screenshot=screenshots.exists(display.id),
@@ -154,6 +157,9 @@ def edit(display_id: int):
         if form.is_admin_form:
             display.allow_input = bool(form.allow_input.data)
             display.kiosk_lock = bool(form.kiosk_lock.data)
+            display.agent_watchdog = bool(form.agent_watchdog.data)
+            display.agent_allow_restart = bool(form.agent_allow_restart.data)
+            display.agent_allow_logs = bool(form.agent_allow_logs.data)
             if form.resume_after_min.data is not None:
                 display.resume_after_s = form.resume_after_min.data * 60
             if form.clear_pin.data:
@@ -179,7 +185,8 @@ def edit(display_id: int):
 
 _AUDITED_FIELDS = ("name", "playlist_id", "group_id", "location", "description", "orientation",
                    "fit_override", "volume", "show_offline_banner", "allow_input",
-                   "kiosk_lock", "resume_after_s")
+                   "kiosk_lock", "resume_after_s", "agent_watchdog", "agent_allow_restart",
+                   "agent_allow_logs")
 
 
 def _snapshot(display: Display) -> dict:
@@ -199,6 +206,9 @@ def _prefill(form: DisplayForm, display: Display) -> None:
     if form.is_admin_form:
         form.allow_input.data = display.allow_input  # the PIN is never prefilled
         form.kiosk_lock.data = display.kiosk_lock
+        form.agent_watchdog.data = display.agent_watchdog
+        form.agent_allow_restart.data = display.agent_allow_restart
+        form.agent_allow_logs.data = display.agent_allow_logs
         form.resume_after_min.data = max(1, (display.resume_after_s or 300) // 60)
 
 
@@ -220,6 +230,27 @@ def reload(display_id: int):
 def _publish(display: Display, data: dict, force: bool = False) -> int:
     broker = get_broker()
     return broker.publish(display.id, "command", data, force=force) if broker else 0
+
+
+@bp.route("/<int:display_id>/agent/<action>", methods=["POST"])
+@admin_required
+def agent_command(display_id: int, action: str):
+    """Ask the display's device agent to do something (docs/device-agent-design.md). Admin only,
+    only when switched on for this display and the device says it can; stored, then the screen is
+    told to look. Never a free-form command: `action` must be one of a closed list."""
+    _require_action_form()
+    display = _get_display_or_404(display_id)
+    cmd, reason = agent.create(display, action, current_user)
+    if cmd is None:
+        flash(reason, "warning")
+        return _back(display)
+    audit.record("display.agent_command", display, detail={"command": action, "request_id": cmd.request_id})
+    db.session.commit()
+    delivered = _publish(display, {"action": "commands"}, force=True)  # only a wake-up
+    flash(f"{agent.LABELS[action]}: sent to the screen." if delivered else
+          f"{agent.LABELS[action]}: the screen is not connected right now; it will pick this up when it checks in "
+          f"(within {agent.TTL_S[action] // 60} min).", "success" if delivered else "info")
+    return _back(display)
 
 
 @bp.route("/<int:display_id>/identify", methods=["POST"])

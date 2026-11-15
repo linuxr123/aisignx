@@ -93,6 +93,42 @@
 {% endif %}
 {% endmacro %}
 
+{% macro agent_card(display, caps, cmds, is_admin, action_form) %}
+{# The device agent: what this screen's app reports, buttons for admins, the last commands. #}
+{% if display.is_paired and (display.agent_watchdog or display.agent_allow_restart or display.agent_allow_logs or caps) %}
+<div class="card mb-4"><div class="card-body">
+  <h2 class="h5">Device agent</h2>
+  {% if caps %}
+  <p class="small text-body-secondary mb-2">App agent {{ caps.version or "?" }} &middot; {{ {"device_owner": "Device Owner", "admin": "administrator", "plain": "standard app"}.get(caps.tier, "standard app") }}
+    {% if caps.watchdog %}&middot; watchdog on{% endif %}
+    {% if caps.restarts_1h %}&middot; restarted the player {{ caps.restarts_1h }}&times; in the last hour{% endif %}</p>
+  {% if caps.gave_up %}<div class="alert alert-warning py-2 small">The watchdog gave up after too many restarts. The player may need a look in person.</div>{% endif %}
+  {% else %}
+  <p class="small text-body-secondary">This screen has not reported an agent yet. Update its app; the controls appear once it does.</p>
+  {% endif %}
+  {% if is_admin %}
+  <div class="d-flex flex-wrap gap-2 mb-2">
+    {% for act, label, setting, cap in [("restart_player", "Restart the player", display.agent_allow_restart, caps.can_restart), ("collect_logs", "Collect logs", display.agent_allow_logs, caps.can_collect_logs)] %}
+    <form method="post" action="{{ url_for('displays.agent_command', display_id=display.id, action=act) }}">
+      {{ action_form.hidden_tag() }}
+      <button class="btn btn-outline-secondary" type="submit" {% if not (setting and cap) %}disabled{% endif %}
+              title="{% if not setting %}Switched off for this display (Edit > Device agent){% elif not cap %}This screen's app cannot do this{% else %}{{ label }}{% endif %}">{{ label }}</button>
+    </form>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if cmds %}
+  <ul class="list-unstyled small mb-0">
+    {% for c in cmds %}
+    <li class="text-break"><span class="text-body-secondary">{{ c.created_at|localtime }}</span> {{ {"restart_player": "Restart the player", "collect_logs": "Collect logs"}.get(c.action, c.action) }}
+      &mdash; <span class="{{ 'text-success' if c.state == 'done' else 'text-danger' if c.state in ('failed', 'expired') else 'text-body-secondary' }}">{{ c.state }}</span>{% if c.result %} ({{ c.result }}){% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div></div>
+{% endif %}
+{% endmacro %}
+
 {% macro diagnostics_card(display, diag, can_edit, action_form) %}
 <div class="card mb-4"><div class="card-body">
   <div class="d-flex justify-content-between align-items-center mb-2">

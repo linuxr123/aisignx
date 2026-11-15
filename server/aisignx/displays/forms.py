@@ -102,8 +102,14 @@ class DisplayForm(FlaskForm):
         render_kw={"autocomplete": "new-password", "inputmode": "numeric"})
     clear_pin = BooleanField("Remove the unlock PIN")
 
+    # Device agent (admins only; docs/device-agent-design.md). All off unless switched on here.
+    agent_watchdog = BooleanField("Watchdog: restart the player when it crashes or hangs")
+    agent_allow_restart = BooleanField("Allow \"Restart the player\" from this page")
+    agent_allow_logs = BooleanField("Allow \"Collect logs\" from this page")
+
     KIOSK_FIELDS = ("allow_input", "unlock_pin", "clear_pin", "kiosk_lock",
-                    "resume_after_min")
+                    "resume_after_min", "agent_watchdog", "agent_allow_restart",
+                    "agent_allow_logs")
 
     def __init__(self, *args, admin: bool = False, has_pin: bool = False, **kwargs):
         super().__init__(*args, **kwargs)

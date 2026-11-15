@@ -357,6 +357,22 @@ lowercase hex characters). `image/png`, `image/jpeg` or `image/webp`, with
 `Cache-Control: private, max-age=86400, immutable`: an asset ID never changes content.
 `404 not_found` for anything else.
 
+## Device agent commands
+
+For the native apps only (never the page): the Windows and Android apps fetch their own commands with
+the display token. Design: [device-agent-design.md](device-agent-design.md).
+
+- The heartbeat answer carries `commands`: how many commands wait for this display.
+- `GET /commands` returns `{"commands": [{"id": "<16 hex>", "action": "restart_player" | "collect_logs",
+  "params": {}, "expires_in_s": 120}]}` and marks them delivered. A command is handed out **once**; a
+  display runs each at most once.
+- `POST /commands/<id>/ack` with `{"state": "done" | "failed", "result": "short text"}`. 404 for an id that
+  is not this display's, 409 if it expired or was answered differently, 400 for a bad state.
+- `settings.agent` in the manifest: `{"watchdog": bool, "restart": bool, "logs": bool}`, the admin's switches.
+- The app reports what it can do in its heartbeat `diag.agent` (version, tier `plain` / `device_owner` /
+  `admin`, `can_restart`, `can_collect_logs`, `can_reboot`, `can_update`, `watchdog`, `restarts_1h`, `gave_up`).
+  The admin page hides what the app cannot do.
+
 ## Heartbeat
 
 ### `POST /heartbeat`

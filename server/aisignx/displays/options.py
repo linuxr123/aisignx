@@ -94,6 +94,10 @@ def settings_payload(display: Display) -> dict:
         "kiosk_lock": bool(display.kiosk_lock),
         "resume_after_s": resume_seconds(display.resume_after_s),
         "unlock": unlock_payload(display),
+        # The device agent reads these in the native apps (docs/device-agent-design.md).
+        "agent": {"watchdog": bool(display.agent_watchdog),
+                  "restart": bool(display.agent_allow_restart),
+                  "logs": bool(display.agent_allow_logs)},
     }
 
 
