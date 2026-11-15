@@ -150,6 +150,15 @@ def test_net_adapter_has_control_hooks():
 
 
 @needs_node
+def test_seeks_are_coalesced_while_the_video_is_still_seeking(harness):
+    c = harness["coalesce"]
+    assert c["r"] == [10, 10, 10, -5]          # each press still reports its own jump
+    assert c["duringSeek"] == [110]            # one write; the rest wait for 'seeked'
+    assert c["afterSeeked"] == [110, 125]      # then one write with the net result
+    assert c["end"]["atEnd"] is True
+
+
+@needs_node
 def test_failing_items_keep_the_current_slide(harness):
     r = harness["offlineKeeps"]
     assert r["stuck"]["cur"] == 1 and r["onlyWorking"] is True  # only the working slide played

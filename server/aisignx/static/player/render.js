@@ -399,7 +399,8 @@
     ctx.every(function () {
       if (!alive()) return;
       var now = Date.now();
-      if (v.paused || v.ended || v.currentTime !== lastTime) {
+      // A video that is busy seeking (a big file, a long gap between keyframes) is not stalled.
+      if (v.paused || v.ended || v.seeking === true || v.currentTime !== lastTime) {
         lastTime = v.currentTime;
         lastAt = now;
       } else if (now - lastAt > STALL_MS) {
@@ -440,13 +441,65 @@
   }
   // seekVideo(slide, deltaS) -> {applied, atEnd}: applied is the real jump in seconds; atEnd
   // says the request went past the end of the video.
+  //
+  // Seeks are coalesced: a key pressed (or repeated) while the video is still seeking only
+  // moves the wanted position; the browser is asked once when the seek in progress finishes
+  // ("seeked"), or after SEEK_WAIT_MS if that never comes. Writing currentTime again before
+  // the last seek finished cancels it, and on a big long-GOP file every restarted seek
+  // decodes from the last keyframe again, so the picture looks frozen.
+  var SEEK_WAIT_MS = 1500;
+  function seekState(v) {
+    if (!v._sk) {
+      v._sk = { target: null, timer: null };
+      if (typeof v.addEventListener === "function") v.addEventListener("seeked", function () { flushSeek(v, false); });
+    }
+    return v._sk;
+  }
+  function writeTime(v, t) {
+    try {
+      if (typeof v.fastSeek === "function") v.fastSeek(t);
+      else v.currentTime = t;
+    } catch (e) { /* ignore */ }
+  }
+  // Writes the wanted position when the video is not seeking (or force is set).
+  function flushSeek(v, force) {
+    var s = v._sk;
+    if (!s) return;
+    clearTimeout(s.timer);
+    s.timer = null;
+    if (s.target === null) return;
+    if (v.seeking === true && !force) { armSeek(v, s); return; }
+    var t = s.target;
+    s.target = null;
+    writeTime(v, t);
+  }
+  function armSeek(v, s) {
+    clearTimeout(s.timer);
+    s.timer = setTimeout(function () { s.timer = null; flushSeek(v, true); }, SEEK_WAIT_MS);
+  }
+  function isSeeking(slide) { var v = videoOf(slide); return !!(v && v.seeking === true); }
   function seekVideo(slide, deltaS) {
     var v = videoOf(slide);
     if (!v) return { applied: 0, atEnd: false };
-    var from = Number(v.currentTime) || 0, d = durationOfVideo(v), want = from + deltaS;
+    var s = seekState(v);
+    var from = s.target !== null ? s.target : Number(v.currentTime) || 0;
+    var d = durationOfVideo(v), want = from + deltaS;
     var atEnd = deltaS > 0 && d > 0 && want > d - 0.25;
-    if (atEnd) return { applied: 0, atEnd: true };
-    var to = setVideoTime(slide, want, true);
+    if (atEnd) {
+      s.target = null;
+      clearTimeout(s.timer);
+      s.timer = null;
+      return { applied: 0, atEnd: true };
+    }
+    var max = d ? Math.max(0, d - 0.25) : Number.POSITIVE_INFINITY;
+    var to = Math.max(0, Math.min(max, want));
+    if (v.seeking === true) {  // still seeking: remember where to go, write once it is done
+      s.target = to;
+      armSeek(v, s);
+    } else {
+      s.target = null;
+      writeTime(v, to);
+    }
     return { applied: to - from, atEnd: false };
   }
   function pauseVideo(slide) {
@@ -482,6 +535,7 @@
     resume: resume,
     isVideo: isVideo,
     isPlugin: isPlugin,
+    isSeeking: isSeeking,
     runPlugin: runPlugin,
     pause: pause,
     prepCard: prepCard,

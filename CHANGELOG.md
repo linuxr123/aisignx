@@ -81,6 +81,7 @@ A quick overview. The detailed list of every change follows further down.
 ### Fixed (offline and server restarts)
 - The player no longer blanks to "None of the items could be played" when every other item fails to load (server down); it keeps the slide that is playing and tries the others again every ~10 s, and carries on as soon as they load.
 - YouTube only shows "This screen is offline" when the device itself has no network. The AiSignX server being down or restarting no longer stops it, because the video comes straight from YouTube. A YouTube slide that never answers (no internet) now moves on after a few seconds instead of holding the playlist for its full duration.
+- Fast forward, rewind and drag-to-scrub on big videos: a key press or drag step that arrives while the video is still seeking no longer cancels that seek (on a long-GOP file every restarted seek decodes from the last keyframe again, so the picture froze). Presses during a seek are combined into one jump, and a video that is busy seeking is no longer reported as "stalled".
 - YouTube captions are really off when the option is off. Before, YouTube still showed them whenever the screen's or account's own caption setting was on.
 - Plugin runner files can be reused by the browser for an hour, so a plugin with saved data can still start while the server restarts.
 - Still open: the plain web player cannot start a *new* plugin slide when the server has been down for more than an hour (the apps are better placed; their plugin data and asset caching is planned with the device agent work).

@@ -461,13 +461,18 @@
     if (!sc || !S.cur || S.cur.slide !== sc.slide) return null;
     var span = Math.min(sc.duration, SCRUB_SPAN_S);
     sc.target = Math.max(0, Math.min(Math.max(0, sc.duration - 0.25), sc.t0 + (Number(frac) || 0) * span));
-    if (sc.timer === null) {  // at most one seek per 100 ms while dragging
-      sc.timer = setTimeout(function () {
-        sc.timer = null;
-        if (S.scrub === sc) R.setVideoTime(sc.slide, sc.target, true);
-      }, SCRUB_STEP_MS);
-    }
+    if (sc.timer === null) scrubStep(sc);
     return { t: sc.target, duration: sc.duration };
+  }
+  // At most one seek per 100 ms while dragging, and none while the last one is unfinished:
+  // a new seek cancels the old one, and on a big video that freezes the picture.
+  function scrubStep(sc) {
+    sc.timer = setTimeout(function () {
+      sc.timer = null;
+      if (S.scrub !== sc) return;
+      if (R.isSeeking && R.isSeeking(sc.slide)) { scrubStep(sc); return; }
+      R.setVideoTime(sc.slide, sc.target, true);
+    }, SCRUB_STEP_MS);
   }
   function scrubEnd() {
     var sc = S.scrub;

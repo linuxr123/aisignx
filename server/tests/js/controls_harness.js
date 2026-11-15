@@ -462,7 +462,8 @@ async function main() {
 
   // render.js helpers on a fake video.
   {
-    const ctx = { window: {}, document: { createElement() {} }, location: { href: "http://x/" }, Promise, Math, Number, isFinite };
+    const ctx = { window: {}, document: { createElement() {} }, location: { href: "http://x/" }, Promise, Math, Number, isFinite,
+      setTimeout, clearTimeout };
     ctx.window.AiSignX = {};
     vm.createContext(ctx);
     vm.runInContext(RENDER, ctx);
@@ -475,6 +476,29 @@ async function main() {
     const c = R.seekVideo(slide, 10);
     const d = R.setVideoTime(slide, 999);
     out.render = { a, b, c, d, img: R.seekVideo({ media: { tagName: "IMG" } }, 10) };
+
+    // A video that is still seeking: presses only move the wanted position, and the browser is
+    // asked once, when the seek in progress ends ("seeked").
+    const writes = [];
+    let t = 100;
+    const listeners = {};
+    const sv = { tagName: "VIDEO", duration: 600, seeking: false, paused: false,
+      get currentTime() { return t; },
+      set currentTime(x) { t = x; writes.push(x); sv.seeking = true; },
+      addEventListener(n, fn) { listeners[n] = fn; }, play() { return Promise.resolve(); }, pause() {} };
+    const sslide = { media: sv };
+    const r1 = R.seekVideo(sslide, 10);   // not seeking: written at once
+    const r2 = R.seekVideo(sslide, 10);   // seeking: remembered
+    const r3 = R.seekVideo(sslide, 10);
+    const r4 = R.seekVideo(sslide, -5);
+    const duringSeek = writes.slice();
+    sv.seeking = false; listeners.seeked();  // the first seek finished
+    const afterSeeked = writes.slice();
+    sv.seeking = false;
+    const end = R.seekVideo(sslide, 9999);   // past the end while idle
+    out.coalesce = { r: [r1.applied, r2.applied, r3.applied, r4.applied], duringSeek, afterSeeked,
+      end, isSeeking: R.isSeeking(sslide) };
+
   }
 
   process.stdout.write(JSON.stringify(out));
