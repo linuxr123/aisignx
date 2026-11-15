@@ -13,3 +13,4 @@ TestResults/
 *.snk
 signing.local.props
 *.zip
+dist/

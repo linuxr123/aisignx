@@ -30,7 +30,8 @@
     <PublishUrl>publish\</PublishUrl>
     <InstallUrl />
     <TargetCulture>en</TargetCulture>
-    <ApplicationVersion>3.0.1.0</ApplicationVersion>
+    <ApplicationVersion>3.0.2.0</ApplicationVersion>
+    <ApplicationIcon>Resources\AiSignX.ico</ApplicationIcon>
     <AutoIncrementApplicationRevision>true</AutoIncrementApplicationRevision>
     <UpdateEnabled>true</UpdateEnabled>
     <UpdateInterval>7</UpdateInterval>
@@ -141,6 +142,10 @@
     <Compile Include="ThisAddIn.Designer.cs">
       <DependentUpon>ThisAddIn.Designer.xml</DependentUpon>
     </Compile>
+    <Compile Include="Resources\Icons.cs" />
+    <EmbeddedResource Include="Resources\AiSignX.ico" />
+    <EmbeddedResource Include="Resources\ribbon-upload-32.png" />
+    <EmbeddedResource Include="Resources\ribbon-upload-64.png" />
     <Compile Include="UI\MediaPickerForm.cs">
       <SubType>Form</SubType>
     </Compile>

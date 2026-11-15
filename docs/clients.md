@@ -314,5 +314,6 @@ AiSignX also has a PowerPoint add-in (Windows, desktop PowerPoint 2016 or newer)
 open presentation as an MP4 and uploads it to the server, as a new media item or as a
 replacement of an existing item, so screens update within seconds. It uses a personal API token
 with the `media:write` scope (see [api.md](api.md)); the token is stored encrypted for the
-Windows user. Build, install and troubleshooting steps are in
+Windows user. The user guide (install, token, sharing a presentation on a
+network drive, troubleshooting) is [powerpoint-addin.md](powerpoint-addin.md); building the installer is in
 [clients/powerpoint-addin/README.md](../clients/powerpoint-addin/README.md).

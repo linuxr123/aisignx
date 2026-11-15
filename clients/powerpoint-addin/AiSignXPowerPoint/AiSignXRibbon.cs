@@ -1,4 +1,5 @@
 using System;
+using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using AiSignXPowerPoint.Settings;
@@ -11,6 +12,15 @@ namespace AiSignXPowerPoint
     /// <summary>The "AiSignX" ribbon tab with the "Export and upload" button.</summary>
     public partial class AiSignXRibbon
     {
+        private void AiSignXRibbon_Load(object sender, RibbonUIEventArgs e)
+        {
+            Image icon = Icons.Ribbon();
+            if (icon != null)
+                btnExportUpload.Image = icon;
+            else
+                btnExportUpload.OfficeImageId = "ExportToVideo"; // the built-in picture if ours cannot load
+        }
+
         private void OnExportUploadClick(object sender, RibbonControlEventArgs e)
         {
             PowerPoint.Application app = Globals.ThisAddIn.Application;

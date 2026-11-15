@@ -4,6 +4,16 @@ A PowerPoint add-in (VSTO, C#) that exports the open presentation as an MP4 vide
 to your AiSignX server, either as a new media item or as a replacement for an existing one. It
 talks to the media API ([docs/api.md](../../docs/api.md)) with a personal API token.
 
+**Using it?** Read the user guide: **[docs/powerpoint-addin.md](../../docs/powerpoint-addin.md)**
+(install, token, first upload, sharing a presentation on a network drive, troubleshooting). This
+README is for people who build and change the add-in.
+
+**Build the installer in one step** (after `tools\New-DevCert.ps1`, once):
+`powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1` writes
+`dist\AiSignX-PowerPoint-Addin-<version>.zip` with the one-click launcher (`installer\Setup.cs`,
+built with the AiSignX icon), `setup.exe`, the certificate and `INSTALL.txt`. The icons are drawn
+by `tools\make_icons.py` into `AiSignXPowerPoint\Resources`.
+
 ## Requirements
 
 - Windows 10 or 11 with desktop PowerPoint 2016 or newer (Microsoft 365 included), 32 or 64 bit.
@@ -35,7 +45,7 @@ development workload, from any PowerShell, no Developer Prompt needed):
 
 The installer is written to `AiSignXPowerPoint\bin\Release\app.publish\` (`setup.exe`, the
 `.vsto` and `Application Files\`). Copy that folder to the target PC, or zip it. The project adds
-the Visual Studio `ReferenceAssemblies4.0` folder to its search path and ships
+the Visual Studio `ReferenceAssemblies\v4.0` folder to its search path and ships
 `Microsoft.Office.Tools.Common.v4.0.Utilities.dll` next to the add-in (it is not installed system-wide).
 
 Without the Office workload the project still compiles the DLL (with a warning), which is enough

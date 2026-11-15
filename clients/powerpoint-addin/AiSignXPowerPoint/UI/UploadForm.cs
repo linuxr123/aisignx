@@ -62,6 +62,7 @@ namespace AiSignXPowerPoint.UI
         private void BuildControls()
         {
             Text = "AiSignX: export and upload";
+            Icon = Icons.App();
             Font = SystemFonts.MessageBoxFont;
             AutoScaleMode = AutoScaleMode.Font;
             FormBorderStyle = FormBorderStyle.Sizable;

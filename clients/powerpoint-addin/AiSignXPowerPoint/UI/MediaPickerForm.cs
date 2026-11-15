@@ -32,6 +32,7 @@ namespace AiSignXPowerPoint.UI
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             Text = "Choose the media item to replace";
+            Icon = Icons.App();
             Font = SystemFonts.MessageBoxFont;
             AutoScaleMode = AutoScaleMode.Font;
             StartPosition = FormStartPosition.CenterParent;

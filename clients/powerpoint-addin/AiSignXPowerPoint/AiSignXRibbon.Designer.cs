@@ -45,7 +45,6 @@ namespace AiSignXPowerPoint
             this.btnExportUpload.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
             this.btnExportUpload.Label = "Export and upload";
             this.btnExportUpload.Name = "btnExportUpload";
-            this.btnExportUpload.OfficeImageId = "ExportToVideo";
             this.btnExportUpload.ScreenTip = "Export and upload to AiSignX";
             this.btnExportUpload.SuperTip = "Export this presentation as an MP4 video and upload it to your AiSignX server, as a new media item or replacing an existing one.";
             this.btnExportUpload.ShowImage = true;
@@ -56,6 +55,7 @@ namespace AiSignXPowerPoint
             this.Name = "AiSignXRibbon";
             this.RibbonType = "Microsoft.PowerPoint.Presentation";
             this.Tabs.Add(this.tabAiSignX);
+            this.Load += new Microsoft.Office.Tools.Ribbon.RibbonUIEventHandler(this.AiSignXRibbon_Load);
             this.tabAiSignX.ResumeLayout(false);
             this.tabAiSignX.PerformLayout();
             this.grpPublish.ResumeLayout(false);
