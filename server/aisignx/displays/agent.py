@@ -12,10 +12,14 @@ broadcast a manifest hint to every screen.
 from __future__ import annotations
 
 import json
+import re
 import secrets
+import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from ..extensions import db
+from ..media import storage
 from ..models import DeviceCommand, Display
 from ..models.device_command import (ACTION_COLLECT_LOGS, ACTION_RESTART_PLAYER, ACTIONS,
                                      OPEN_STATES, STATE_DELIVERED, STATE_DONE, STATE_EXPIRED,
@@ -27,6 +31,11 @@ TTL_S = {ACTION_RESTART_PLAYER: 120, ACTION_COLLECT_LOGS: 300}
 MAX_PER_HOUR = 10          # commands per display: a loop or a mistake cannot hammer a device
 KEEP_DAYS = 30             # finished commands are deleted after this long
 MAX_RESULT = 200
+GZIP_MAGIC = bytes([0x1F, 0x8B])  # the first two bytes of every gzip file
+MAX_LOG_BYTES = 1_000_000  # an uploaded log (gzip): about a day of a busy player's log, compressed
+LOGS_PER_DISPLAY = 5       # the newest few are kept
+LOG_KEEP_DAYS = 7
+_REQUEST_ID = re.compile(r"^[0-9a-f]{16}$")
 
 LABELS = {ACTION_RESTART_PLAYER: "Restart the player", ACTION_COLLECT_LOGS: "Collect logs"}
 # display column that must be on, device capability key that must be true.
@@ -146,6 +155,65 @@ def acknowledge(display: Display, request_id: str, state: str, result: str | Non
     return cmd, None
 
 
+# --- uploaded logs ----------------------------------------------------------------------------
+# A device can only upload a log for a collect_logs command that is open and was delivered to it; the
+# server picks the path, never the device; the file is stored as it came (gzip) and never decompressed
+# here; an admin downloads it.
+
+def logs_dir(display_id: int) -> Path:
+    path = storage.work_dir().parent / "agent-logs" / str(int(display_id))
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def log_path(display_id: int, request_id: str) -> Path | None:
+    if not _REQUEST_ID.match(str(request_id)):
+        return None
+    return logs_dir(display_id) / f"{request_id}.log.gz"
+
+
+def save_logs(display: Display, request_id: str, data: bytes, now: datetime | None = None
+              ) -> tuple[DeviceCommand | None, str | None]:
+    """Store an uploaded log for an open collect_logs command. (command, None) or (None, error)."""
+    now = now or utcnow()
+    if not data or len(data) > MAX_LOG_BYTES:
+        return None, "too large" if data else "empty"
+    if data[:2] != GZIP_MAGIC:
+        return None, "not gzip"
+    cmd = DeviceCommand.query.filter_by(display_id=display.id, request_id=str(request_id)[:32],
+                                        action=ACTION_COLLECT_LOGS).first()
+    if cmd is None:
+        return None, "unknown command"
+    if cmd.state != STATE_DELIVERED or as_utc(cmd.expires_at) <= now:
+        return None, "not open"
+    path = log_path(display.id, cmd.request_id)
+    path.write_bytes(data)
+    cmd.state = STATE_DONE
+    cmd.acked_at = now
+    cmd.result = f"uploaded {max(1, len(data) // 1024)} KB"
+    _prune(display.id)
+    return cmd, None
+
+
+def _prune(display_id: int) -> None:
+    files = sorted(logs_dir(display_id).glob("*.log.gz"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in files[LOGS_PER_DISPLAY:]:
+        old.unlink(missing_ok=True)
+
+
+def prune_all(now: float | None = None) -> int:
+    """Delete logs older than LOG_KEEP_DAYS. Returns how many."""
+    cutoff = (now or time.time()) - LOG_KEEP_DAYS * 86400
+    base = storage.work_dir().parent / "agent-logs"
+    n = 0
+    if base.is_dir():
+        for path in base.glob("*/*.log.gz"):
+            if path.stat().st_mtime < cutoff:
+                path.unlink(missing_ok=True)
+                n += 1
+    return n
+
+
 def job() -> str | None:
     """Job: expire commands that were never carried out, and delete finished ones after KEEP_DAYS."""
     now = utcnow()
@@ -154,4 +222,6 @@ def job() -> str | None:
                                      DeviceCommand.created_at < now - timedelta(days=KEEP_DAYS))
     removed = old.delete(synchronize_session=False)
     db.session.commit()
-    return f"expired {expired}, removed {removed}" if expired or removed else None
+    pruned = prune_all()
+    return (f"expired {expired}, removed {removed}, logs pruned {pruned}"
+            if expired or removed or pruned else None)

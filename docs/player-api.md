@@ -368,6 +368,18 @@ the display token. Design: [device-agent-design.md](device-agent-design.md).
   display runs each at most once.
 - `POST /commands/<id>/ack` with `{"state": "done" | "failed", "result": "short text"}`. 404 for an id that
   is not this display's, 409 if it expired or was answered differently, 400 for a bad state.
+- `POST /commands/<id>/logs` (raw body, gzip, at most 1 MB): the log for an open `collect_logs` command that
+  was delivered to this display. 404 unknown id, 409 not open (answered, expired or not delivered), 413 too
+  large, 400 not gzip or empty. The server stores it as is (never unpacks it), keeps the newest 5 per display
+  for 7 days, and an admin downloads it from the display page. The app must **redact** it first: never
+  the configuration, unlock PIN, certificate pin, cookies or the media cache.
+- **Shell hook additions** (page to native app): `alive(json)`, called about every 10 s while the page runs
+  (`{"t": ms, "state": "PLAYING", "item": id|null, "failures": n, "build": "..."}`; Android receives it on the
+  shell port as `{"t":"alive","a":{...}}`), so the app's watchdog can restart a player whose page stopped
+  sending it. And `stats().agent`, the app's own report that the page forwards in its diagnostics: `{"version",
+  "tier": "plain"|"device_owner"|"admin", "can_restart", "can_collect_logs", "can_reboot", "can_update",
+  "watchdog", "restarts_1h", "gave_up", "last_restart_ms"}`. The cap `agent` in `info().caps` marks an app
+  that has an agent. Both are ignored by an older page or app.
 - `settings.agent` in the manifest: `{"watchdog": bool, "restart": bool, "logs": bool}`, the admin's switches.
 - The app reports what it can do in its heartbeat `diag.agent` (version, tier `plain` / `device_owner` /
   `admin`, `can_restart`, `can_collect_logs`, `can_reboot`, `can_update`, `watchdog`, `restarts_1h`, `gave_up`).

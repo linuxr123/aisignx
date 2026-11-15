@@ -172,3 +172,72 @@ def test_display_page_shows_the_agent(app, paired_display, admin):
     page = admin.get(f"/displays/{did}").get_data(as_text=True)
     assert "Device agent" in page and "App agent 3.1.0" in page and "Restart the player" in page
     assert "pending" in page and 'disabled' not in page.split("Restart the player")[0][-200:]
+
+
+# --- logs ----------------------------------------------------------------------------------
+
+import gzip
+
+
+def _log_command(app, admin, client, paired_display):
+    did = _setup(app, paired_display)
+    _post(admin, did, "collect_logs")
+    got = client.get(f"{API}/commands", headers=bearer(DISPLAY_TOKEN)).get_json()["commands"]
+    return did, got[0]["id"]
+
+
+def test_a_log_is_accepted_only_for_an_open_delivered_collect_logs_command(app, configured, client, paired_display, admin):
+    did, rid = _log_command(app, admin, client, paired_display)
+    log = gzip.compress(b"2026-11-15 player started\n" * 50)
+    h = bearer(DISPLAY_TOKEN)
+    assert client.post(f"{API}/commands/{rid}/logs", headers=h, data=b"plain text, not gzip").status_code == 400
+    assert client.post(f"{API}/commands/{'0' * 16}/logs", headers=h, data=log).status_code == 404
+    assert client.post(f"{API}/commands/{rid}/logs", headers=h, data=b"").status_code == 400
+    assert client.post(f"{API}/commands/{rid}/logs", headers=h, data=b"\x1f\x8b" + b"x" * (agent.MAX_LOG_BYTES + 1)).status_code == 413
+    assert client.post(f"{API}/commands/{rid}/logs", headers=h, data=log).status_code == 200
+    assert client.post(f"{API}/commands/{rid}/logs", headers=h, data=log).status_code == 409   # once
+    with app.app_context():
+        c = DeviceCommand.query.one()
+        assert c.state == "done" and "uploaded" in c.result
+    # A restart command cannot be used to upload a file.
+    _post(admin, did, "restart_player")
+    with app.app_context():
+        r2 = DeviceCommand.query.filter_by(action="restart_player").one().request_id
+    client.get(f"{API}/commands", headers=h)
+    assert client.post(f"{API}/commands/{r2}/logs", headers=h, data=log).status_code == 404
+
+
+def test_only_admins_download_a_log_and_the_path_is_the_servers(app, configured, client, paired_display, admin):
+    did, rid = _log_command(app, admin, client, paired_display)
+    log = gzip.compress(b"hello log")
+    client.post(f"{API}/commands/{rid}/logs", headers=bearer(DISPLAY_TOKEN), data=log)
+    r = admin.get(f"/displays/{did}/logs/{rid}")
+    assert r.status_code == 200 and r.data == log and "attachment" in r.headers["Content-Disposition"]
+    assert "Download" in admin.get(f"/displays/{did}").get_data(as_text=True)
+    assert admin.get(f"/displays/{did}/logs/..%2f..%2fsecret").status_code == 404
+    assert admin.get(f"/displays/{did}/logs/{'f' * 16}").status_code == 404
+    make_user(app, "ed", "editor")
+    ed = app.test_client()
+    login(ed, "ed")
+    assert ed.get(f"/displays/{did}/logs/{rid}").status_code in (302, 403)
+
+
+def test_old_logs_are_pruned(app, paired_display):
+    import os
+    did = _setup(app, paired_display)
+    with app.app_context():
+        for i in range(8):
+            agent.log_path(did, f"{i:016x}").write_bytes(b"\x1f\x8b x")
+        agent._prune(did)
+        assert len(list(agent.logs_dir(did).glob("*.log.gz"))) == agent.LOGS_PER_DISPLAY
+        old = agent.log_path(did, "a" * 16)
+        old.write_bytes(b"\x1f\x8b x")
+        os.utime(old, (1, 1))
+        assert agent.prune_all() >= 1 and not old.exists()
+
+
+def test_log_upload_accepts_the_content_type_the_apps_send(app, configured, client, paired_display, admin):
+    did, rid = _log_command(app, admin, client, paired_display)
+    r = client.post(f"{API}/commands/{rid}/logs", headers=bearer(DISPLAY_TOKEN), data=gzip.compress(b"x" * 100),
+                    content_type="application/gzip")
+    assert r.status_code == 200

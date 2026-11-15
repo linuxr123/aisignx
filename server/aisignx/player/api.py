@@ -263,6 +263,22 @@ def commands():
                              for c in cmds])
 
 
+@api_bp.post("/commands/<request_id>/logs")
+@display_required
+def command_logs(request_id: str):
+    """The device uploads its (redacted, gzip) log for an open collect_logs command."""
+    if (request.content_length or 0) > agent.MAX_LOG_BYTES:
+        return api_error(413, "too_large", "The log is too large.")
+    data = request.get_data(cache=False)
+    cmd, error = agent.save_logs(g.display, request_id, data)
+    db.session.commit()
+    if cmd is None:
+        status = {"unknown command": 404, "not open": 409, "too large": 413}.get(error, 400)
+        return api_error(status, "logs_" + error.replace(" ", "_"), error)
+    audit.record_now("display.agent_result", g.display, detail={"command": cmd.action, "state": cmd.state})
+    return jsonify(ok=True)
+
+
 @api_bp.post("/commands/<request_id>/ack")
 @display_required
 def command_ack(request_id: str):

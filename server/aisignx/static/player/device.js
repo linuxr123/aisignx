@@ -267,6 +267,8 @@
         }
         if (count(st.storage_free_bytes) !== null) d.storage_free_bytes = count(st.storage_free_bytes);
         if (typeof st.lock === "string") d.shell.lock = st.lock.slice(0, 16);
+        // The device agent's own report (version, tier, what it can do); the server whitelists it.
+        if (st.agent && typeof st.agent === "object") d.agent = st.agent;
       }
     }
     var sy = A.sync;

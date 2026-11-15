@@ -59,7 +59,7 @@ async function make(items, opts) {
   els.paused.sub = element("p-sub");
   const body = element("body");
   const winListeners = {};
-  const calls = { pop: [], swaps: [], trans: [], commands: [], hints: [] };
+  const calls = { pop: [], swaps: [], trans: [], commands: [], hints: [], alive: [] };
   const handlers = {};
   const cfg = { allow_input: opts.allow_input !== false, resume_after_s: opts.resume_after_s || 300 };
 
@@ -113,6 +113,7 @@ async function make(items, opts) {
     info: { name: "electron", version: "3", caps: ["controls", "kiosk-lock"] },
     onState() {}, onManifest() {},
     onCommand(o) { calls.commands.push(o); },
+    alive(o) { calls.alive.push(o); },
     onControl(fn) { shell.control = fn; },
   } : null;
   const manifest = { version: "v1", items, settings: {} };
@@ -540,6 +541,18 @@ async function main() {
       slowOnly, best: clock.offset(), rtt: clock.rtt(), ready: clock.ready(), now: clock.now(5000),
       junk: [clock.sample(NaN, 0, 1), clock.sample(1, 100, 50), clock.sample(1, 0, 20000)],
     };
+  }
+
+  // The page tells a native shell it is alive every 10 s (the device agent's watchdog listens for it).
+  {
+    const h = await make([IMG(1, 30000), IMG(2, 30000)], { shell: true });
+    await h.advance(35000);
+    const a = h.calls.alive;
+    out.alive = { count: a.length, state: a[a.length - 1] && a[a.length - 1].state, item: a[a.length - 1] && a[a.length - 1].item,
+      gaps: a.slice(1).map((x, i) => x.t - a[i].t) };
+    const plain = await make([IMG(1, 30000)]);   // a browser has no shell: nothing to tell
+    await plain.advance(35000);
+    out.aliveNoShell = plain.calls.alive.length;
   }
 
   // render.js helpers on a fake video.

@@ -197,6 +197,14 @@ def test_synced_screens_with_wrong_clocks_show_the_same_slide(harness):
 
 
 @needs_node
+def test_page_tells_the_native_shell_it_is_alive_every_ten_seconds(harness):
+    a = harness["alive"]
+    assert a["count"] >= 3 and a["state"] == "PLAYING" and a["item"] in (1, 2)
+    assert all(9000 <= g <= 11500 for g in a["gaps"]), a["gaps"]
+    assert harness["aliveNoShell"] == 0
+
+
+@needs_node
 def test_failing_items_keep_the_current_slide(harness):
     r = harness["offlineKeeps"]
     assert r["stuck"]["cur"] == 1 and r["onlyWorking"] is True  # only the working slide played

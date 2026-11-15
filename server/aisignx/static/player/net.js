@@ -42,7 +42,7 @@
   // or null in a plain browser.
   // Every shell call is wrapped; a broken shell never stops playback.
   var shellCache;
-  var CAPS = { capture: 1, rotate: 1, "pin-exit": 1, controls: 1, "kiosk-lock": 1 };
+  var CAPS = { capture: 1, rotate: 1, "pin-exit": 1, controls: 1, "kiosk-lock": 1, agent: 1 };
   var ACTIONS = { toggle: 1, play: 1, pause: 1, forward: 1, back: 1, next: 1, prev: 1 };
   var CAPTURE_TIMEOUT_MS = 10000;
   function str(v, max) { return typeof v === "string" ? v.slice(0, max) : ""; }
@@ -104,7 +104,7 @@
     return function (a, r) { if (typeof a === "string" && ACTIONS[a] === 1) fn(a, !!r); };
   }
   function readShell() {
-    var raw = null, send = null, capture = null, stats = null, command = null, control = null;
+    var raw = null, send = null, capture = null, stats = null, command = null, control = null, alive = null;
     try {
       if (window.AiSignXShell && typeof window.AiSignXShell.info === "function") {
         var es = window.AiSignXShell;
@@ -122,6 +122,7 @@
         stats = function () { return typeof es.stats === "function" ? es.stats() : null; };
         command = function (o) { if (typeof es.onCommand === "function") es.onCommand(JSON.stringify(o)); };
         control = function (fn) { if (typeof es.onControl === "function") es.onControl(controlCallback(fn)); };
+        alive = function (o) { if (typeof es.alive === "function") es.alive(JSON.stringify(o)); };
       } else if (window.AiSignXShellInfo && typeof window.AiSignXShellInfo.info === "function") {
         var si = window.AiSignXShellInfo;
         raw = JSON.parse(si.info());
@@ -142,6 +143,10 @@
           var cb = controlCallback(fn);
           portListen(port, "control", function (msg) { cb(msg.a, msg.r); });
           port.postMessage(JSON.stringify({ t: "controls" }));
+        };
+        alive = function (o) {
+          var port = androidPort();
+          if (port) port.postMessage(JSON.stringify({ t: "alive", a: o }));
         };
       }
     } catch (e) { raw = null; }
@@ -170,6 +175,9 @@
       stats: function () {
         try { var s = stats(); return s && typeof s === "object" ? s : null; } catch (e) { return null; }
       },
+      // The page is running: a small status object every few seconds (device agent watchdog). A
+      // frozen page stops sending it. A no-op for an old shell.
+      alive: function (obj) { try { if (alive) alive(obj); } catch (e) { /* ignore */ } },
       // Admin commands for the shell itself (unlock, lock). A no-op for an old shell.
       onCommand: function (obj) { try { if (command) command(obj); } catch (e) { /* ignore */ } },
       // Keys and remote buttons the shell turns into control actions.

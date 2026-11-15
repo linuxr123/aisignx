@@ -719,9 +719,16 @@
 
   // ---- Debug overlay (?debug=1) and housekeeping.
   var dbg = DEBUG ? body.appendChild(el("pre", "debug")) : null;
+  var ALIVE_MS = 10000, lastAlive = 0;
   function housekeeping() {
     if (S.reloadPending && S.state !== "PLAYING") guardedReload();
     D.checkOffline(hb, events, S.state);
+    // Tell the native app (if any) this page is running and its timers fire: its watchdog restarts the
+    // player when these stop. A hung or crashed page cannot send them.
+    if (shell && Date.now() - lastAlive >= ALIVE_MS) {
+      lastAlive = Date.now();
+      shell.alive({ t: lastAlive, state: S.state, item: S.cur ? S.cur.item.id : null, failures: S.failures, build: BUILD });
+    }
     // While the live connection is down, try the server every PROBE_MS (not only every
     // heartbeat interval) so an outage is noticed, and its end too, within seconds.
     if (events.status !== "live" && Date.now() - (hb.lastAt || 0) > PROBE_MS) hb.now();

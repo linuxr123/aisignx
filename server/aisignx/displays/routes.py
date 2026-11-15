@@ -253,6 +253,19 @@ def agent_command(display_id: int, action: str):
     return _back(display)
 
 
+@bp.route("/<int:display_id>/logs/<request_id>")
+@admin_required
+def agent_logs(display_id: int, request_id: str):
+    """Download a log the device uploaded (admins only)."""
+    display = _get_display_or_404(display_id)
+    path = agent.log_path(display.id, request_id)
+    if path is None or not path.is_file():
+        abort(404)
+    audit.record_now("display.agent_result", display, detail={"command": "download_logs", "request_id": request_id})
+    return send_file(path, mimetype="application/gzip", as_attachment=True,
+                     download_name=f"display-{display.id}-{request_id}.log.gz", max_age=0)
+
+
 @bp.route("/<int:display_id>/identify", methods=["POST"])
 @editor_required
 def identify(display_id: int):
