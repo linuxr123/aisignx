@@ -307,3 +307,12 @@ The apps talk to the page through a small hook, described in
 [player-api.md](player-api.md#shell-hook). It passes device information, capabilities, stats and
 screenshots in, and state and manifest notices out. No token or cookie ever passes through it. Each client folder has a
 README with its internal layout and security notes.
+
+## PowerPoint add-in
+
+AiSignX also has a PowerPoint add-in (Windows, desktop PowerPoint 2016 or newer). It exports the
+open presentation as an MP4 and uploads it to the server, as a new media item or as a
+replacement of an existing item, so screens update within seconds. It uses a personal API token
+with the `media:write` scope (see [api.md](api.md)); the token is stored encrypted for the
+Windows user. Build, install and troubleshooting steps are in
+[clients/powerpoint-addin/README.md](../clients/powerpoint-addin/README.md).
