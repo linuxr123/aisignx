@@ -107,8 +107,8 @@ def test_skips(harness):
 
 @needs_node
 def test_video_seek_and_scrub(harness):
-    assert harness["videoSeek"] == {"t": 12, "hint": "+10 s", "at19": 1, "at21": 2}
-    assert harness["videoBack"] == {"t": 0, "hint": "−4 s"}
+    assert harness["videoSeek"] == {"t": 12, "hint": "Fast forward +10 s", "at19": 1, "at21": 2}
+    assert harness["videoBack"] == {"t": 0, "hint": "Rewind −4 s"}
     assert harness["loopSeek"] == {"at57": 1, "at61": 2}  # looping: deadline unchanged
     assert harness["forwardAtEnd"] == 2
     assert harness["pausedSeek"] == {"videoPausedWhilePaused": True, "at19": 1, "at21": 2}
@@ -156,6 +156,16 @@ def test_seeks_are_coalesced_while_the_video_is_still_seeking(harness):
     assert c["duringSeek"] == [110]            # one write; the rest wait for 'seeked'
     assert c["afterSeeked"] == [110, 125]      # then one write with the net result
     assert c["end"]["atEnd"] is True
+
+
+@needs_node
+def test_manual_slide_changes_move_left_and_right_short_videos_step_less_mouse_drag_scrubs(harness):
+    # swaps in order: item 1 (start, fade), 2 (auto, its own zoom), 3 by hand next (slides left),
+    # 2 by hand previous (slides right), 3 (auto, its own wipe).
+    assert harness["transitions"][:5] == ["fade", "zoom", "slide-left", "slide-right", "wipe"]
+    assert harness["shortStep"] == {"t": 4, "hint": "Fast forward +3 s"}
+    assert harness["mouseDrag"] == {"moved": True, "playing": True}
+    assert harness["mouseClick"] == {"paused": True}
 
 
 @needs_node

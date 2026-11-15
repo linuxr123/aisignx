@@ -59,7 +59,7 @@ async function make(items, opts) {
   els.paused.sub = element("p-sub");
   const body = element("body");
   const winListeners = {};
-  const calls = { pop: [], swaps: [], commands: [], hints: [] };
+  const calls = { pop: [], swaps: [], trans: [], commands: [], hints: [] };
   const handlers = {};
   const cfg = { allow_input: opts.allow_input !== false, resume_after_s: opts.resume_after_s || 300 };
 
@@ -86,7 +86,7 @@ async function make(items, opts) {
       p.slide = slide;
       return p;
     },
-    swap(slide) { active = slide; calls.swaps.push(slide.item.id); },
+    swap(slide, transition) { active = slide; calls.swaps.push(slide.item.id); calls.trans.push(transition); },
     runVideo(slide) { slide.media.play(); },
     isVideo,
     videoOf: (s) => (isVideo(s) ? s.media : null),
@@ -493,6 +493,32 @@ async function main() {
     out.syncVideo = { cur: v.cur(), time: v.video() ? v.video().currentTime : null };
     const none = await make([IMG(1, 4000), IMG(2, 4000)], {});
     out.noSync = { cur: none.cur() };
+  }
+
+  // Hand-made next/previous slide left/right, automatic changes keep the playlist's transition;
+  // short videos get smaller fast-forward steps; a mouse press-and-drag scrubs, a click still pauses.
+  {
+    const withT = (id, t) => Object.assign(IMG(id, 5000), { transition: t });
+    const h = await make([withT(1, "fade"), withT(2, "zoom"), withT(3, "wipe")]);
+    await h.advance(5400);                       // automatic: item 2 with its own transition
+    h.key("ArrowDown"); await h.advance(400);    // by hand, next
+    h.key("ArrowUp"); await h.advance(400);      // by hand, previous
+    await h.advance(5400);                       // automatic again
+    out.transitions = h.calls.trans.slice();
+    const s = await make([VID(1, 9), IMG(2)]);   // a 9 s video: step = 3 s
+    s.video().currentTime = 1;
+    s.key("ArrowRight");
+    out.shortStep = { t: s.video().currentTime, hint: s.hint() };
+    const m = await make([VID(5, 300)]);
+    await m.advance(2000);
+    const t0 = m.video().currentTime;
+    await gesture(m, [[300, 250], [420, 250], [540, 250]], 200, "mouse");
+    out.mouseDrag = { moved: m.video().currentTime > t0 + 5, playing: !m.video().paused };
+    const c = await make([VID(6, 300)]);
+    await c.advance(1000);
+    await gesture(c, [[300, 250], [302, 251]], 80, "mouse");
+    await c.advance(400);
+    out.mouseClick = { paused: c.pb.paused() };
   }
 
   // sync.js: the position math and the clock estimate.

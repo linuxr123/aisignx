@@ -18,28 +18,31 @@ A quick overview. The detailed list of every change follows further down.
 
 ### In progress
 - **Plugins:** the manual checks in the Windows and Android apps (see "Not yet checked" below).
-- **PowerPoint add-in:** export a presentation to MP4 in PowerPoint and upload or replace it with an API token.
+- **PowerPoint add-in:** built and documented; needs a hands-on test in PowerPoint (checklist in its README).
 - **Designs being written:** the device agent/watchdog, and content extras.
 
 ### Planned (in this order)
-1. **PowerPoint add-in:** finish and test it (export to MP4, upload or replace with an API token).
-2. **Player fixes:**
-   - The arrow keys always mean fast forward/rewind (smaller steps for short videos), and the hints say "Fast forward"/"Rewind". "Next"/"Previous" only appear when changing slides.
-   - Mouse: press and drag to fast forward or rewind a video, like on a touch screen. A plain click still pauses.
-   - Going to the next or previous slide by hand slides left or right, whatever the playlist's transition is. Automatic changes keep the playlist's transition.
-   - Back on Android can exit when Lock player is off.
-   - The apps' video caches handle range requests correctly.
-   - Android: fast forward and rewind work poorly (reported 2026-11-15); fix and test on a device.
-3. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
-4. **Device agent and watchdog** (Windows and Android):
+1. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
+2. **Device agent and watchdog** (Windows and Android):
    - restarts the player when needed, installs signed updates, reboots, collects logs;
    - Windows kiosk setup (auto-login, replace the shell), all controlled from the display settings.
-5. **Emergency improvements:**
+3. **Emergency improvements:**
    - saved emergency templates;
    - scheduled emergencies;
    - triggering an emergency from another device (API, button or webhook).
-6. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
-7. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+4. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
+5. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+
+## Unreleased: Player fixes and the PowerPoint add-in
+
+### Changed
+- **Fast forward and rewind** (arrow keys, remote, wheel, double click): the hint now says "Fast forward +10 s" or "Rewind −10 s", and a short video uses a smaller step (a third of its length, at least 2 s). On images, web pages and plugins the arrows still change the slide ("Next" / "Previous").
+- **Mouse:** press and drag on a video to fast forward or rewind it, like on a touch screen. A plain click still pauses.
+- **Next and previous by hand** (keys, swipe, remote) slide the new slide in from the right or left, whatever the playlist's transition is. Automatic changes keep the playlist's transition.
+- **Android:** the Back key now closes the app when **Lock player** is off (with it on, Back still does nothing). The mouse's side button remains a control.
+
+### Added
+- **PowerPoint add-in** (VSTO, `clients/powerpoint-addin`): exports the open presentation to MP4 and uploads it, or replaces an existing media item, through the API with a token. The API layer is checked against a real server by a smoke test (`tests/ApiSmoke`); a README covers building, installing and a manual test checklist for PowerPoint itself, which has not been run yet.
 
 ## Unreleased: Synchronized playback
 

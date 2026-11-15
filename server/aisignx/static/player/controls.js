@@ -65,7 +65,7 @@
     else if (r === "prev" || (name === "prev" && r === true)) hint("Previous", name === "prev" ? "" : "left");
     else if (typeof r === "number") {
       var n = Math.round(Math.abs(r));
-      hint(name === "forward" ? "+" + n + " s" : "−" + n + " s", name === "forward" ? "right" : "left");
+      hint((name === "forward" ? "Fast forward +" : "Rewind −") + n + " s", name === "forward" ? "right" : "left");
     }
   }
 
@@ -155,12 +155,13 @@
     try { if (overlay && overlay.setPointerCapture) overlay.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
   }
   function onMove(ev) {
-    if (!g || ev.pointerId !== g.id || !g.touch) return;
+    if (!g || ev.pointerId !== g.id) return;
     var dx = ev.clientX - g.x0, dy = ev.clientY - g.y0;
     if (g.mode === null) {
       if (Math.abs(dx) < TAP_PX && Math.abs(dy) < TAP_PX) return;
-      // Moving before the hold time is a swipe; press-hold first and then drag scrubs a video.
-      g.mode = now() - g.t0 >= HOLD_MS ? "drag" : "swipe";
+      // Touch: moving before the hold time is a swipe; press-hold first and then drag scrubs a
+      // video. Mouse: press and drag scrubs at once (a plain click still pauses).
+      g.mode = !g.touch || now() - g.t0 >= HOLD_MS ? "drag" : "swipe";
       if (g.mode === "drag" && enabled && pb && pb.enabled() && pb.kind() === "video") g.scrub = !!pb.scrubBegin();
     }
     if (!g.scrub) return;

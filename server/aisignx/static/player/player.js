@@ -39,6 +39,7 @@
     paused: null,  // {resumeAt, remaining, video}: the viewer paused the slide on screen
     scrub: null,   // {slide, t0, target, duration, wasPaused, timer}: a drag-scrub in progress
     skipTo: null,  // index a skip asked for while its slide is still loading
+    manualDir: 0,  // +1/-1 while a hand-made next/previous is on its way (its slide moves left/right)
     sync: null,    // {anchor, key}: this display's group plays in sync (the manifest's sync block)
   };
   var manifestBackoff = net.Backoff(2000, 30000);
@@ -349,11 +350,15 @@
     S.forceSwap = false; S.failures = 0; S.pos = n.index; S.skipTo = null;
     clearControls();
     var item = n.item, g = S.gen, t = now();
+    // Going to the next or previous slide by hand slides left or right, whatever the playlist's
+    // transition is; automatic changes keep the playlist's own.
+    var trans = S.manualDir ? (S.manualDir > 0 ? "slide-left" : "slide-right") : item.transition;
+    S.manualDir = 0;
     var elapsed = 0;  // in sync: how far into this slide the shared clock says we already are
     var sp = S.sync ? syncAt() : null;
     if (sp) elapsed = sp.index === n.index ? sp.elapsedMs : -sp.remainingMs;  // a hair early: start at the boundary
     if (sp && elapsed > 500 && R.isVideo(n.slide)) syncSeek(n.slide, item, elapsed);
-    R.swap(n.slide, item.transition);
+    R.swap(n.slide, trans);
     screenEl.hidden = true;
     pop("end", true); pop("begin", item);
     S.cur = { slide: n.slide, item: item, shownAt: t, deadline: t + durationOf(item) - elapsed, failed: false };
@@ -485,6 +490,7 @@
     }
     var base = S.skipTo !== null ? S.skipTo : S.pos;
     var target = ((base + dir) % n + n) % n;
+    S.manualDir = dir;
     var nx = S.nxt;
     if (nx && nx.index === target && nx.state === "ready") { swapTo(nx); return true; }
     if (!(nx && nx.index === target && nx.state === "loading")) {
@@ -503,11 +509,17 @@
     if (S.paused) S.paused.remaining = Math.max(0, S.paused.remaining - appliedS * 1000);
     else cur.deadline -= appliedS * 1000;
   }
-  // seek(+1 | -1): 10 s in a video (forward past the end goes to the next item); next/previous otherwise.
+  // The step of a fast forward or rewind: 10 s, less in a short video (a third of it, at least 2 s).
+  function seekStep(slide) {
+    var v = R.videoOf(slide), d = v ? Number(v.duration) : 0;
+    return d > 0 && isFinite(d) ? Math.max(2, Math.min(SEEK_S, d / 3)) : SEEK_S;
+  }
+  // seek(+1 | -1): fast forward or rewind a video (forward past the end goes to the next item);
+  // on anything else the arrows change the slide.
   function seek(sign) {
     if (!canControl()) return null;
     if (!curVideo()) return skip(sign) ? (sign > 0 ? "next" : "prev") : null;
-    var cur = S.cur, r = R.seekVideo(cur.slide, sign * SEEK_S);
+    var cur = S.cur, r = R.seekVideo(cur.slide, sign * seekStep(cur.slide));
     if (r.atEnd && sign > 0) return skip(1) ? "next" : null;
     shiftDeadline(cur, r.applied);
     return r.applied;
