@@ -138,12 +138,31 @@ Recommendations:
 | Media not cached yet, server online | Streamed from the server and downloaded in the background (2 at a time, videos first). |
 | Media not cached yet, server offline | Skipped after 2 seconds. |
 | Web pages in a playlist | Need the network. |
+| Plugins (clock, weather, RSS, …) | The plugin's files are kept with the player page, and each plugin item's last data is kept by the player, so they keep showing with an "Updated" time. The clock and image library work fully offline; YouTube needs the network and shows "Video unavailable". See [plugins.md](plugins.md#how-plugins-work). |
 | Emergency messages | Follow the player's normal rules; an emergency stays on screen while offline. |
 
 The media cache keeps each file after a checksum and size check. It uses at most 10 GB on
 Electron and 4 GB on Android, and never more than about half the free disk space. Files in the
-current playlist are never removed; others are removed least recently used first. Media of a
+current playlist are never removed; others are removed least recently used first. The
+images of an image library plugin item (`plugin.media` in the manifest) are cached and kept
+like image items. Media of a
 schedule that hasn't played since the screen went offline is not cached.
+
+## Plugins in the apps
+
+Both apps run plugin items through the same player page as a browser, with no app-specific
+code apart from the media cache.
+
+- **Sound.** Both apps allow videos to start with sound, so YouTube items with **Mute** off
+  play with sound. A plain browser plays them muted.
+- **YouTube** loads from `youtube-nocookie.com` on the screen itself and needs the network.
+  In the Windows app the page is served from `http://127.0.0.1:<port>`, which YouTube sees as
+  the referring site.
+- **Shell info on Android.** The Android app gives the page a read-only `AiSignXShellInfo`
+  object (app version, device name, client ID, admin URL, capabilities, uptime and cache
+  statistics) for diagnostics. Android makes it visible in every frame, including plugin
+  frames and web page items. It holds no token or secret. The Windows app gives frames
+  nothing.
 
 ## Kiosk mode and autostart
 

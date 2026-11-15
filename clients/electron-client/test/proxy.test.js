@@ -262,3 +262,22 @@ test('LRU eviction never evicts items in the current manifest', async (t) => {
   assert.ok(mediaCache.index[urls[0]]);
   assert.ok(mediaCache.index[urls[2]]);
 });
+
+test('plugin.media[] images (image library) are downloaded and kept like image items', async (t) => {
+  const { mediaCache, state } = await setup(t, { budgetBytes: 2 * VIDEO.length });
+  state.mediaBody = VIDEO;
+  const urls = [1, 2, 3].map((n) => `/api/player/v1/media/${n}/f${n}.jpg`);
+  const plugin = (list) => ({ type: 'plugin', url: 'about:blank#aisignx-plugin=image_library&c=1',
+    plugin: { key: 'image_library', media: list.map((url) => ({ url, size: VIDEO.length, mime: 'image/jpeg', media_id: 1 })) } });
+  mediaCache.onManifest({ items: [plugin(urls), { type: 'plugin', url: '/static/player/plugins/clock/index.html#c=2', plugin: { key: 'clock' } },
+    { type: 'plugin', plugin: { media: [{ url: 'https://evil.example/x.jpg' }, null, 'x'] } }] });
+  await mediaCache.whenIdle();
+  for (const u of urls) assert.equal(mediaCache.index[u].mime, 'image/jpeg');
+  assert.equal(Object.keys(mediaCache.index).length, 3);
+  urls.forEach((u, i) => mediaCache.setLastUsed(u, 1000 + i));
+  // Only the oldest stays in the manifest, inside a plugin block: it is never evicted.
+  mediaCache.onManifest({ items: [plugin([urls[0]])] });
+  const removed = await mediaCache.evict();
+  assert.deepEqual(removed, [urls[1]]);
+  assert.ok(mediaCache.index[urls[0]]);
+});

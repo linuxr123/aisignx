@@ -101,18 +101,27 @@ class MediaCache(
         val paths = ArrayList<String>()
         val missing = ArrayList<Pair<String, Boolean>>()
         synchronized(this) {
+            fun add(f: JSONObject, video: Boolean) {
+                val path = pathOf(f.optString("url")) ?: return
+                if (!handles(path) || paths.contains(path)) return
+                val size = if (f.isNull("size")) null else f.optLong("size", -1L).takeIf { it >= 0 }
+                val sha = f.optString("sha256").lowercase().takeIf { SHA_RE.matches(it) }
+                val mime = f.optString("mime").takeIf { it.isNotEmpty() && it != "null" }
+                expected[path] = Expected(size, sha, mime, video)
+                paths.add(path)
+                if (!index.containsKey(path)) missing.add(path to video)
+            }
             for (i in 0 until items.length()) {
                 val item = items.optJSONObject(i) ?: continue
-                val type = item.optString("type")
-                if (type != "image" && type != "video") continue
-                val path = pathOf(item.optString("url")) ?: continue
-                if (!handles(path)) continue
-                val size = if (item.isNull("size")) null else item.optLong("size", -1L).takeIf { it >= 0 }
-                val sha = item.optString("sha256").lowercase().takeIf { SHA_RE.matches(it) }
-                val mime = item.optString("mime").takeIf { it.isNotEmpty() && it != "null" }
-                expected[path] = Expected(size, sha, mime, type == "video")
-                paths.add(path)
-                if (!index.containsKey(path)) missing.add(path to (type == "video"))
+                when (item.optString("type")) {
+                    "image" -> add(item, false)
+                    "video" -> add(item, true)
+                    // Plugins that show library images (image library) list them in plugin.media[].
+                    "plugin" -> {
+                        val media = item.optJSONObject("plugin")?.optJSONArray("media") ?: continue
+                        for (j in 0 until media.length()) add(media.optJSONObject(j) ?: continue, false)
+                    }
+                }
             }
             current = paths.toSet()
         }

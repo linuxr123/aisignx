@@ -203,14 +203,22 @@ function createMediaCache(opts) {
     try { m = typeof json === 'string' ? JSON.parse(json) : json; } catch (e) { return; }
     if (!m || !Array.isArray(m.items)) return;
     const next = new Set();
-    for (const it of m.items) {
-      if (!it || (it.type !== 'image' && it.type !== 'video') || typeof it.url !== 'string') continue;
-      const p = it.url.split('?')[0];
-      if (!MEDIA_RE.test(p)) continue;
+    const add = (f, video) => {
+      if (!f || typeof f.url !== 'string') return;
+      const p = f.url.split('?')[0];
+      if (!MEDIA_RE.test(p)) return;
       next.add(p);
-      known.set(p, { size: Number.isSafeInteger(it.size) ? it.size : null,
-        sha256: typeof it.sha256 === 'string' ? it.sha256 : null,
-        mime: typeof it.mime === 'string' ? it.mime : '', video: it.type === 'video' });
+      known.set(p, { size: Number.isSafeInteger(f.size) ? f.size : null,
+        sha256: typeof f.sha256 === 'string' ? f.sha256 : null,
+        mime: typeof f.mime === 'string' ? f.mime : '', video });
+    };
+    for (const it of m.items) {
+      if (!it) continue;
+      if (it.type === 'image' || it.type === 'video') add(it, it.type === 'video');
+      // Plugins that show library images (image library) list them in plugin.media[].
+      else if (it.type === 'plugin' && it.plugin && Array.isArray(it.plugin.media)) {
+        for (const f of it.plugin.media) add(f, false);
+      }
     }
     current = next;
     for (const p of next) enqueue(p);

@@ -142,6 +142,35 @@ class MediaCacheTest {
         assertEquals(emptyList<String>(), c.onManifest("not json"))
     }
 
+    @Test fun pluginMediaImagesAreQueuedAndPinned() {
+        val c = cache(budget = 250)
+        val a = ByteArray(100) { 1 }; val b = ByteArray(100) { 2 }; val d = ByteArray(100) { 3 }
+        fun entry(p: String, data: ByteArray) = JSONObject().put("url", p).put("size", data.size)
+            .put("sha256", sha(data)).put("mime", "image/jpeg").put("media_id", 1)
+        fun lib(vararg e: JSONObject) = JSONObject().put("type", "plugin")
+            .put("url", "about:blank#aisignx-plugin=image_library&c=1")
+            .put("plugin", JSONObject().put("key", "image_library").put("media", JSONArray(e.toList())))
+        val queued = ArrayList<Pair<String, Boolean>>()
+        c.onMissing = { p, v -> queued.add(p to v) }
+        val items = JSONArray().put(lib(entry(path(1, "jpg"), a), entry(path(2, "jpg"), b)))
+            .put(JSONObject().put("type", "plugin").put("url", "/static/player/plugins/clock/index.html#c=2")
+                .put("plugin", JSONObject().put("key", "clock")))
+            .put(JSONObject().put("type", "plugin").put("plugin", JSONObject()
+                .put("media", JSONArray().put(JSONObject().put("url", "https://evil.example/x.jpg")).put("x"))))
+        val paths = c.onManifest(JSONObject().put("items", items).toString())
+        assertEquals(listOf(path(1, "jpg"), path(2, "jpg")), paths)
+        assertEquals(listOf(path(1, "jpg") to false, path(2, "jpg") to false), queued)
+        assertEquals(100L, c.expectedFor(path(1, "jpg"))!!.size)
+
+        clock = 1_000; assertTrue(put(c, path(1, "jpg"), a))
+        clock = 2_000; assertTrue(put(c, path(2, "jpg"), b))
+        // Only path 1 stays, inside the plugin block: path 2 is evicted, path 1 never.
+        c.onManifest(JSONObject().put("items", JSONArray().put(lib(entry(path(1, "jpg"), a)))).toString())
+        clock = 3_000; assertTrue(put(c, path(3), d))
+        assertTrue(c.isCached(path(1, "jpg")))
+        assertFalse(c.isCached(path(2, "jpg")))
+    }
+
     @Test fun handlesOnlyMediaPaths() {
         val c = cache()
         assertTrue(c.handles("/api/player/v1/media/12/abc.mp4"))
