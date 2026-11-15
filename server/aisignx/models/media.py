@@ -72,6 +72,18 @@ class Media(db.Model):
         return self.media_type == MEDIA_PLUGIN
 
     @property
+    def has_sound(self) -> bool:
+        """Videos and plugins with sound (YouTube): the playlist sets mute and volume."""
+        if self.is_video:
+            return True
+        if not self.is_plugin:
+            return False
+        from ..plugins.registry import get_plugin
+
+        plugin = get_plugin(self.plugin_key or "")
+        return bool(plugin and plugin.audio)
+
+    @property
     def effective_duration(self) -> int:
         """Seconds this media plays for when a playlist item doesn't override it."""
         if self.is_video and self.duration_seconds:

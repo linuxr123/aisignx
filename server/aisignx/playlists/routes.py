@@ -160,13 +160,15 @@ def update_item(playlist_id: int, item_id: int):
         item.duration = form.duration.data or None
         item.transition = form.transition.data or None
         item.fit_mode = form.fit_mode.data
-        if item.media.is_video:  # the mute box is only shown for videos
+        if item.media.has_sound:  # the mute and volume boxes are only shown for these
             item.mute = form.mute.data
+            item.volume = 100 if form.volume.data is None else form.volume.data
         service.touch(playlist)
         audit.record("playlist.item_update", playlist,
                      detail={"item_id": item.id, "media": item.media.name,
                              "duration": item.duration, "transition": item.transition,
-                             "fit_mode": item.fit_mode, "mute": item.mute})
+                             "fit_mode": item.fit_mode, "mute": item.mute,
+                             "volume": item.volume})
         db.session.commit()
         flash(f"Updated {item.media.name}.", "success")
     else:

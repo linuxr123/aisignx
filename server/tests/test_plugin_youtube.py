@@ -57,9 +57,10 @@ def test_plugin_json_loads(app):
     assert plugin.render == "native" and plugin.player_script == "native.js"
     assert plugin.player_style is None and plugin.data is None and plugin.ends_itself is True
     assert {f["name"] for f in plugin.schema} == {"source", "videos", "playlist", "live",
-                                                  "shuffle", "play_to_end", "mute", "captions"}
+                                                  "shuffle", "play_to_end", "captions"}
+    assert plugin.audio is True
     defaults = {f["name"]: f.get("default") for f in plugin.schema}
-    assert defaults["mute"] is True and defaults["play_to_end"] is True
+    assert defaults["play_to_end"] is True
     assert defaults["source"] == "videos" and plugin.terms
     raw = (registry.BUNDLED_DIR / "youtube" / "plugin.json").read_bytes()
     assert not raw.startswith(b"\xef\xbb\xbf")
@@ -239,9 +240,15 @@ def test_manifest_entry(app, client):
     media_id = add_item(app, "youtube", {"source": "videos", "videos": f"{VID}\n{VID2}",
                                          "mute": False, "shuffle": True})
     token = paired_with(app, media_id)
+    with app.app_context():  # sound is the playlist item's setting, not the plugin's
+        from aisignx.models import PlaylistItem
+        pi = PlaylistItem.query.one()
+        assert pi.mute is True and pi.volume == 100
+        pi.mute, pi.volume = False, 40
+        db.session.commit()
     resp = client.get(f"{API}/manifest", headers=bearer(token))
     item, = resp.get_json()["items"]
-    assert item["type"] == "plugin" and item["muted"] is False
+    assert item["type"] == "plugin" and item["muted"] is False and item["volume"] == 40
     url, digest = item["url"].split("#c=")
     assert url.startswith(f"{urls.EMBED_ORIGIN}/embed/{VID}?autoplay=1&mute=0") and len(digest) == 12
     plugin = item["plugin"]

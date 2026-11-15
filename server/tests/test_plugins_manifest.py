@@ -9,7 +9,7 @@ from .plugin_fixtures import add_item, paired_with, papp, pclient  # noqa: F401
 
 API = "/api/player/v1"
 BASE_KEYS = {"id", "media_id", "type", "url", "mime", "sha256", "size", "width", "height",
-             "duration_ms", "media_duration_ms", "transition", "fit", "muted"}
+             "duration_ms", "media_duration_ms", "transition", "fit", "muted", "volume"}
 
 
 def _manifest(client, token):

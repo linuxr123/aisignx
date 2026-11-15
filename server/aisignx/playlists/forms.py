@@ -30,6 +30,7 @@ class ItemForm(FlaskForm):
     transition = SelectField("Transition", choices=ITEM_TRANSITION_CHOICES, validate_choice=True)
     fit_mode = SelectField("Fit", choices=FIT_CHOICES)
     mute = BooleanField("Mute")
+    volume = IntegerField("Volume", validators=[Optional(), NumberRange(min=0, max=100)])
 
 
 class ActionForm(FlaskForm):

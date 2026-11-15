@@ -182,7 +182,8 @@ Authenticated. Returns what the screen should play.
 | `media_duration_ms` | Length of the video file, or `null`. |
 | `transition` | How this item enters (see below). |
 | `fit` | How the item fills the screen (see below). When the admin sets a fit for the whole display, every item carries that value. |
-| `muted` | Play the video's sound only when this is `false`. Always `true` for images and web pages. |
+| `muted` | Play the video's sound only when this is `false`. Always `true` for images and web pages. For plugins with sound (YouTube) it follows the playlist item's Mute box. |
+| `volume` | `0`-`100` (default `100` when missing): the playlist item's share of the display volume. The player multiplies it with `settings.volume`. Videos and YouTube only. |
 
 **Video timing.** Stop the video at `duration_ms` at the latest. If the video ends earlier and
 `duration_ms > media_duration_ms + 1000`, start it again from the beginning; otherwise move to the

@@ -79,6 +79,12 @@
     return withTimeout(ready, IMAGE_TIMEOUT_MS, "image");
   }
 
+  // The playlist item's volume (0-100, default 100) as a 0..1 share of the display volume.
+  function itemGain(item) {
+    var n = item && Number(item.volume);
+    return n >= 0 && n <= 100 ? n / 100 : 1;
+  }
+
   function prepVideo(slide) {
     var item = slide.item;
     var v = document.createElement("video");
@@ -86,7 +92,8 @@
     // muted must be a property (the attribute alone is not reliable) and set before src.
     v.muted = !!item.muted;
     v.defaultMuted = !!item.muted;
-    v.volume = volume;
+    v._gain = itemGain(item);  // the playlist item's share of the display volume
+    v.volume = volume * v._gain;
     v.playsInline = true;
     v.setAttribute("playsinline", "");
     v.setAttribute("webkit-playsinline", "");
@@ -169,7 +176,7 @@
       var api = {
         attach: attach,
         fitClass: fitClass,
-        volume: function () { return volume; },
+        volume: function () { return volume * itemGain(item); },
         prepCard: prepCard,
       };
       // A native prepare() that never settles must not hold the playlist.
@@ -460,9 +467,9 @@
     if (!stage) return;
     var vids = stage.querySelectorAll("video");
     for (var i = 0; i < vids.length; i++) {
-      try { vids[i].volume = volume; } catch (e) { /* ignore */ }
+      try { vids[i].volume = volume * (vids[i]._gain === undefined ? 1 : vids[i]._gain); } catch (e) { /* ignore */ }
     }
-    natives.forEach(function (s) { nativeCall(s, "setVolume", volume); });
+    natives.forEach(function (s) { nativeCall(s, "setVolume", volume * itemGain(s.item)); });
   }
 
   A.render = {

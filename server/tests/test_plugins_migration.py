@@ -28,7 +28,7 @@ def _count(table):
 def test_plugins_migration_round_trip(papp):
     plugin_id = add_item(papp)
     with papp.app_context():
-        assert dbinfo.current_revision() == REVISION == dbinfo.head_revision()
+        assert dbinfo.current_revision() == dbinfo.head_revision()
         web = Media(name="W", media_type="web", url="https://example.com")
         playlist = Playlist(name="P")
         db.session.add(playlist)
@@ -49,7 +49,7 @@ def test_plugins_migration_round_trip(papp):
 
         upgrade()
         db.engine.dispose()
-        assert dbinfo.current_revision() == REVISION
+        assert dbinfo.current_revision() == dbinfo.head_revision()
         assert {"plugin_key", "plugin_config"} <= _columns()
         assert _count("playlist_items") == 1
         media = Media.query.one()

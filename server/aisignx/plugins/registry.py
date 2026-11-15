@@ -79,6 +79,7 @@ class PluginDef:
     static_dir: Path
     bundled: bool
     hooks: ModuleType | None = field(default=None, repr=False)
+    audio: bool = False  # has sound: the playlist item sets mute and volume
 
     def hook(self, name: str):
         """The optional hook function `name`, or None."""
@@ -317,9 +318,12 @@ def load_plugin(folder: Path, static_root: Path, bundled: bool) -> PluginDef:
         ends_itself=bool(raw.get("ends_itself", False)), data=data, schema=fields,
         settings=settings, secrets=_secrets(where, raw.get("secrets")),
         attribution=_str(where, raw, "attribution"), terms=_str(where, raw, "terms", limit=2000),
-        folder=folder, static_dir=static_dir, bundled=bundled, hooks=hooks)
+        folder=folder, static_dir=static_dir, bundled=bundled, hooks=hooks,
+        audio=bool(raw.get("audio", False)))
     if not isinstance(raw.get("ends_itself", False), bool):
         _fail(where, "ends_itself must be true or false")
+    if not isinstance(raw.get("audio", False), bool):
+        _fail(where, "audio must be true or false")
     if data is not None and plugin.hook("fetch") is None:
         _fail(where, "a plugin with data needs a fetch() hook")
     if data is None and plugin.hook("fetch") is not None:

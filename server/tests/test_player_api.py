@@ -20,7 +20,7 @@ IMAGE_BYTES = png_bytes((32, 18))
 VIDEO_BYTES = bytes(range(256)) * 64  # 16 KB of "video"; the server never decodes it
 OLD_KEYS = {"v", "version", "server_time_ms", "heartbeat_s", "display", "playlist", "items"}
 ITEM_KEYS = {"id", "media_id", "type", "url", "mime", "sha256", "size", "width", "height",
-             "duration_ms", "media_duration_ms", "transition", "fit", "muted"}
+             "duration_ms", "media_duration_ms", "transition", "fit", "muted", "volume"}
 
 
 def _write_media_file(app, name: str, data: bytes) -> None:
@@ -169,7 +169,7 @@ def test_manifest_shape(app, client, content):
         "url": f"{API}/media/{content['image']}/{content['image_name']}",
         "mime": "image/png", "sha256": "1" * 64, "size": len(IMAGE_BYTES),
         "width": 32, "height": 18, "duration_ms": 10_000, "media_duration_ms": None,
-        "transition": "fade", "fit": "fit", "muted": True,
+        "transition": "fade", "fit": "fit", "muted": True, "volume": 100,
     }
     assert video["type"] == "video"
     assert video["url"] == f"{API}/media/{content['video']}/{content['video_name']}"
@@ -181,7 +181,7 @@ def test_manifest_shape(app, client, content):
         "id": content["items"][2], "media_id": content["web"], "type": "web",
         "url": "https://example.com/menu", "mime": None, "sha256": None, "size": None,
         "width": None, "height": None, "duration_ms": 20_000, "media_duration_ms": None,
-        "transition": "cut", "fit": "fit", "muted": True,
+        "transition": "cut", "fit": "fit", "muted": True, "volume": 100,
     }
 
     for item in (image, video):

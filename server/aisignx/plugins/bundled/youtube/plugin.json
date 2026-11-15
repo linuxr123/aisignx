@@ -10,6 +10,7 @@
   "player_style": null,
   "default_duration": 300,
   "ends_itself": true,
+  "audio": true,
   "schema": [
     {"name": "source", "type": "select", "label": "Source", "default": "videos",
      "options": [{"value": "videos", "label": "Videos"},
@@ -30,8 +31,6 @@
     {"name": "play_to_end", "type": "boolean", "label": "End the slide when the video ends", "default": true,
      "show_if": {"source": ["videos", "playlist"]},
      "help": "The slide's duration is then the longest it may run. When off, the video loops for the whole duration. Live streams always run for the full duration."},
-    {"name": "mute", "type": "boolean", "label": "Mute", "default": true,
-     "help": "Sound plays in the AiSignX Windows and Android apps. A plain web browser only autoplays muted videos."},
     {"name": "captions", "type": "boolean", "label": "Show captions", "default": false,
      "help": "When the video has captions. The plugin locale (Plugins > Settings) picks the language when it is available."}
   ],

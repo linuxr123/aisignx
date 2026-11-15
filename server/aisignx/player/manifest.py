@@ -66,6 +66,12 @@ def _file_entry(media) -> dict:
 file_entry = _file_entry  # public name for plugin hooks (manifest_extra)
 
 
+def _volume(item) -> int:
+    """The item's share of the display volume, 0-100."""
+    v = getattr(item, "volume", None)
+    return 100 if v is None else max(0, min(100, int(v)))
+
+
 def _item_entry(item, fit: str | None = None) -> dict | None:
     """One manifest item. fit: the display's override for every item, if any."""
     if not is_playable(item):
@@ -78,7 +84,7 @@ def _item_entry(item, fit: str | None = None) -> dict | None:
     elif media.media_type == MEDIA_PLUGIN:
         from ..plugins.service import manifest_fields
 
-        plugin = manifest_fields(media)
+        plugin = manifest_fields(media, muted=item.mute)
         if plugin is None:
             return None
         entry = {"url": plugin["url"], "mime": None, "sha256": None, "size": None,
@@ -100,6 +106,7 @@ def _item_entry(item, fit: str | None = None) -> dict | None:
         "transition": item.effective_transition,  # may be "random"
         "fit": fit or item.fit_mode,
         "muted": bool(item.mute) if is_video else True,
+        "volume": _volume(item),
     }
     if plugin is not None:
         result["muted"] = plugin["muted"]

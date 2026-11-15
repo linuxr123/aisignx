@@ -58,11 +58,17 @@
           <option value="{{ c.value }}" {% if item.fit_mode == c.value %}selected{% endif %}>{{ c.label }}</option>
           {% endfor %}
         </select>
-        {% if item.media.is_video %}
+        {% if item.media.has_sound %}
         <div class="form-check form-check-inline mb-0">
           <input class="form-check-input" type="checkbox" name="mute" value="y" id="mute{{ item.id }}" {% if item.mute %}checked{% endif %}>
           <label class="form-check-label small" for="mute{{ item.id }}">Mute</label>
         </div>
+        <label class="d-flex align-items-center gap-1 small mb-0" for="volume{{ item.id }}" title="Share of the screen's volume">
+          Volume
+          <input class="form-range" style="width: 7rem" type="range" min="0" max="100" step="5" name="volume" id="volume{{ item.id }}"
+                 value="{{ item.volume }}" oninput="this.nextElementSibling.textContent = this.value + '%'">
+          <output class="text-secondary" style="min-width: 2.6rem">{{ item.volume }}%</output>
+        </label>
         {% endif %}
         <button class="btn btn-sm btn-outline-primary" type="submit">Save</button>
       </form>

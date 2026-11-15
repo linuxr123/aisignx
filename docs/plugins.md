@@ -133,7 +133,7 @@ in between.
 
 ### YouTube
 - **Options:** source (videos, playlist, live), up to 50 videos as `URL-or-ID [start] [end]`
-  per line, playlist URL or ID, live video or `UC…` channel ID, shuffle, mute (default on),
+  per line, playlist URL or ID, live video or `UC…` channel ID, shuffle,
   captions (in the plugin locale), play to the end (default on).
 - Accepted links: `youtube.com/watch?v=`, `youtu.be/`, `/shorts/`, `/live/`, `/embed/`, the
   `m.` and `music.` hosts and `youtube-nocookie.com`. Other hosts are refused.
@@ -141,6 +141,8 @@ in between.
   For several videos, start and end times apply to the first video only. `live_stream?channel=`
   (a channel's current live stream) is unreliable on YouTube's side; prefer a video ID.
 - **Realities:**
+  - **Mute and volume** are set per item in the playlist (Mute is on by default, Volume 0-100%
+    of the display's volume), not in the plugin form.
   - Unmuted autoplay works in the Windows and Android apps. A plain browser only autoplays
     muted, unless started with `--autoplay-policy=no-user-gesture-required`.
   - Embeds may show ads.
@@ -308,6 +310,8 @@ def auto_duration(config: dict) -> int | None: ...     # default item duration i
   PNG, JPEG or WebP made with `ctx.asset(bytes, mime)`. Raise on failure: the cache keeps the
   last good copy and stores only an error code. `RateLimited` from the HTTP client is handled
   the same way.
+- A plugin with sound sets `"audio": true` in plugin.json: its playlist items then get Mute and
+  Volume, and `config["mute"]` passed to `manifest_extra` is the item's Mute box.
 - `manifest_extra` may return `url` (the slide URL for a native plugin) and `muted`, which are
   lifted to the manifest item; everything else goes into the `plugin` block. If it raises, the
   item is left out of the manifest.

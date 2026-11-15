@@ -209,7 +209,8 @@
     S.pos = -1;
     for (var i = 0; i < S.items.length; i++) if (S.items[i].id === cur.item.id) S.pos = i;
     var fresh = S.items[S.pos];
-    if (!fresh || fresh.url !== cur.item.url || fresh.fit !== cur.item.fit || fresh.muted !== cur.item.muted) {
+    if (!fresh || fresh.url !== cur.item.url || fresh.fit !== cur.item.fit || fresh.muted !== cur.item.muted ||
+        (fresh.volume === undefined ? 100 : fresh.volume) !== (cur.item.volume === undefined ? 100 : cur.item.volume)) {
       S.forceSwap = true;  // gone or changed: advance now
       cur.deadline = 0;
       unpause(true);

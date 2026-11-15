@@ -70,6 +70,7 @@ def duplicate(playlist: Playlist) -> Playlist:
         copy.items.append(PlaylistItem(
             media_id=item.media_id, position=item.position, duration=item.duration,
             transition=item.transition, fit_mode=item.fit_mode, mute=item.mute,
+            volume=item.volume,
         ))
     db.session.add(copy)
     return copy

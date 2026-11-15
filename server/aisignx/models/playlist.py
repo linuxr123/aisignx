@@ -57,6 +57,8 @@ class PlaylistItem(db.Model):
     transition = db.Column(db.String(16), nullable=True)
     fit_mode = db.Column(db.String(16), nullable=False, default="fit")
     mute = db.Column(db.Boolean, nullable=False, default=True)
+    # 0-100, a share of the display's volume (videos and plugins with sound).
+    volume = db.Column(db.Integer, nullable=False, default=100, server_default="100")
 
     playlist = db.relationship("Playlist", back_populates="items")
     media = db.relationship("Media", back_populates="playlist_items")
