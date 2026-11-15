@@ -1,0 +1,14 @@
+# Visual Studio / MSBuild output
+bin/
+obj/
+.vs/
+*.user
+*.suo
+publish/
+TestResults/
+
+# Signing: certificates and the local file that names one are per developer, never committed
+*.pfx
+*.p12
+*.snk
+signing.local.props

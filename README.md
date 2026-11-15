@@ -6,7 +6,8 @@ for a home, a small business, or a company with a few dozen screens.
 > **Status:** v3 is a rewrite in progress. Phase 1 (accounts, roles, settings, setup wizard),
 > Phase 2 (media library, playlists), Phase 3 (screens: pairing, browser player, live updates),
 > Phase 4 (schedules, display groups, emergency override), Phase 5 (Windows and Android player
-> apps) and Phase 6 (backups, alerts, audit log, API, proof of play, Docker) are done.
+> apps) and Phase 6 (backups, alerts, audit log, API, proof of play, Docker) are done, plus
+> plugins (clock, weather, radar, RSS, stocks, YouTube, image library).
 > See [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
@@ -75,6 +76,9 @@ Settings come from environment variables or `server/.env` (see `server/.env.exam
 | `AISIGNX_SMTP_PASSWORD` | not set | Password for the alert mail server (never stored in the database) |
 | `AISIGNX_LOGIN_MAX_PER_IP` / `_PER_USER` / `_WINDOW_MIN` | `20` / `5` / `15` | Failed sign-ins allowed per IP and per user name within the window in minutes |
 | `AISIGNX_BROWSER_NO_SANDBOX` | `0` | Start the preview browser with `--no-sandbox` (containers running as non-root) |
+| `AISIGNX_PLUGIN_CACHE_DIR` / `_CACHE_MB` | `server/plugin-cache` / `500` | Cache of fetched plugin data (never backed up) and its size cap |
+| `AISIGNX_PLUGIN_HTTP_PROXY` | not set | HTTPS proxy for the server's outbound plugin requests |
+| `AISIGNX_OPENMETEO_KEY` / `AISIGNX_FINNHUB_KEY` | not set | API keys for commercial Open-Meteo weather and for stock quotes (see [docs/plugins.md](docs/plugins.md)) |
 
 The folder defaults are relative to the instance folder's parent, so with
 `AISIGNX_INSTANCE_DIR=/data/instance` logs go to `/data/logs` and backups to `/data/backups`.
@@ -89,6 +93,13 @@ The folder defaults are relative to the instance folder's parent, so with
 - **Playlists:** drag items to reorder them. Each item can override its duration, transition,
   fit mode (fit, fill or stretch) and, for videos, mute. Videos play for their full length unless
   you set a duration.
+- **Plugins:** **Add plugin** in the media library creates a live item: a clock, the weather, a
+  weather radar, RSS or Atom headlines, stock quotes, YouTube videos or an image slideshow and
+  collage. The server fetches and caches the data, so API keys never reach a screen and screens
+  keep showing the last data offline. Admins turn plugins on or off and set providers on the
+  **Plugins** page. Some providers have terms for commercial use; see
+  [docs/plugins.md](docs/plugins.md), and [docs/deployment.md](docs/deployment.md#plugins) for
+  the hosts to allow through a firewall.
 
 ## Screens
 
@@ -172,10 +183,10 @@ in [docs/operations.md](docs/operations.md).
 
 ## Roles
 
-- **Admin:** everything, including users, settings, backups, the audit log, the system page
-  and all API tokens.
-- **Editor:** media, playlists, schedules and displays; can acknowledge alerts and mute
-  displays; API tokens with read and write access to media.
+- **Admin:** everything, including users, settings, plugin settings, backups, the audit log,
+  the system page and all API tokens.
+- **Editor:** media (including plugin items), playlists, schedules and displays; can
+  acknowledge alerts and mute displays; API tokens with read and write access to media.
 - **Viewer:** read-only, including alerts and play reports; API tokens that can only read media.
 
 ## Development

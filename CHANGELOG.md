@@ -1,6 +1,6 @@
 # Changelog
 
-## Project status (updated 2026-11-14)
+## Project status (updated 2026-11-15)
 
 A quick overview. The detailed list of every change follows further down.
 
@@ -13,10 +13,11 @@ A quick overview. The detailed list of every change follows further down.
 - **Display options:** orientation, volume, offline banner, location, exit PIN, Identify, remote screenshots, diagnostics.
 - **Player controls:** pause, next/previous and seek by keyboard, mouse, touch and TV remote. **Lock player** kiosk mode with remote unlock.
 - **Operations:** backup and restore, audit log, alerts by e-mail, proof of play, API tokens and a media upload API, health checks and logs, Docker, HTTPS guide.
-- **Fixed today:** videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
+- **Plugins:** the plugin framework and seven plugins: clock, weather, weather radar, RSS / Atom, stocks, YouTube and image library.
+- **Fixed 2026-11-14:** videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
 ### In progress
-- **Plugins:** the framework, then clock, weather, weather radar, RSS, stocks, YouTube and image library.
+- **Plugins:** the manual checks in the Windows and Android apps (see "Not yet checked" below).
 - **PowerPoint add-in:** export a presentation to MP4 in PowerPoint and upload or replace it with an API token.
 - **Designs being written:** the device agent/watchdog, and content extras.
 
@@ -49,6 +50,36 @@ A quick overview. The detailed list of every change follows further down.
 6. **Synced playback** between displays (from v2). Player controls are turned off on synced displays, because pause, next or previous on one screen would break the sync.
 7. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
 8. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+
+## Unreleased: Plugins
+
+### Added
+- **Plugin items** in the media library (**Add plugin**): live content that plays in playlists like any other item, with its own duration, transition and proof of play. Seven plugins ship with AiSignX; there is no plugin upload. See [docs/plugins.md](docs/plugins.md).
+  - **Clock:** five styles (minimal dark and light, analog, flip, word clock), 12h/24h, seconds, date, time zone and label. Works offline.
+  - **Weather:** current conditions, hourly and daily forecast in three layouts. Open-Meteo (a key in `AISIGNX_OPENMETEO_KEY` for commercial use) or MET Norway (needs a contact for the User-Agent). Place names and postal codes are looked up when you save, or type `lat,lon`.
+  - **Weather radar:** animated radar over a map, drawn on the server from RainViewer (worldwide) or IEM NEXRAD (US) tiles, with optional US weather alerts. The OpenStreetMap base map can be replaced by your own tile server.
+  - **RSS / Atom:** headlines as a list, one at a time or a ticker, with pictures and QR codes. The feed address stays on the server; intranet feeds need an admin allowlist.
+  - **Stocks:** quotes from Finnhub as cards, a board or a ticker. Needs `AISIGNX_FINNHUB_KEY`; the key never reaches a screen. The admin page explains Finnhub's terms for public display.
+  - **YouTube:** videos (with start and end times), a playlist or a live stream in the privacy-enhanced embed, with shuffle, mute, captions and "play to the end".
+  - **Image library:** a slideshow, Ken Burns show or 2×2 / 3×3 collage of library images you choose or the newest ones, with an automatic duration.
+- **Plugins page** (`/plugins/`): version, outbound hosts, data terms, API key status and cache size per plugin. Admins turn plugins on or off, set provider settings, a contact for data providers and a locale, and clear the plugin cache. All changes are audited and reach screens at once.
+- **Preview** of plugin items at 16:9 and 9:16, also before saving.
+- **Server-side data:** the server fetches and caches plugin data in the background (stale-while-revalidate), so a slow provider never holds up screens or the admin. Outbound requests go through a guarded client: per-plugin host allowlist, private addresses refused, redirects re-checked, size and time limits, per-host rate limits, an optional proxy (`AISIGNX_PLUGIN_HTTP_PROXY`). The cache (`AISIGNX_PLUGIN_CACHE_DIR`, `AISIGNX_PLUGIN_CACHE_MB`) is pruned daily and never backed up.
+- **Sandboxed player:** most plugins run in a sandboxed frame with no network, cookies or storage; the player passes them their data. Screens keep each item's last data and show it with an "Updated" time while offline.
+- Player API: items of `type: "plugin"` with a `plugin` block, and `GET /plugins/<id>/data` and `/plugins/<id>/assets/<asset>` ([docs/player-api.md](docs/player-api.md#plugin-items)).
+- Windows and Android apps: the images of image library items are cached for offline use and kept like image items.
+- Deployment guide: environment variables, outbound hosts for a firewall, and provider terms ([docs/deployment.md](docs/deployment.md#plugins)).
+- Database migration `0009_plugins` (adds the plugin key and config to media). Downgrading removes plugin items.
+
+### Changed
+- Changing a plugin's organization setting (for example the weather provider or radar source) makes screens show the new provider's data on their next refresh instead of after the old data expires.
+
+### Removed (compared with v2 plugins)
+- Weather: NWS and zippopotam lookups, the debug overlay. Radar: nowcast and on-screen controls. Stocks: the `loops` option (the playlist sets the duration). YouTube: playback rate, quality, branding and per-session modes. Per-tenant plugin policy, signing and zip upload.
+
+### Not yet checked
+- In the Windows and Android apps: the frame sandbox and offline start with each plugin, YouTube with sound and without error 153 (the Windows app's `127.0.0.1` referrer), the ended and error messages from YouTube, and pause and next on plugin slides. Checked so far in headless Chrome and Edge only.
+- Live provider requests (all tests use recorded fixtures).
 
 ## Unreleased: Player controls and Lock player
 
