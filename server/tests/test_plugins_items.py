@@ -112,7 +112,7 @@ def test_library_filter_badge_and_links(padmin, papp):
     html = page.data.decode()
     assert "Echo item" in html and "text-bg-success" in html
     assert f"/plugins/items/{media_id}/preview" in html and "/plugins/new" in html
-    assert '<option value="plugin" selected>' in html
+    assert 'data-initial-type="plugin"' in html and 'data-type-filter="plugin"' in html
     assert "Echo item" not in padmin.get("/media/?type=image").data.decode()
     resp = padmin.get(f"/media/{media_id}/edit")
     assert resp.status_code == 302 and resp.location.endswith(f"/plugins/items/{media_id}/edit")

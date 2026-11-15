@@ -137,3 +137,46 @@ def test_filters():
     assert duration(125) == "2:05"
     assert duration(3725) == "1:02:05"
     assert duration(None) == "—"
+
+
+# --- drag-and-drop uploader (static/js/media.js) ---------------------------------------------
+
+def _fetch_upload(client, *files):
+    from io import BytesIO
+    data = {"files": [(BytesIO(content), name) for name, content in files]}
+    return client.post("/media/upload", data=data, content_type="multipart/form-data",
+                       headers={"X-Requested-With": "fetch", "Accept": "application/json"})
+
+
+def test_uploader_gets_json_not_a_redirect(app, admin_client):
+    r = _fetch_upload(admin_client, ("a.png", png_bytes()))
+    assert r.status_code == 200 and r.get_json() == {"added": 1, "errors": [], "warnings": []}
+    with app.app_context():
+        assert Media.query.count() == 1
+
+
+def test_uploader_reports_a_bad_file_as_json(app, admin_client):
+    r = _fetch_upload(admin_client, ("notes.txt", b"hello"))
+    body = r.get_json()
+    assert r.status_code == 422 and body["added"] == 0 and "unsupported file type" in body["errors"][0]
+    r = _fetch_upload(admin_client, ("broken.png", b"not an image"))
+    assert r.status_code == 422 and "not a valid image" in r.get_json()["errors"][0]
+    with app.app_context():
+        assert Media.query.count() == 0
+
+
+def test_the_plain_form_post_still_redirects(app, admin_client):
+    assert upload(admin_client, ("a.png", png_bytes())).status_code == 302
+
+
+def test_media_page_has_the_drop_zone_and_filters_for_editors_only(app, admin_client):
+    page = admin_client.get("/media/").get_data(as_text=True)
+    assert 'id="dropzone"' in page and 'id="mediaFilters"' in page and "js/media.js" in page
+    upload(admin_client, ("a.png", png_bytes()))
+    page = admin_client.get("/media/").get_data(as_text=True)
+    assert 'data-type="image"' in page and 'data-type-filter="image"' in page and "Images" in page
+    make_user(app, "view", "viewer")
+    viewer = app.test_client()
+    login(viewer, "view")
+    page = viewer.get("/media/").get_data(as_text=True)
+    assert 'id="dropzone"' not in page and 'id="mediaFilters"' in page

@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 {% from "media/_thumb.html" import thumb, type_badge, preview_warning %}
+{% from "_icons.html" import icon %}
 {% block title %}Media{% endblock %}
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <h1 class="h3 mb-0">Media</h1>
   {% if current_user.can_edit %}
   <div class="d-flex gap-2">
-    <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#uploadPanel">Upload files</button>
+    <button class="btn btn-primary" type="button" data-upload-pick>{{ icon("upload", 16) }} Upload files</button>
     <button class="btn btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#webPanel">Add web page</button>
     <a class="btn btn-outline-success" href="{{ url_for('plugins.choose') }}">Add plugin</a>
   </div>
@@ -14,21 +15,23 @@
 </div>
 
 {% if current_user.can_edit %}
-<div class="collapse mb-3" id="uploadPanel">
-  <div class="card card-body">
-    <form method="post" action="{{ url_for('media.upload') }}" enctype="multipart/form-data">
-      {{ upload_form.hidden_tag() }}
-      <label class="form-label" for="files">Images (JPG, PNG, GIF, WebP, BMP) or videos (MP4, WebM, MOV, M4V, MKV)</label>
-      <div class="d-flex gap-2">
-        <input class="form-control" type="file" id="files" name="files" multiple required
-               accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mov,.m4v,.mkv">
-        <button class="btn btn-primary" type="submit">Upload</button>
-      </div>
-      {% if not ffmpeg_ok %}
-      <div class="form-text text-warning-emphasis">ffmpeg was not found, so videos upload without a detected duration or thumbnail. Run the installer or see the README.</div>
-      {% endif %}
-    </form>
-  </div>
+<div class="mb-3" id="uploadPanel">
+  <form method="post" action="{{ url_for('media.upload') }}" enctype="multipart/form-data" id="uploadForm"
+        data-upload-url="{{ url_for('media.upload') }}" data-max-mb="{{ max_upload_mb }}">
+    {{ upload_form.hidden_tag() }}
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose files to upload, or drop them here">
+      <div class="dropzone-icon">{{ icon("upload", 30) }}</div>
+      <div class="dropzone-title">Drop images and videos here</div>
+      <div class="dropzone-sub">or <span class="link-primary">choose files</span>. Many at once is fine. JPG, PNG, GIF, WebP, BMP, MP4, WebM, MOV, M4V, MKV.</div>
+      <input class="dropzone-input" type="file" id="files" name="files" multiple required
+             accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mov,.m4v,.mkv">
+      <button class="btn btn-primary btn-sm mt-2" type="submit" data-nojs-submit>Upload</button>
+    </div>
+    <div id="uploadList" class="upload-list" aria-live="polite"></div>
+    {% if not ffmpeg_ok %}
+    <div class="form-text text-warning-emphasis">ffmpeg was not found, so videos upload without a detected duration or thumbnail. Run the installer or see the README.</div>
+    {% endif %}
+  </form>
 </div>
 <div class="collapse mb-3" id="webPanel">
   <div class="card card-body">
@@ -49,25 +52,23 @@
 </div>
 {% endif %}
 
-<form class="row g-2 mb-3" method="get">
-  <div class="col-sm-5 col-md-4">
-    <input class="form-control" type="search" name="q" value="{{ search }}" placeholder="Search by name">
+<div class="media-filters d-flex flex-wrap align-items-center gap-2 mb-3" id="mediaFilters" data-initial-type="{{ media_type or '' }}">
+  <input class="form-control media-search" type="search" id="mediaSearch" value="{{ search }}" placeholder="Search by name" aria-label="Search by name">
+  {% set counts = {"image": 0, "video": 0, "web": 0, "plugin": 0} %}
+  {% for m in items %}{% if counts.update({m.media_type: counts.get(m.media_type, 0) + 1}) %}{% endif %}{% endfor %}
+  <div class="btn-group flex-wrap" role="group" aria-label="Filter by type">
+    <button type="button" class="btn btn-outline-secondary btn-sm active" data-type-filter="">All <span class="count">{{ items|length }}</span></button>
+    {% for t, label in [("image", "Images"), ("video", "Videos"), ("web", "Web pages"), ("plugin", "Plugins")] if counts[t] %}
+    <button type="button" class="btn btn-outline-secondary btn-sm" data-type-filter="{{ t }}">{{ label }} <span class="count">{{ counts[t] }}</span></button>
+    {% endfor %}
   </div>
-  <div class="col-sm-4 col-md-3">
-    <select class="form-select" name="type" onchange="this.form.submit()">
-      <option value="">All types</option>
-      {% for t, label in [("image", "Images"), ("video", "Videos"), ("web", "Web pages"), ("plugin", "Plugins")] %}
-      <option value="{{ t }}" {% if media_type == t %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="col-auto"><button class="btn btn-outline-secondary" type="submit">Filter</button></div>
-</form>
+  <span class="text-secondary small ms-1" id="mediaShown" aria-live="polite"></span>
+</div>
 
 {% if items %}
 <div class="row row-cols-2 row-cols-md-3 row-cols-xl-4 g-3">
   {% for m in items %}
-  <div class="col">
+  <div class="col" data-type="{{ m.media_type }}" data-name="{{ m.name|lower }}">
     <div class="card h-100">
       {% if m.stored_name %}<a href="{{ url_for('media.file', media_id=m.id) }}" target="_blank" rel="noopener">{{ thumb(m, "card-img-top") }}</a>
       {% elif m.media_type == "plugin" %}<a href="{{ url_for('plugins.preview', media_id=m.id) }}">{{ thumb(m, "card-img-top") }}</a>
@@ -104,4 +105,5 @@
   {% if search or media_type %}No media matches your filter.{% else %}No media yet.{% if current_user.can_edit %} Upload some files or add a web page to get started.{% endif %}{% endif %}
 </div>
 {% endif %}
+<script src="{{ url_for('static', filename='js/media.js') }}" defer></script>
 {% endblock %}

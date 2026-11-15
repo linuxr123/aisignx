@@ -23,7 +23,6 @@ A quick overview. The detailed list of every change follows further down.
 
 ### Planned (in this order)
 1. **Admin interface makeover** (moved up on 2026-11-15; layout, menus and themes are done):
-   - the media library as a grid with filters, and drag-and-drop upload of many files at once;
    - a nicer display edit page.
 2. **PowerPoint add-in:** finish and test it (export to MP4, upload or replace with an API token).
 3. **Player fixes:**
@@ -50,6 +49,7 @@ A quick overview. The detailed list of every change follows further down.
 ### Changed
 - **New layout:** a left sidebar replaces the top bar. Menus are grouped: Content (Media, Plugins, Playlists), Screens (Displays, Groups, Schedules, Emergency), Monitoring (Alerts, Reports) and, for admins, Administration (Users, Settings, All API tokens, Audit log, Backups, System, Logs). The sidebar collapses to icons (the choice is remembered), and on phones and tablets it slides in over the page.
 - **Light and dark themes:** a button in the sidebar cycles *follows the system*, *light* and *dark* (remembered per browser, applied before the page paints, so nothing flashes). Icons are built in (no network needed).
+- **Media library:** drag and drop images and videos anywhere on the page (or click the drop zone), many at once. Each file gets its own progress bar (two upload at a time), problems are shown per file (wrong type, too big, not a valid image), and the page refreshes when everything is in. Filter chips with counts (All, Images, Videos, Web pages, Plugins) and the search box work instantly, with no page reload. Without JavaScript the plain upload form still works.
 
 ## Unreleased: Video playback warnings
 

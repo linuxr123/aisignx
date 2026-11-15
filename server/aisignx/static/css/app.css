@@ -149,3 +149,33 @@ html[data-bs-theme="dark"] .sidebar { background: #12151b; }
 /* Badges that were "light" in the old navbar theme: readable in both themes. */
 .badge.text-bg-light { background-color: var(--bs-secondary-bg) !important; color: var(--bs-secondary-color) !important; }
 .badge.bg-light.text-dark { background-color: var(--bs-secondary-bg) !important; color: var(--bs-body-color) !important; }
+
+/* ---- Media library: drop zone, upload rows, filters. ---------------------------------------- */
+.dropzone {
+  position: relative; text-align: center; padding: 1.4rem 1rem;
+  border: 2px dashed var(--bs-border-color); border-radius: .9rem;
+  background: var(--bs-body-bg); color: var(--bs-body-color);
+  transition: border-color .12s, background-color .12s;
+}
+.dropzone.enhanced { cursor: pointer; }
+.dropzone.enhanced:hover, .dropzone:focus-visible { border-color: var(--bs-primary); outline: 0; }
+.dropzone.over { border-color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .08); }
+.dropzone-icon { color: var(--bs-secondary-color); }
+.dropzone.over .dropzone-icon { color: var(--bs-primary); }
+.dropzone-title { font-weight: 600; margin-top: .25rem; }
+.dropzone-sub { color: var(--bs-secondary-color); font-size: .88rem; }
+.dropzone-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.dropzone:not(.enhanced) .dropzone-input { position: static; width: auto; height: auto; opacity: 1; pointer-events: auto; margin-top: .5rem; }
+.upload-list { margin-top: .6rem; }
+.upload-row {
+  display: grid; grid-template-columns: minmax(8rem, 1fr) 5rem minmax(6rem, 14rem) minmax(7rem, 14rem);
+  gap: .2rem .8rem; align-items: center; padding: .35rem .2rem; border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+.upload-row .upload-note { grid-column: 1 / -1; }
+.upload-bar { height: .45rem; }
+.media-search { max-width: 18rem; }
+.media-filters .count { opacity: .65; margin-left: .15rem; }
+@media (max-width: 575.98px) {
+  .upload-row { grid-template-columns: 1fr 4rem; }
+  .upload-bar, .upload-status { grid-column: 1 / -1; }
+}

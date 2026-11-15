@@ -1,4 +1,4 @@
-from flask import abort, flash, jsonify, redirect, render_template, request, send_from_directory, url_for
+from flask import abort, current_app, flash, jsonify, redirect, render_template, request, send_from_directory, url_for
 from flask_login import current_user, login_required
 
 from ..audit import service as audit
@@ -34,8 +34,14 @@ def index():
         items=items, media_type=media_type, search=search,
         upload_form=UploadForm(), web_form=WebPageForm(), delete_form=DeleteForm(),
         default_duration=service.default_duration(), ffmpeg_ok=ffmpeg_available(),
+        max_upload_mb=current_app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024),
         browser_ok=webshot.browser_path() is not None,
     )
+
+
+def _wants_json() -> bool:
+    """The drag-and-drop uploader (static/js/app.js) sends X-Requested-With: fetch and reads JSON."""
+    return request.headers.get("X-Requested-With") == "fetch"
 
 
 @bp.route("/upload", methods=["POST"])
@@ -43,9 +49,14 @@ def index():
 def upload():
     form = UploadForm()
     if not form.validate_on_submit():
+        if _wants_json():
+            return jsonify(added=0, errors=["The page expired. Reload it and try again."],
+                           warnings=[]), 400
         abort(400)
     files = [f for f in (form.files.data or []) if f and f.filename]
     if not files:
+        if _wants_json():
+            return jsonify(added=0, errors=["No file was received."], warnings=[]), 400
         flash("Choose at least one file to upload.", "warning")
         return redirect(url_for("media.index"))
 
@@ -60,6 +71,10 @@ def upload():
         except InvalidMediaError as exc:
             errors.append(str(exc))
     db.session.commit()
+    if _wants_json():
+        return jsonify(added=added, errors=errors,
+                       warnings=[f"{m.name}: may not play smoothly on every screen. "
+                                 + " ".join(m.playback_warnings) for m in heavy]),             (200 if added or not errors else 422)
     if added:
         flash(f"Uploaded {added} file{'s' if added != 1 else ''}.", "success")
     for media in heavy:
