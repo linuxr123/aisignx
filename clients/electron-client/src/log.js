@@ -1,5 +1,6 @@
 'use strict';
-// A small file log: userData/aisignx-player.log, truncated at 2 MB.
+// A small file log: userData/aisignx-player.log. At 2 MB it is moved to .log.1 (one older
+// generation is kept) and a new file starts.
 // Never pass Cookie / Set-Cookie headers or request bodies here; safeHeaders() drops them.
 const fs = require('fs');
 
@@ -29,7 +30,8 @@ function write(level, args) {
     let size = 0;
     try { size = fs.statSync(file).size; } catch (e) { size = 0; }
     if (size + line.length > maxBytes) {
-      fs.writeFileSync(file, new Date().toISOString() + ' INFO log truncated at ' + maxBytes + ' bytes\n');
+      try { fs.renameSync(file, file + '.1'); } catch (e) { /* replaced below */ }
+      fs.writeFileSync(file, new Date().toISOString() + ' INFO log rotated at ' + maxBytes + ' bytes\n');
     }
     fs.appendFileSync(file, line);
   } catch (e) { /* logging must never break the shell */ }
@@ -43,8 +45,18 @@ function safeHeaders(headers) {
   return out;
 }
 
+// The previous generation then the current file, as one string (newest last).
+function readAll() {
+  let out = '';
+  for (const f of [file + '.1', file]) {
+    try { out += fs.readFileSync(f, 'utf8'); } catch (e) { /* missing */ }
+  }
+  return file ? out : '';
+}
+
 module.exports = {
   init,
+  readAll,
   safeHeaders,
   get file() { return file; },
   info: (...a) => write('INFO', a),

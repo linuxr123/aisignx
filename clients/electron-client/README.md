@@ -128,6 +128,52 @@ An app cannot block Alt+Tab, the Windows key or Ctrl+Alt+Del; it only takes the 
 For a fully locked PC (auto-logon, Shell Launcher or Assigned Access, policies) see
 `docs/kiosk-lockdown.md`.
 
+## Device agent
+
+Off by default; the admin turns each part on per display (Displays > display > Edit > Device agent).
+
+- **Watchdog.** A current-user Scheduled Task (`AiSignXWatchdog`, every minute, no administrator
+  rights, no service) runs `watchdog.ps1`. It restarts the player when it is not running or when
+  its heartbeat file is older than 90 s (a hung player is killed first). At most 6 restarts per
+  hour; then it reports `gave_up` and stops until the player is seen healthy again. The app writes
+  the heartbeat only while the page proves it is alive (the page sends `alive` every 10 s; the
+  offline page counts too). The app creates the task when the switch is on and removes it when it
+  is off, or when the server is forgotten in setup. Quitting on purpose (PIN exit, setup Quit)
+  writes a "stopped by user" marker so the watchdog does not bring the player back; the next start
+  clears it.
+- **Restart player** and **Collect logs.** The app polls its own commands every 20 s over its pinned
+  connection (never through the page). Only these two verbs exist; each runs at most once; a verb
+  whose switch is off is refused. The log (with the previous generation) is redacted (tokens,
+  cookies, unlock PIN hash, certificate pin) and uploaded gzipped, at most 900 KB (the newest part).
+- Files: `%LOCALAPPDATA%\AiSignX\agent\` (`flag.json`, `heartbeat.json`, `state.json`, `stopped`,
+  `watchdog.ps1`, `watchdog.log`) and `agent-handled.json` in the data folder. The installer ships the
+  script as `resources\watchdog.ps1`. Uninstalling does not remove the task; it does nothing once the
+  exe is gone (`schtasks /Delete /TN AiSignXWatchdog /F` removes it).
+
+Honest limits:
+
+- A scheduled task restarts the player within about a minute, not instantly.
+- It protects against crashes and hangs, not against a local user who kills the task, edits it or
+  deletes the agent folder.
+- No reboot and no updates (not included in this release).
+- After a Windows restart the player only returns if Windows logs the user in again (auto-logon,
+  see the checklist below). The task runs only while that user is logged on.
+- Only an installed app registers the task, not `npm start`.
+
+Manual test checklist (a real PC; nothing here has run on hardware yet):
+
+1. Install, pair, enable Watchdog, Restart and Logs on the display. Within a minute `schtasks /Query /TN AiSignXWatchdog` shows the task, and the display page shows the agent capabilities.
+2. End the player in Task Manager: it is back within about 1-2 minutes, no console window flashes, and the display shows 1 restart.
+3. Suspend the main process (Process Explorer): after about 90 s the watchdog kills and restarts it.
+4. Quit with Ctrl+Alt+Q and the PIN: it stays closed. Start it by hand: the watchdog resumes.
+5. Kill it 7 times within an hour: the 7th time it is not restarted and the display shows "gave up".
+6. Turn Watchdog off in the admin: the task disappears; killing the player does nothing.
+7. Press Restart player: the screen restarts within seconds, the command shows done once; a second press works again.
+8. Press Collect logs: a download appears on the display page; check it holds no token, cookie, PIN hash or certificate pin.
+9. With Restart off, a restart command is refused ("switched off"). Pull the network during a log upload: the command ends failed, never twice.
+10. Stop the server for a few minutes: the player shows the offline page and is not restarted by the watchdog.
+11. Reboot with auto-logon: the player comes back (login item) and the task keeps running.
+
 ## Kiosk PC checklist (Windows)
 
 - A dedicated Windows user with automatic logon.
@@ -146,7 +192,7 @@ Data lives in `%APPDATA%\AiSignX Player\v3` (`~/.config/AiSignX Player/v3` on Li
 |---|---|
 | `config.json` | `serverUrl`, `port`, `certPin` (`sha256`, `caPem`), `autostart`, and from the server `unlock` (PIN hash), `allowInput`, `kioskLock` |
 | `client_id.txt` | 32 hex characters, created once |
-| `aisignx-player.log` | Log, truncated at 2 MB. Never contains cookies or request bodies. |
+| `aisignx-player.log` | Log; at 2 MB it moves to `aisignx-player.log.1` (one older file is kept). Never contains cookies or request bodies. |
 | `page-cache\` | Snapshot of `/player/` and its scripts |
 | `media\` | Cached media and `index.json`; LRU, at most 10 GB or half the free disk space |
 
@@ -174,6 +220,9 @@ src/main.js            app lifecycle, IPC, wiring
 src/config.js          config.json, client_id, server URL rules
 src/trust.js           CA list, pinning agent, certificate capture
 src/health.js          setup's /healthz test
+src/agent.js           device agent: commands, heartbeat file, watchdog task
+src/agent/             logic (pure rules), task (schtasks)
+resources/watchdog.ps1 the watchdog script (shipped with the installer)
 src/proxy/             loopback proxy: server, upstream, page-cache, media-cache, range
 src/window.js          player window and watchdogs
 src/kiosk.js           blocked keys, control keys, shortcuts, keep-awake, autostart
@@ -187,4 +236,4 @@ test/                  node:test unit tests
 
 ## Deferred
 
-Auto-update, remote restart, macOS builds and code signing come later.
+Auto-update, remote reboot, macOS builds and code signing come later.

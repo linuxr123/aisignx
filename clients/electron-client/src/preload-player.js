@@ -26,6 +26,10 @@ if (shell && shell.port && location.origin === 'http://127.0.0.1:' + shell.port)
     capture: () => ipcRenderer.invoke('shell-capture').catch(() => null),
     // {uptime_s, cache: {files, bytes}, storage_free_bytes} or null.
     stats: () => { try { return ipcRenderer.sendSync('shell-stats'); } catch (e) { return null; } },
+    // The page's liveness note (JSON, about every 10 s) for the watchdog's heartbeat file.
+    alive: (json) => {
+      if (typeof json === 'string' && json.length < 2048) ipcRenderer.send('shell-alive', json);
+    },
     // `unlock` / `lock` SSE commands, as JSON; main validates them.
     onCommand: (json) => {
       if (typeof json === 'string' && json.length < 1024) ipcRenderer.send('shell-command', json);

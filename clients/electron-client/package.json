@@ -26,6 +26,12 @@
       "src/**/*",
       "assets/icon.*"
     ],
+    "extraResources": [
+      {
+        "from": "resources/watchdog.ps1",
+        "to": "watchdog.ps1"
+      }
+    ],
     "win": {
       "icon": "assets/icon.ico",
       "target": [

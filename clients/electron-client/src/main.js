@@ -19,6 +19,7 @@ const { runSmoke, tempProfile } = require('./smoke');
 const unlock = require('./unlock');
 const { createUnlockWindow } = require('./unlock-window');
 const { createLock, parseCommand } = require('./lock');
+const { createAgent } = require('./agent');
 
 function argValue(name) {
   const hit = process.argv.find((a) => a.startsWith('--' + name + '='));
@@ -50,7 +51,7 @@ const S = {
   clientId: '',
   proxy: null, upstream: null, pageCache: null, mediaCache: null,
   player: null, setup: null, cookie: '', retryTimer: null, quitting: false,
-  gate: null, unlockWin: null, lock: null,
+  gate: null, unlockWin: null, lock: null, agent: null, sessionEnd: false,
 };
 
 function origin() {
@@ -64,7 +65,7 @@ function shellInfo() {
     device: (os.hostname() + ' / ' + os.version()).slice(0, 120),
     client_id: S.clientId,
     admin_url: S.cfg.serverUrl,
-    caps: ['capture', 'pin-exit', 'controls', 'kiosk-lock'],
+    caps: ['capture', 'pin-exit', 'controls', 'kiosk-lock'].concat(S.agent ? ['agent'] : []),
   };
 }
 
@@ -113,7 +114,7 @@ async function startPlayer() {
     });
     S.player.win.on('closed', () => { S.player = null; });
     // Windows logoff or shutdown: a locked window must not hold it up.
-    S.player.win.on('session-end', () => { S.quitting = true; });
+    S.player.win.on('session-end', () => { S.quitting = true; S.sessionEnd = true; });
   }
   try {
     await startProxy();
@@ -155,6 +156,7 @@ async function onSaved(cfg, { serverChanged }) {
 async function onForget() {
   if (S.player && !S.player.win.isDestroyed()) S.player.win.destroy();
   await wipeServerData();
+  if (S.agent) S.agent.disableWatchdog().catch(() => {});
   S.cfg = config.saveConfig(DATA, Object.assign({}, S.cfg,
     { serverUrl: '', certPin: null, unlock: null, allowInput: true, kioskLock: false }));
   S.lock.configure({ kioskLock: false });
@@ -188,7 +190,11 @@ function registerIpc() {
   ipcMain.on('shell-manifest', (event, json) => {
     if (!fromPlayer(event) || typeof json !== 'string') return;
     applySettings(json);
+    if (S.agent) S.agent.onManifest(json);
     if (S.mediaCache) S.mediaCache.onManifest(json);
+  });
+  ipcMain.on('shell-alive', (event, json) => {
+    if (fromPlayer(event) && S.agent) S.agent.onAlive(json);
   });
   ipcMain.handle('shell-capture', async (event) => (fromPlayer(event) ? capture() : null));
   ipcMain.on('shell-stats', (event) => {
@@ -252,6 +258,7 @@ function stats() {
     const st = fs.statfsSync(DATA);
     out.storage_free_bytes = st.bavail * st.bsize;
   } catch (e) { /* not reported */ }
+  if (S.agent) out.agent = S.agent.stats();
   return out;
 }
 
@@ -263,12 +270,32 @@ function lockDownSession() {
   ses.cookies.on('changed', (event, cookie) => { if (cookie.name === COOKIE_NAME) refreshCookie(); });
 }
 
+function startAgent() {
+  S.agent = createAgent({
+    dataDir: DATA,
+    version: app.getVersion(),
+    log,
+    isPackaged: app.isPackaged,
+    exe: process.execPath,
+    exeArgs: process.argv.slice(1).filter((a) => a.startsWith('--user-data-dir=')),
+    scriptSource: path.join(app.isPackaged ? process.resourcesPath : path.join(__dirname, '..', 'resources'), 'watchdog.ps1'),
+    getUpstream: () => S.upstream,
+    getToken: () => S.cookie,
+    getConfig: () => S.cfg,
+    readLogs: () => log.readAll(),
+    offlinePage: () => !!S.player && !S.player.win.isDestroyed() && S.player.win.webContents.getURL().startsWith('file:'),
+    relaunch: () => { S.sessionEnd = true; app.relaunch(); app.exit(0); },
+  });
+  S.agent.start();
+}
+
 // ---- Startup.
 async function main() {
   lockDownSession();
   registerIpc();
   S.clientId = config.clientId(DATA);
   S.gate = unlock.createGate({ dataDir: DATA });
+  if (!SMOKE) startAgent();
   S.lock = createLock();
   S.lock.onChange((state) => {
     log.info('lock state', state);
@@ -350,7 +377,11 @@ if (!SMOKE && !app.requestSingleInstanceLock()) {
   app.on('window-all-closed', () => {
     if (!S.setup || !S.setup.window) app.quit();
   });
-  app.on('before-quit', () => { S.quitting = true; });
+  app.on('before-quit', () => {
+    S.quitting = true;
+    // A deliberate quit (PIN exit, setup Quit, window closed): the watchdog must not restart it.
+    if (S.agent && !S.sessionEnd) S.agent.markStopped();
+  });
   app.on('will-quit', () => {
     kiosk.unregisterShortcuts();
     kiosk.releaseAwake();
