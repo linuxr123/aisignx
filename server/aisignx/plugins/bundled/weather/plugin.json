@@ -1,0 +1,53 @@
+{
+  "key": "weather",
+  "name": "Weather",
+  "version": "3.0.0",
+  "icon": "cloud-sun",
+  "description": "Current conditions, the next hours and a daily forecast for one place.",
+  "render": "frame",
+  "files": ["index.html", "main.js", "icons.js", "style.css"],
+  "default_duration": 15,
+  "ends_itself": false,
+  "data": {
+    "ttl": 600,
+    "min_ttl": 300,
+    "fetch_budget_s": 15,
+    "keys": ["location.lat", "location.lon", "units"],
+    "hosts": ["api.open-meteo.com", "customer-api.open-meteo.com", "api.met.no"],
+    "rate": {"api.open-meteo.com": 60, "customer-api.open-meteo.com": 120, "api.met.no": 30},
+    "max_bytes": 2097152
+  },
+  "schema": [
+    {"name": "location", "type": "location", "label": "Place", "required": true,
+     "help": "Search for a town or postal code with Find, or type latitude,longitude. The label is what the screen shows."},
+    {"name": "units", "type": "select", "label": "Units", "default": "metric",
+     "options": [{"value": "metric", "label": "Metric (°C, km/h, mm)"},
+                 {"value": "imperial", "label": "Imperial (°F, mph, in)"}]},
+    {"name": "layout", "type": "select", "label": "Layout", "default": "full",
+     "options": [{"value": "full", "label": "Full: now, details, hours and days"},
+                 {"value": "compact", "label": "Compact: now and days"},
+                 {"value": "current", "label": "Current conditions only"}]},
+    {"name": "days", "type": "integer", "label": "Days in the forecast", "min": 3, "max": 7,
+     "default": 5, "show_if": {"layout": "full"}},
+    {"name": "show_hourly", "type": "boolean", "label": "Show the next hours", "default": true,
+     "show_if": {"layout": "full"}},
+    {"name": "theme", "type": "select", "label": "Theme", "default": "auto",
+     "options": [{"value": "auto", "label": "Auto: colours follow the weather"},
+                 {"value": "dark", "label": "Dark"},
+                 {"value": "light", "label": "Light"}]},
+    {"name": "refresh", "type": "integer", "label": "Refresh every (seconds)", "min": 300,
+     "max": 3600, "default": 600}
+  ],
+  "settings": [
+    {"name": "provider", "type": "select", "label": "Weather provider", "default": "open-meteo",
+     "help": "Open-Meteo is free for non-commercial use; businesses need an Open-Meteo API key (AISIGNX_OPENMETEO_KEY) or MET Norway. MET Norway is free for any use but requires the contact e-mail or URL above.",
+     "options": [{"value": "open-meteo", "label": "Open-Meteo"},
+                 {"value": "met-norway", "label": "MET Norway", "requires_contact": true}]}
+  ],
+  "secrets": [
+    {"name": "openmeteo_key", "env": "AISIGNX_OPENMETEO_KEY",
+     "label": "Open-Meteo API key (commercial use)"}
+  ],
+  "attribution": "Weather data: Open-Meteo.com (CC BY 4.0)",
+  "terms": "Open-Meteo: free for non-commercial use under CC BY 4.0; commercial use needs an API key (AISIGNX_OPENMETEO_KEY), which also switches to customer-api.open-meteo.com. Place-name search uses Open-Meteo geocoding and postal codes use OpenStreetMap Nominatim (one request per second). MET Norway (api.met.no): free including commercial use under CC BY 4.0 and NLOD; requires a contact e-mail or URL in the User-Agent. Only coordinates are sent, never anything about your screens."
+}

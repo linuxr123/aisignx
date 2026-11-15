@@ -1,0 +1,210 @@
+/* Stocks plugin. Page chrome is sized in vmin; grid and board sizes use --u (px), which
+   main.js sets from the space each card or row gets, so 16:9 and 9:16 both fill well. */
+#root.stk {
+  --bg: #0a1020;
+  --bg2: #16213b;
+  --fg: #f8fafc;
+  --muted: #94a3b8;
+  --card: rgba(255, 255, 255, 0.055);
+  --card-edge: rgba(255, 255, 255, 0.08);
+  --line: rgba(255, 255, 255, 0.09);
+  --up: #34d399;
+  --down: #fb7185;
+  --flat: #94a3b8;
+  --up-bg: rgba(52, 211, 153, 0.16);
+  --down-bg: rgba(251, 113, 133, 0.16);
+  --flat-bg: rgba(148, 163, 184, 0.16);
+  --shadow: none;
+  --u: 20px;
+  background: radial-gradient(120% 90% at 0% 0%, var(--bg2) 0%, var(--bg) 70%);
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+#root.stk-light {
+  --bg: #e9eef6;
+  --bg2: #ffffff;
+  --fg: #0f172a;
+  --muted: #5b6b82;
+  --card: #ffffff;
+  --card-edge: rgba(15, 23, 42, 0.06);
+  --line: rgba(15, 23, 42, 0.09);
+  --up: #047857;
+  --down: #be123c;
+  --flat: #64748b;
+  --up-bg: rgba(4, 120, 87, 0.11);
+  --down-bg: rgba(190, 18, 60, 0.1);
+  --flat-bg: rgba(100, 116, 139, 0.12);
+  --shadow: 0 0.4vmin 1.6vmin rgba(15, 23, 42, 0.08);
+}
+
+.stk-app {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 4vmin 4vmin 5.5vmin;
+}
+
+/* Header: title and "As of 14:32". The right side stays free for the SDK's stale badge. */
+.stk-head { flex: none; margin: 0 22vmin 3vmin 0; min-width: 0; }
+.stk-title {
+  margin: 0 0 0.8vmin;
+  font-size: 6.2vmin;
+  font-weight: 750;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stk-meta { font-size: 2.6vmin; color: var(--muted); white-space: nowrap; }
+.stk-head-plain { margin-bottom: 2vmin; }
+.stk-head-plain .stk-meta { font-size: 3vmin; }
+.stk-asof + .stk-delayed::before { content: "\00B7"; margin: 0 1vmin; }
+.stk-body { position: relative; flex: 1 1 auto; min-height: 0; }
+
+/* Shared quote parts. */
+.stk-sym { font-weight: 800; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.stk-name { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.stk-price { font-weight: 700; white-space: nowrap; overflow: hidden; }
+.stk-chg { font-weight: 600; white-space: nowrap; color: var(--flat); }
+.stk-pill {
+  flex: none;
+  font-weight: 700;
+  white-space: nowrap;
+  border-radius: 999px;
+  color: var(--flat);
+  background: var(--flat-bg);
+}
+.stk-up .stk-chg, .stk-up .stk-pill { color: var(--up); }
+.stk-down .stk-chg, .stk-down .stk-pill { color: var(--down); }
+.stk-up .stk-pill { background: var(--up-bg); }
+.stk-down .stk-pill { background: var(--down-bg); }
+
+/* Grid of cards: a centred, wrapping row, so a short last row sits in the middle. */
+.stk-grid {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: center;
+}
+.stk-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: calc(var(--u) * 0.9) calc(var(--u) * 1.1);
+  border-radius: calc(var(--u) * 0.7);
+  border: 1px solid var(--card-edge);
+  border-left: calc(var(--u) * 0.28) solid var(--flat);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.stk-card.stk-up { border-left-color: var(--up); }
+.stk-card.stk-down { border-left-color: var(--down); }
+.stk-card-top { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 0.6); min-width: 0; }
+.stk-card .stk-sym { font-size: calc(var(--u) * 1.5); }
+.stk-card .stk-pill { font-size: calc(var(--u) * 0.95); padding: calc(var(--u) * 0.22) calc(var(--u) * 0.65); }
+.stk-card .stk-name { font-size: calc(var(--u) * 0.85); margin-top: calc(var(--u) * 0.2); min-height: 1.25em; }
+.stk-card .stk-price { font-size: calc(var(--u) * 2.6); line-height: 1.1; }
+.stk-card .stk-chg { font-size: calc(var(--u) * 1.05); margin-top: calc(var(--u) * 0.15); }
+
+/* Board: one row per symbol, in one or two columns. */
+.stk-boards {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.stk-board { display: flex; flex-direction: column; flex: none; min-width: 0; }
+.stk-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(var(--u) * 9) calc(var(--u) * 6.5) calc(var(--u) * 7.5);
+  column-gap: calc(var(--u) * 1.2);
+  align-items: center;
+  box-sizing: border-box;
+  min-height: var(--rowh, calc(var(--u) * 2.8));
+  padding: calc(var(--u) * 0.3) calc(var(--u) * 0.9);
+  border-bottom: 1px solid var(--line);
+}
+.stk-board.stk-nopct .stk-row { grid-template-columns: minmax(0, 1fr) calc(var(--u) * 9) calc(var(--u) * 6.5); }
+.stk-row:nth-child(odd):not(.stk-row-head) { background: var(--card); border-radius: calc(var(--u) * 0.4); }
+.stk-row-head {
+  min-height: 0;
+  padding-bottom: calc(var(--u) * 0.4);
+  color: var(--muted);
+  font-size: calc(var(--u) * 0.6);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom-width: 2px;
+}
+.stk-row > :not(:first-child) { text-align: right; }
+.stk-id { display: flex; flex-direction: column; min-width: 0; }
+.stk-row .stk-sym { font-size: calc(var(--u) * 1.15); line-height: 1.15; }
+.stk-row .stk-name { font-size: calc(var(--u) * 0.65); line-height: 1.25; }
+.stk-row .stk-price { font-size: calc(var(--u) * 1.25); }
+.stk-row .stk-chg { font-size: calc(var(--u) * 1); }
+.stk-row .stk-pill { justify-self: end; font-size: calc(var(--u) * 0.9); padding: calc(var(--u) * 0.18) calc(var(--u) * 0.6); }
+
+/* Ticker: one band that scrolls without end; data refreshes update the text in place. */
+.stk-ticker {
+  position: absolute;
+  top: 0; right: -4vmin; bottom: 0; left: -4vmin;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+}
+.stk-band {
+  width: 100%;
+  overflow: hidden;
+  padding: 3.6vmin 0;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+.stk-track { display: flex; width: max-content; will-change: transform; }
+.stk-track.stk-go {
+  animation-name: stk-scroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes stk-scroll {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+.stk-run { display: flex; flex: none; }
+.stk-tick {
+  display: flex;
+  align-items: baseline;
+  flex: none;
+  padding: 0 4.5vmin;
+  white-space: nowrap;
+  border-right: 0.35vmin solid var(--line);
+}
+.stk-tick > * + * { margin-left: 2.2vmin; }
+.stk-tick .stk-sym { font-size: 7.5vmin; overflow: visible; }
+.stk-tick .stk-name { font-size: 3.4vmin; overflow: visible; }
+.stk-tick .stk-price { font-size: 7.5vmin; font-weight: 600; overflow: visible; }
+.stk-tick .stk-chg { font-size: 5.2vmin; }
+
+/* A price that moved since the last refresh lights up once. */
+.stk-flash-up, .stk-flash-down { animation: stk-flash 1.6s ease-out; border-radius: 0.3em; }
+.stk-flash-up { --flash: var(--up-bg); }
+.stk-flash-down { --flash: var(--down-bg); }
+@keyframes stk-flash {
+  from { background-color: var(--flash); }
+  to { background-color: transparent; }
+}
+
+/* The SDK's attribution line, toned to the theme (it is a sibling of #root). */
+#root.stk ~ .aisx-attribution { background: transparent; color: rgba(148, 163, 184, 0.85); font-size: 1.9vmin; }
+#root.stk-light ~ .aisx-attribution { color: #5b6b82; }

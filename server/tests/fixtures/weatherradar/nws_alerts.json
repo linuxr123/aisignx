@@ -1,0 +1,15 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type": "Feature", "properties": {"event": "Winter Weather Advisory", "severity": "Minor",
+      "headline": "Winter Weather Advisory issued November 15 at 4:00AM CST until November 15 at 6:00PM CST by NWS Des Moines IA",
+      "expires": "2025-11-15T18:00:00-06:00", "ends": "2025-11-15T18:00:00-06:00"}},
+    {"type": "Feature", "properties": {"event": "Severe Thunderstorm Warning", "severity": "Severe",
+      "headline": "Severe Thunderstorm Warning   issued November 15 at 11:02AM CST until November 15 at 11:45AM CST by NWS Des Moines IA",
+      "expires": "2025-11-15T11:45:00-06:00", "ends": null}},
+    {"type": "Feature", "properties": {"event": "Severe Thunderstorm Warning", "severity": "Severe",
+      "headline": "Severe Thunderstorm Warning   issued November 15 at 11:02AM CST until November 15 at 11:45AM CST by NWS Des Moines IA",
+      "expires": "2025-11-15T11:45:00-06:00"}},
+    {"type": "Feature", "properties": {"severity": "Extreme"}}
+  ]
+}

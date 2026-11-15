@@ -1,0 +1,248 @@
+/* Clock plugin. Sized in vh/vw (min of both), so 16:9 and 9:16 screens both get large type;
+   main.js scales the layout down (ctx.fit) if a long date or label would not fit. */
+
+body.clock {
+  --bg: radial-gradient(ellipse at 50% 28%, #1c2433 0%, #0b0e15 58%, #05060a 100%);
+  --fg: #f3f5fa;
+  --muted: rgba(243, 245, 250, 0.66);
+  --dim: rgba(243, 245, 250, 0.11);
+  --accent: #7cc4ff;
+  --glow: rgba(124, 196, 255, 0.55);
+  background: #05060a;
+  background: var(--bg);
+  color: var(--fg);
+}
+body.theme-minimal-light {
+  --bg: linear-gradient(160deg, #f7f4ee 0%, #ebe6dc 100%);
+  --fg: #16181d;
+  --muted: rgba(22, 24, 29, 0.62);
+  --accent: #c2410c;
+  background: #f2eee6;
+  background: var(--bg);
+}
+body.theme-analog-classic {
+  --bg: radial-gradient(ellipse at 35% 30%, #232a35 0%, #10141b 60%, #07090d 100%);
+  --accent: #ff5a4e;
+}
+body.theme-flip-clock {
+  --bg: radial-gradient(ellipse at 50% 30%, #1d1d21 0%, #0b0b0d 70%);
+  --accent: #f5b942;
+}
+body.theme-word-clock {
+  --bg: radial-gradient(ellipse at 30% 20%, #1e1b3a 0%, #0c0918 55%, #050309 100%);
+  --dim: rgba(255, 255, 255, 0.1);
+  --glow: rgba(170, 150, 255, 0.6);
+}
+
+/* A safe margin all round: ctx.fit scales the layout to #root, so nothing touches the edge. */
+body.clock #root {
+  top: 4vmin; left: 4vmin; right: 4vmin; bottom: 4vmin;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.clk-stage [hidden], .clk-stage[hidden] { display: none !important; }
+
+/* ---- Common layout: label, face, date (one column, centred). */
+.clk-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  white-space: nowrap;
+  gap: 3.2vmin;
+  font-variant-numeric: tabular-nums;
+}
+.clk-label {
+  font-size: min(5.6vh, 6vw);
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  /* A long label wraps (balanced) instead of shrinking the whole clock. */
+  max-width: 84vw;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  line-height: 1.25;
+}
+.clk-date {
+  font-size: min(5.4vh, 5.4vw);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.clk-digital {
+  font-size: min(9vh, 9vw);
+  font-weight: 300;
+  line-height: 1;
+}
+
+/* ---- Minimal (dark and light). */
+.clk-time {
+  display: flex;
+  align-items: baseline;
+  font-size: min(40vh, 26vw);
+  font-weight: 200;
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+}
+body.with-seconds .clk-time { font-size: min(36vh, 22vw); }
+.clk-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  align-self: stretch;
+  margin-left: 0.08em;
+  padding: 0.1em 0 0.02em;
+}
+.clk-sec {
+  font-size: 0.34em;
+  font-weight: 300;
+  line-height: 0.9;
+  color: var(--accent);
+}
+.clk-time .clk-ampm {
+  font-size: 0.17em;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.clk-sec:only-child, .clk-ampm[hidden] + .clk-sec { margin-top: auto; }
+@media (orientation: portrait) {
+  .clk-time { font-size: min(32vh, 38vw); }
+  body.with-seconds .clk-time { font-size: min(28vh, 32vw); }
+}
+
+/* ---- Analog and word clock: the face beside the text (landscape) or above it (portrait). */
+@media (orientation: landscape) {
+  .clk-analog, .clk-words {
+    display: grid;
+    grid-template-columns: auto auto;
+    grid-template-rows: 1fr auto auto auto 1fr;
+    grid-template-areas: "face ." "face label" "face digital" "face date" "face .";
+    column-gap: 6vw;
+    row-gap: 2.6vh;
+    align-items: center;
+    text-align: left;
+  }
+  .clk-analog > .clk-face, .clk-words > .clk-face { grid-area: face; }
+  .clk-analog > .clk-label, .clk-words > .clk-label { grid-area: label; max-width: 38vw; }
+  .clk-analog > .clk-digital, .clk-words > .clk-digital { grid-area: digital; }
+  .clk-analog > .clk-date, .clk-words > .clk-date { grid-area: date; }
+}
+@media (orientation: portrait) {
+  .clk-analog > .clk-digital, .clk-words > .clk-digital { order: 3; }
+  .clk-analog > .clk-date, .clk-words > .clk-date { order: 4; }
+}
+
+/* Analog dial (SVG). */
+.clk-dial { display: block; width: min(78vh, 42vw); height: min(78vh, 42vw); }
+@media (orientation: portrait) {
+  .clk-dial { width: min(84vw, 56vh); height: min(84vw, 56vh); }
+}
+.clk-rim { fill: none; stroke: rgba(255, 255, 255, 0.16); stroke-width: 2; }
+.clk-plate { fill: rgba(255, 255, 255, 0.035); }
+.clk-mark { stroke: rgba(255, 255, 255, 0.35); stroke-width: 1; }
+.clk-mark.major { stroke: rgba(255, 255, 255, 0.9); stroke-width: 2.6; }
+.clk-num { fill: rgba(255, 255, 255, 0.88); font-size: 15px; font-weight: 500; }
+.clk-hand line { stroke: var(--fg); }
+.clk-hand.hour line, .clk-hand.minute line { filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.6)); }
+.clk-hand.second line { stroke: var(--accent); }
+.clk-cap { fill: var(--fg); }
+.clk-cap.second { fill: var(--accent); }
+
+/* ---- Flip clock. */
+.clk-flip {
+  display: flex;
+  align-items: center;
+  font-size: min(46vh, 25vw);
+  font-weight: 600;
+  line-height: 1;
+}
+body.with-seconds .clk-flip { font-size: min(34vh, 15.5vw); }
+.clk-group { display: flex; gap: 0.06em; }
+.clk-colon {
+  padding: 0 0.08em 0.08em;
+  font-size: 0.7em;
+  font-weight: 400;
+  color: var(--muted);
+}
+.clk-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.7em;
+  height: 1.04em;
+  border-radius: 0.07em;
+  background: linear-gradient(180deg, #2a2b31 0%, #222328 49.6%, #1a1b1f 50.4%, #141518 100%);
+  box-shadow: 0 0.03em 0.08em rgba(0, 0, 0, 0.7), inset 0 0.005em 0 rgba(255, 255, 255, 0.08);
+  color: #f2f2f2;
+  overflow: hidden;
+  perspective: 3em;
+}
+.clk-card.blank { display: none; }
+.clk-digit { display: block; transform-origin: 50% 50%; backface-visibility: hidden; }
+.clk-hinge {
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 0.014em;
+  margin-top: -0.007em;
+  background: rgba(0, 0, 0, 0.75);
+}
+.clk-card.flip .clk-digit { animation: clk-flip 0.42s cubic-bezier(0.3, 0.7, 0.4, 1); }
+@keyframes clk-flip {
+  from { transform: rotateX(-88deg); opacity: 0.3; }
+  to { transform: rotateX(0deg); opacity: 1; }
+}
+.clk-flip + .clk-ampm {
+  margin-top: 0.5em;
+  font-size: min(6vh, 6vw);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
+@media (orientation: portrait) {
+  .clk-flip { flex-direction: column; gap: 0.1em; font-size: min(40vw, 24vh); }
+  body.with-seconds .clk-flip { font-size: min(34vw, 17vh); }
+  .clk-colon { display: none; }
+}
+
+/* ---- Word clock. */
+.clk-words > .clk-face { display: flex; flex-direction: column; align-items: center; }
+.clk-grid {
+  display: grid;
+  grid-template-columns: repeat(11, 1em);
+  grid-auto-rows: 1.12em;
+  align-items: center;
+  justify-items: center;
+  font-size: min(6.4vh, 4vw);
+  font-weight: 600;
+  line-height: 1;
+}
+@media (orientation: portrait) {
+  .clk-grid { font-size: min(7vw, 4.2vh); }
+}
+.clk-letter { color: var(--dim); transition: color 0.8s ease, text-shadow 0.8s ease; }
+.clk-letter.on { color: var(--fg); text-shadow: 0 0 0.35em var(--glow); }
+.clk-dots { display: flex; gap: 0.7em; margin-top: 0.5em; font-size: min(6.4vh, 4vw); }
+@media (orientation: portrait) {
+  .clk-dots { font-size: min(7vw, 4.2vh); }
+}
+.clk-dot {
+  width: 0.2em;
+  height: 0.2em;
+  border-radius: 50%;
+  background: var(--dim);
+  transition: background 0.8s ease, box-shadow 0.8s ease;
+}
+.clk-dot.on { background: var(--fg); box-shadow: 0 0 0.3em var(--glow); }
+.clk-spoken {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.clk-words .clk-digital { font-size: min(7vh, 7vw); color: var(--muted); }

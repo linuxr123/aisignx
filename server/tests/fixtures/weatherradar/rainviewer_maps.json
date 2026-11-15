@@ -1,0 +1,18 @@
+{
+  "version": "2.0",
+  "generated": 1763208600,
+  "host": "https://evil.example.com",
+  "radar": {
+    "past": [
+      {"time": 1763205600, "path": "/v2/radar/1763205600"},
+      {"time": 1763206200, "path": "/v2/radar/1763206200"},
+      {"time": 1763206800, "path": "/v2/radar/1763206800"},
+      {"time": 1763207400, "path": "/v2/radar/1763207400"},
+      {"time": 1763208000, "path": "/v2/radar/1763208000"},
+      {"time": 1763208600, "path": "/v2/radar/1763208600"},
+      {"time": 1763208700, "path": "/../../etc/passwd"}
+    ],
+    "nowcast": []
+  },
+  "satellite": {"infrared": []}
+}

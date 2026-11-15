@@ -1,0 +1,344 @@
+/* AiSignX news feed plugin. Sizes in vmin so 16:9 and 9:16 screens both work. */
+.rss {
+  --bg1: #0b1322;
+  --bg2: #16213a;
+  --fg: #f4f6fb;
+  --muted: #a3afc4;
+  --accent: #ff6b3d;
+  --card: rgba(255, 255, 255, 0.06);
+  --line: rgba(255, 255, 255, 0.12);
+  --shade: rgba(4, 8, 16, 0.85);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(160deg, var(--bg1) 0%, var(--bg2) 100%);
+  color: var(--fg);
+  line-height: 1.2;
+}
+.rss.theme-light {
+  --bg1: #f6f7fa;
+  --bg2: #e7ebf2;
+  --fg: #101828;
+  --muted: #556074;
+  --accent: #d9480f;
+  --card: #ffffff;
+  --line: rgba(16, 24, 40, 0.12);
+  --shade: rgba(246, 247, 250, 0.92);
+}
+
+/* ---- header and footer ---- */
+.rss-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2vmin;
+  padding: 3.2vmin 4.5vmin 2.4vmin;
+  min-width: 0;
+}
+.rss.has-badge .rss-head { padding-right: 24vmin; } /* room for the "Updated" badge */
+.rss-mark {
+  flex: none;
+  width: 1.2vmin;
+  height: 6vmin;
+  border-radius: 0.6vmin;
+  background: var(--accent);
+}
+.rss-head-text { min-width: 0; }
+.rss-title {
+  margin: 0;
+  font-size: 5vmin;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  -webkit-line-clamp: 2;
+}
+.rss-host {
+  margin-top: 0.4vmin;
+  font-size: 2.3vmin;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rss-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2vmin;
+  padding: 1.6vmin 4.5vmin 3vmin;
+}
+.rss-progress {
+  flex: 1;
+  height: 0.6vmin;
+  border-radius: 0.3vmin;
+  background: var(--line);
+  overflow: hidden;
+}
+.rss-progress-bar {
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+}
+.rss-count {
+  flex: none;
+  font-size: 2.2vmin;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.rss-meta {
+  color: var(--muted);
+  font-size: 2.3vmin;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rss-meta-sep { margin: 0 1vmin; opacity: 0.6; }
+
+/* Shared: clamped text and pictures. */
+.rss-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.rss-pic {
+  position: relative;
+  overflow: hidden;
+  background: var(--card);
+}
+.rss-pic img {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.rss-pic img.is-loaded { opacity: 1; }
+.rss-pic.is-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent) -60%, var(--card) 70%);
+  color: var(--fg);
+  font-size: 6vmin;
+  font-weight: 800;
+  opacity: 0.85;
+}
+.rss-qr {
+  flex: none;
+  background: #fff;
+  border-radius: 1vmin;
+  padding: 0.6vmin;
+  box-sizing: border-box;
+}
+.rss-qr img { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+
+/* Pages and cards fade into each other. */
+.rss-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.rss-layer {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+.rss-layer.is-in { opacity: 1; }
+
+/* ---- list ---- */
+.rss-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.8vmin;
+  padding: 0 4.5vmin;
+  overflow: hidden;
+}
+.rss-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2.6vmin;
+  padding: 2vmin 2.4vmin;
+  border-radius: 1.6vmin;
+  background: var(--card);
+}
+.theme-light .rss-row { box-shadow: 0 0.3vmin 1.2vmin rgba(16, 24, 40, 0.08); }
+.rss-row .rss-pic {
+  flex: none;
+  width: 22vmin;
+  height: 12.4vmin;
+  border-radius: 1vmin;
+}
+.rss-row-body { flex: 1; min-width: 0; }
+.rss-row-title {
+  margin: 0;
+  font-size: 4vmin;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  -webkit-line-clamp: 2;
+}
+.rss-row-summary {
+  margin: 0.8vmin 0 0;
+  font-size: 2.6vmin;
+  line-height: 1.3;
+  color: var(--muted);
+  -webkit-line-clamp: 2;
+}
+.rss-row .rss-meta { margin-top: 0.9vmin; }
+.rss-row .rss-qr { width: 12.4vmin; height: 12.4vmin; }
+
+/* ---- one headline at a time ---- */
+.rss-card {
+  display: flex;
+  gap: 4vmin;
+  padding: 0 4.5vmin;
+}
+.rss-card .rss-pic {
+  flex: 0 0 52%;
+  border-radius: 2vmin;
+}
+.rss-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.rss-kicker {
+  font-size: 2.4vmin;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.rss-card-title {
+  margin: 1.4vmin 0 0;
+  font-size: 6vmin;
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  -webkit-line-clamp: 5;
+}
+.rss-card.no-pic .rss-card-title { font-size: 7.6vmin; -webkit-line-clamp: 4; }
+.rss-card-summary {
+  margin: 2.2vmin 0 0;
+  font-size: 3vmin;
+  line-height: 1.35;
+  color: var(--muted);
+  -webkit-line-clamp: 5;
+}
+.rss-card-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 3vmin;
+  margin-top: 3vmin;
+}
+.rss-card .rss-meta { font-size: 2.6vmin; }
+.rss-card .rss-qr { width: 16vmin; height: 16vmin; }
+
+/* ---- ticker: the latest headline as a card, the rest in the band ---- */
+.mode-ticker .rss-stage { margin-bottom: 3.5vmin; }
+.rss-band {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: 13vmin;
+  background: var(--shade);
+  border-top: 0.5vmin solid var(--accent);
+}
+.rss-band-label {
+  flex: none;
+  display: flex;
+  align-items: center;
+  max-width: 24vw;
+  padding: 0 3vmin;
+  background: var(--accent);
+  color: #fff;
+  font-size: 3vmin;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.rss-band-label span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rss-band-view {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.rss-track {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  will-change: transform;
+  animation-name: rss-scroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-duration: 60s;
+}
+.rss-track.is-paused { animation-play-state: paused; }
+.rss-tick {
+  font-size: 4.6vmin;
+  font-weight: 600;
+  padding-left: 3vmin;
+}
+.rss-tick-time {
+  margin-left: 1.6vmin;
+  font-size: 3vmin;
+  font-weight: 400;
+  color: var(--muted);
+}
+.rss-tick-sep {
+  display: inline-block;
+  width: 1.4vmin;
+  height: 1.4vmin;
+  margin-left: 3vmin;
+  border-radius: 50%;
+  background: var(--accent);
+}
+@keyframes rss-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* ---- portrait (9:16) ---- */
+@media (orientation: portrait) {
+  .rss-head { padding: 4vmin 5vmin 3vmin; }
+  .rss.has-badge .rss-head { padding-right: 26vmin; }
+  .rss-title { font-size: 6.4vmin; }
+  .rss-host { font-size: 3vmin; }
+  .rss-mark { height: 7.6vmin; }
+  .rss-page { padding: 0 5vmin; gap: 2.4vmin; }
+  .rss-row { align-items: flex-start; padding: 2.6vmin; }
+  .rss-row .rss-pic { width: 26vmin; height: 26vmin; }
+  .rss-row .rss-pic.is-blank { font-size: 10vmin; }
+  .rss-row-title { font-size: 5vmin; -webkit-line-clamp: 3; }
+  .rss-row-summary { font-size: 3.3vmin; -webkit-line-clamp: 3; }
+  .rss-row .rss-meta { font-size: 3vmin; }
+  .rss-row .rss-qr { width: 16vmin; height: 16vmin; }
+  .rss-card { flex-direction: column; padding: 0 5vmin; gap: 4vmin; }
+  .rss-card .rss-pic { flex: 0 0 auto; height: 46%; }
+  .rss-card-body { justify-content: flex-start; }
+  .rss-card-title { font-size: 7.4vmin; -webkit-line-clamp: 5; }
+  .rss-card.no-pic .rss-card-body { justify-content: center; }
+  .rss-card.no-pic .rss-card-title { font-size: 9vmin; -webkit-line-clamp: 6; }
+  .rss-card-summary { font-size: 4vmin; -webkit-line-clamp: 6; }
+  .rss-card .rss-meta { font-size: 3.4vmin; }
+  .rss-card .rss-qr { width: 22vmin; height: 22vmin; }
+  .rss-kicker { font-size: 3.2vmin; }
+  .rss-band { height: 15vmin; }
+  .rss-band-label { font-size: 3.2vmin; max-width: 30vw; }
+  .rss-tick { font-size: 5.6vmin; }
+  .rss-foot { padding: 2vmin 5vmin 4vmin; }
+  .rss-count { font-size: 3vmin; }
+}

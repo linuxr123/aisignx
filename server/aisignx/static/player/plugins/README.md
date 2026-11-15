@@ -142,4 +142,7 @@ window.AiSignX.pluginNative.example = {
   `setMuted(slide, false)` when it ends (restore the item's own mute setting).
 - `ctx.done()` is honoured only for plugins with `ends_itself`, and is ignored while the
   viewer has paused the player.
-- CSS classes must start with `pl-<key>-`.
+- CSS classes must start with a prefix unique to the plugin: `pl-<key>-` or a short form
+  of it (the image library uses `pl-imglib-`).
+
+The server side (plugin.json, config fields, Python hooks) is described in `docs/plugins.md`.

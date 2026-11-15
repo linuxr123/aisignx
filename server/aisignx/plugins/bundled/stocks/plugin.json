@@ -1,0 +1,48 @@
+{
+  "key": "stocks",
+  "name": "Stocks",
+  "version": "3.0.0",
+  "icon": "graph-up-arrow",
+  "description": "Stock quotes as a grid of cards, a board or a scrolling ticker. Quotes come from Finnhub through the server; the API key never reaches a screen.",
+  "render": "frame",
+  "files": ["index.html", "main.js", "style.css"],
+  "default_duration": 15,
+  "ends_itself": false,
+  "data": {
+    "ttl": 60,
+    "min_ttl": 60,
+    "fetch_budget_s": 20,
+    "keys": ["symbols"],
+    "hosts": ["finnhub.io"],
+    "rate": {"finnhub.io": 30},
+    "max_bytes": 65536
+  },
+  "schema": [
+    {"name": "symbols", "type": "string", "label": "Symbols", "required": true,
+     "max_length": 400, "pattern": "[A-Za-z0-9.:^, -]+",
+     "help": "Up to 20 ticker symbols separated by commas, for example AAPL, MSFT, BRK.B. Symbols that have not loaded yet show a dash."},
+    {"name": "title", "type": "string", "label": "Title", "max_length": 60,
+     "help": "Optional heading, for example Markets."},
+    {"name": "mode", "type": "select", "label": "Layout", "default": "grid",
+     "options": [{"value": "ticker", "label": "Ticker (scrolling band)"},
+                 {"value": "grid", "label": "Grid of cards"},
+                 {"value": "board", "label": "Board (one row per symbol)"}]},
+    {"name": "speed", "type": "select", "label": "Ticker speed", "default": "normal",
+     "options": [{"value": "slow", "label": "Slow"}, {"value": "normal", "label": "Normal"},
+                 {"value": "fast", "label": "Fast"}],
+     "show_if": {"mode": "ticker"}},
+    {"name": "show_name", "type": "boolean", "label": "Show company names", "default": true},
+    {"name": "show_pct", "type": "boolean", "label": "Show percent change", "default": true},
+    {"name": "theme", "type": "select", "label": "Theme", "default": "dark",
+     "options": [{"value": "dark", "label": "Dark"}, {"value": "light", "label": "Light"}]},
+    {"name": "refresh", "type": "integer", "label": "Refresh (seconds)", "min": 60, "max": 3600,
+     "default": 60, "help": "How often screens ask for new quotes. At least 60 seconds."}
+  ],
+  "settings": [
+    {"name": "delayed_label", "type": "boolean", "label": "Show \"Prices may be delayed\"",
+     "help": "Adds the notice next to the \"As of\" time on every stocks slide."}
+  ],
+  "secrets": [{"name": "finnhub_key", "env": "AISIGNX_FINNHUB_KEY", "label": "Finnhub API key"}],
+  "attribution": "Data: Finnhub",
+  "terms": "Quotes come from Finnhub (finnhub.io) and need a Finnhub API key in the AISIGNX_FINNHUB_KEY environment variable (restart after changing it). Finnhub's free plan is for personal, non-commercial use. Showing quotes on public or business screens is redistribution and may need a paid Finnhub plan and exchange display licences. Stocks slides are not shown on screens until the key is set."
+}

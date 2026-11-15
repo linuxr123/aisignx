@@ -1,7 +1,7 @@
 # Deployment
 
-How to run AiSignX for real screens: the server, start-up, the kiosk browser, and pointers to
-[HTTPS](https.md) and [Docker](docker.md).
+How to run AiSignX for real screens: the server, start-up, plugin network access, the kiosk
+browser, and pointers to [HTTPS](https.md) and [Docker](docker.md).
 For a quick test at home, `flask --app wsgi run` is enough.
 
 ## Run the server
@@ -65,6 +65,54 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 ```
+
+## Plugins
+
+Plugins (weather, radar, RSS, stocks; see [plugins.md](plugins.md)) make outbound requests from
+the **server**. Screens never contact these providers, except YouTube, which each screen loads
+itself.
+
+**Settings** (in `server/.env` or the service environment; restart after a change):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AISIGNX_PLUGIN_CACHE_DIR` | `plugin-cache` beside `instance/` | Where fetched plugin data is kept. Never backed up; it is fetched again after a restore. |
+| `AISIGNX_PLUGIN_CACHE_MB` | `500` | Size cap of that folder. Data nobody read for 7 days is removed daily. |
+| `AISIGNX_PLUGIN_HTTP_PROXY` | none | `http://host:port` of an HTTPS (CONNECT) proxy for plugin requests. Other proxy variables (`HTTPS_PROXY`, …) are ignored. Behind a proxy, the check against private addresses can only use local DNS answers. |
+| `AISIGNX_OPENMETEO_KEY` | none | Open-Meteo API key. Needed for commercial use of Open-Meteo weather and place search. |
+| `AISIGNX_FINNHUB_KEY` | none | Finnhub API key. The stocks plugin shows nothing without it. |
+
+Run one server process: the plugin cache, its rate limits and its background fetches are per
+process.
+
+**Outbound hosts** for a firewall allowlist. All use HTTPS on port 443 unless noted.
+
+| Plugin | Hosts |
+|---|---|
+| Weather | `api.open-meteo.com` (or `customer-api.open-meteo.com` with a key), or `api.met.no` |
+| Place search (weather, radar forms) | `geocoding-api.open-meteo.com` (or `customer-geocoding-api.open-meteo.com` with a key), `nominatim.openstreetmap.org` |
+| Weather radar | `api.rainviewer.com`, `tilecache.rainviewer.com` or `mesonet.agron.iastate.edu`; `tile.openstreetmap.org` (or your own tile server); `api.weather.gov` (US alerts) |
+| RSS / Atom | The feed hosts you enter, and the hosts of their images (HTTP or HTTPS, ports 80, 443, 8080 or 8443) |
+| Stocks | `finnhub.io` |
+| YouTube | From each **screen**, not the server: `www.youtube-nocookie.com` and YouTube's video and image hosts (`*.googlevideo.com`, `i.ytimg.com`, `*.ytimg.com`, `*.ggpht.com`, `www.google.com`) |
+| Clock, image library | none |
+
+**User-Agent.** Requests send `AiSignX/<version> (+https://github.com/linuxr123/aisignx)`.
+The admin can add a contact e-mail or URL on the plugins page; MET Norway requires one.
+
+**Terms and licences.** Choose providers that fit your use:
+
+| Provider | Terms in short |
+|---|---|
+| Open-Meteo | CC BY 4.0. Free for non-commercial use; commercial use needs a paid API key. |
+| MET Norway | CC BY 4.0 and NLOD, free including commercial use. Requires a contact in the User-Agent and respectful caching (AiSignX honours `Expires`). |
+| OpenStreetMap tiles | Light use only under the tile usage policy, attribution required. Busy or commercial deployments should use their own or a commercial tile server. Nominatim: at most one request per second (AiSignX enforces this). |
+| RainViewer | Free API with past radar frames and attribution; check its current limits before commercial use. |
+| Iowa Environmental Mesonet | Free US NEXRAD tiles. |
+| api.weather.gov | US government data, public domain. |
+| Finnhub | The free plan is for personal, non-commercial use. Showing quotes on public or business screens may need a paid plan and exchange display licences. |
+| YouTube | YouTube's Terms of Service apply; embeds may show ads; public playback rights are the operator's responsibility. |
+| RSS feeds | The publisher's terms apply to showing their content on public screens. |
 
 ## Reverse proxy and HTTPS
 

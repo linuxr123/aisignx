@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Harbour Town &amp; Bay News</title>
+    <link>https://www.example-news.test/</link>
+    <description>Local news</description>
+    <item>
+      <title>Ferry timetable changes from Monday</title>
+      <link>https://www.example-news.test/articles/ferry-timetable</link>
+      <description>&lt;p&gt;The &lt;b&gt;harbour ferry&lt;/b&gt; runs every 20 minutes.&lt;/p&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;p&gt;Evening sailings are unchanged.&lt;/p&gt;</description>
+      <pubDate>Mon, 09 Nov 2026 08:30:00 GMT</pubDate>
+      <media:content url="https://img.example-news.test/ferry.jpg" medium="image" width="1200" height="675"/>
+    </item>
+    <item>
+      <title>&lt;script&gt;alert("x")&lt;/script&gt;Library opens new reading room</title>
+      <link>/articles/library</link>
+      <description><![CDATA[<img src="https://img.example-news.test/library.png" onerror="alert(2)"> A quiet space with <a href="javascript:alert(3)">long</a> opening hours.]]></description>
+      <pubDate>Sun, 08 Nov 2026 17:05:00 +0100</pubDate>
+    </item>
+    <item>
+      <title>Weekend market moves indoors</title>
+      <link>javascript:alert(4)</link>
+      <description>Stalls will be in the town hall.</description>
+      <enclosure url="https://img.example-news.test/market.webp" type="image/webp" length="1000"/>
+    </item>
+    <item>
+      <title></title>
+      <description>An item with only a summary becomes its own headline.</description>
+    </item>
+    <item>
+      <title></title>
+      <description></description>
+    </item>
+  </channel>
+</rss>

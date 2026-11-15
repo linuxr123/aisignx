@@ -1,0 +1,16 @@
+{
+  "_note": "Finnhub API responses in their real shape (api/v1/quote and api/v1/stock/profile2), keyed by symbol. Values are illustrative.",
+  "quote": {
+    "AAPL": {"c": 189.84, "d": 1.23, "dp": 0.6522, "h": 190.32, "l": 187.71, "o": 188.02, "pc": 188.61, "t": 1731704400},
+    "MSFT": {"c": 415.5, "d": -3.1, "dp": -0.7406, "h": 419.78, "l": 414.12, "o": 418.9, "pc": 418.6, "t": 1731704400},
+    "SAP": {"c": 182.4, "d": -1.02, "dp": -0.5561, "h": 184.0, "l": 181.9, "o": 183.5, "pc": 183.42, "t": 1731700800},
+    "BINANCE:BTCUSDT": {"c": 67012.45, "d": 812.3, "dp": 1.227, "h": 67500, "l": 65900, "o": 66200.15, "pc": 66200.15, "t": 1731706000},
+    "NOPE": {"c": 0, "d": null, "dp": null, "h": 0, "l": 0, "o": 0, "pc": 0, "t": 0}
+  },
+  "profile2": {
+    "AAPL": {"country": "US", "currency": "USD", "exchange": "NASDAQ NMS - GLOBAL MARKET", "ipo": "1980-12-12", "marketCapitalization": 2900000, "name": "Apple Inc", "phone": "14089961010", "shareOutstanding": 15204.14, "ticker": "AAPL", "weburl": "https://www.apple.com/", "logo": "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png", "finnhubIndustry": "Technology"},
+    "MSFT": {"country": "US", "currency": "USD", "exchange": "NASDAQ NMS - GLOBAL MARKET", "ipo": "1986-03-13", "marketCapitalization": 3090000, "name": "Microsoft Corp", "ticker": "MSFT", "weburl": "https://www.microsoft.com/", "finnhubIndustry": "Technology"},
+    "SAP": {"country": "DE", "currency": "EUR", "exchange": "XETRA", "name": "SAP SE\u0007<b>", "ticker": "SAP", "finnhubIndustry": "Technology"},
+    "NOPE": {}
+  }
+}

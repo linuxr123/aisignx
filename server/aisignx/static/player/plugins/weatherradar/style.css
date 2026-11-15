@@ -1,0 +1,178 @@
+/* AiSignX weather radar. Sizes in vmin, so 16:9 and 9:16 screens both read well. */
+.wr { background: #0c111a; }
+
+/* Map: the base map and the radar frames, stacked and cropped to fill the screen. */
+.wr-map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; }
+.wr-base, .wr-frame {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+.wr-radar { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+.wr-frame { opacity: 0; transition: opacity 0.25s linear; }
+.wr-frame.wr-on { opacity: 0.92; }
+.wr-map::after {  /* a soft vignette keeps the edges calm behind the text */
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.45) 100%);
+}
+
+/* The place: the map is centred on it. */
+.wr-pin {
+  position: absolute;
+  top: 50%; left: 50%;
+  box-sizing: border-box;
+  width: 2.6vmin; height: 2.6vmin;
+  margin: -1.3vmin 0 0 -1.3vmin;
+  border: 0.45vmin solid #fff;
+  border-radius: 50%;
+  background: #ff4d6d;
+  box-shadow: 0 0 1.2vmin rgba(0, 0, 0, 0.7);
+  z-index: 5;
+}
+.wr-pin::after {
+  content: "";
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 6vmin; height: 6vmin;
+  margin: -3vmin 0 0 -3vmin;
+  border: 0.3vmin solid rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  animation: wr-pulse 2.4s ease-out infinite;
+}
+@keyframes wr-pulse {
+  0% { transform: scale(0.35); opacity: 0.9; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+/* Top: place on the left, frame time on the right. */
+.wr-top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 3.5vmin 4vmin 9vmin;
+  background: linear-gradient(to bottom, rgba(5, 8, 14, 0.88) 0%, rgba(5, 8, 14, 0.55) 55%, rgba(5, 8, 14, 0) 100%);
+  text-shadow: 0 0.2vmin 0.8vmin rgba(0, 0, 0, 0.6);
+}
+.wr-head { min-width: 0; flex: 1 1 auto; }
+.wr-place {
+  font-size: 6vmin;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wr-kicker {
+  margin-top: 0.8vmin;
+  font-size: 2.2vmin;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #8fd3ff;
+}
+.wr-when { flex: 0 0 auto; margin-left: 4vmin; text-align: right; }
+.wr-clock {
+  font-size: 6vmin;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.wr-ago { margin-top: 0.8vmin; font-size: 2.6vmin; color: rgba(255, 255, 255, 0.8); }
+
+/* Bottom: one segment per frame. */
+.wr-progress {
+  position: absolute;
+  left: 4vmin; right: 4vmin; bottom: 4.6vmin;
+  z-index: 10;
+  display: flex;
+  gap: 0.6vmin;
+}
+.wr-seg {
+  flex: 1 1 0;
+  height: 0.8vmin;
+  border-radius: 0.4vmin;
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 0 0.6vmin rgba(0, 0, 0, 0.5);
+}
+.wr-seg.wr-past { background: rgba(255, 255, 255, 0.55); }
+.wr-seg.wr-now { background: #fff; }
+
+/* Weather alerts (US), above the progress strip. */
+.wr-alert {
+  position: absolute;
+  left: 4vmin; right: 4vmin; bottom: 7.4vmin;
+  z-index: 12;
+  padding: 2vmin 3vmin;
+  border-radius: 1.6vmin;
+  border-left: 1.2vmin solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0.6vmin 2.4vmin rgba(0, 0, 0, 0.5);
+  color: #fff;
+}
+.wr-alert[hidden] { display: none; }
+.wr-sev-extreme { background: rgba(150, 0, 60, 0.94); }
+.wr-sev-severe { background: rgba(190, 30, 30, 0.94); }
+.wr-sev-moderate { background: rgba(196, 98, 0, 0.94); }
+.wr-sev-minor, .wr-sev-unknown { background: rgba(150, 120, 0, 0.94); }
+.wr-alert-event { font-size: 4vmin; font-weight: 700; line-height: 1.15; padding-right: 8vmin; }
+.wr-alert-text {
+  margin-top: 0.8vmin;
+  font-size: 2.6vmin;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wr-alert-count {
+  position: absolute;
+  top: 2vmin; right: 3vmin;
+  font-size: 2.2vmin;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The SDK's "Updated 14:32" badge, moved under the frame time by main.js. */
+.wr-when .aisx-stale {
+  position: static;
+  display: inline-block;
+  margin-top: 1.4vmin;
+  padding: 0.6vmin 1.6vmin;
+  font-size: 2.4vmin;
+  text-shadow: none;
+}
+
+/* Portrait: stack the place and the time, and use the extra height for larger type. */
+@media (orientation: portrait) {
+  .wr-top { flex-direction: column; padding-bottom: 12vmin; }
+  .wr-place {
+    font-size: 8vmin;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .wr-kicker { font-size: 2.8vmin; }
+  .wr-when {
+    margin: 2.5vmin 0 0;
+    text-align: left;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 1vmin 2.5vmin;
+  }
+  .wr-clock { font-size: 7vmin; }
+  .wr-ago { font-size: 3.2vmin; margin-top: 0; }
+  .wr-progress { bottom: 6vmin; }
+  .wr-alert { bottom: 10vmin; }
+  .wr-alert-event { font-size: 5vmin; }
+  .wr-alert-text { font-size: 3.4vmin; -webkit-line-clamp: 3; }
+  .wr-when .aisx-stale { margin-top: 0; font-size: 3vmin; }
+}

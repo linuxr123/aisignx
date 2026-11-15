@@ -1,0 +1,45 @@
+{
+  "key": "rss",
+  "name": "News feed",
+  "version": "3.0.0",
+  "icon": "rss",
+  "description": "Headlines from an RSS or Atom feed, as a list, one at a time, or a ticker.",
+  "render": "frame",
+  "files": ["index.html", "main.js", "style.css"],
+  "default_duration": 30,
+  "ends_itself": false,
+  "data": {
+    "ttl": 300,
+    "min_ttl": 120,
+    "fetch_budget_s": 40,
+    "keys": ["url", "max_items", "show_images", "show_qr"],
+    "hosts": [],
+    "max_bytes": 2097152
+  },
+  "schema": [
+    {"name": "url", "type": "url", "label": "Feed address", "required": true, "private": true,
+     "help": "The RSS or Atom feed URL (http or https; ports 80, 443, 8080 or 8443). Screens never see it."},
+    {"name": "title", "type": "string", "label": "Title", "max_length": 80,
+     "help": "Shown at the top. Leave empty to use the feed's own title."},
+    {"name": "mode", "type": "select", "label": "Layout", "default": "list",
+     "options": [{"value": "list", "label": "List of headlines"},
+                 {"value": "single", "label": "One headline at a time"},
+                 {"value": "ticker", "label": "Scrolling ticker"}]},
+    {"name": "max_items", "type": "integer", "label": "Number of items", "min": 1, "max": 30, "default": 8},
+    {"name": "rotate_seconds", "type": "integer", "label": "Seconds per headline or page", "min": 5, "max": 60, "default": 10,
+     "help": "How long each headline (one at a time) or each page of the list stays up."},
+    {"name": "show_images", "type": "boolean", "label": "Show images", "default": true},
+    {"name": "show_dates", "type": "boolean", "label": "Show dates", "default": true},
+    {"name": "show_source", "type": "boolean", "label": "Show the source", "default": true},
+    {"name": "show_qr", "type": "boolean", "label": "Show a QR code to the article", "default": false},
+    {"name": "theme", "type": "select", "label": "Theme", "default": "dark",
+     "options": [{"value": "dark", "label": "Dark"}, {"value": "light", "label": "Light"}]},
+    {"name": "refresh", "type": "integer", "label": "Refresh every (seconds)", "min": 120, "max": 86400, "default": 300}
+  ],
+  "settings": [
+    {"name": "allow_private_hosts", "type": "text", "label": "Intranet feed hosts", "max_length": 1000,
+     "help": "Exact host names (one per line) whose feeds may be on a private network address, e.g. intranet.example.local. Loopback and link-local addresses stay blocked."}
+  ],
+  "attribution": "",
+  "terms": "Feeds and images are fetched by the AiSignX server from the addresses you enter. Make sure you may show the feed's content on public screens."
+}

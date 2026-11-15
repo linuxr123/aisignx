@@ -322,7 +322,9 @@ def _dig(config: dict, path: str):
 
 
 def cache_key(plugin: PluginDef, config: dict) -> str:
-    """Shared by every item whose data keys match; coordinates rounded to 2 decimals."""
+    """Shared by every item whose data keys match; coordinates rounded to 2 decimals.
+    The plugin's organization settings are part of the key, so switching a provider
+    (weather, radar source) shows the new provider's data at once, not after the TTL."""
     types = {f["name"]: f["type"] for f in plugin.schema}
     values = []
     for path in plugin.data.keys:
@@ -330,7 +332,10 @@ def cache_key(plugin: PluginDef, config: dict) -> str:
         if types.get(path.split(".", 1)[0]) == "location" and isinstance(value, float):
             value = round(value, 2)
         values.append(value)
-    return _digest([plugin.key, plugin.version, values])
+    parts = [plugin.key, plugin.version, values]
+    if plugin.settings:
+        parts.append(setting_values(plugin))
+    return _digest(parts)
 
 
 def refresh_seconds(plugin: PluginDef, config: dict) -> int:

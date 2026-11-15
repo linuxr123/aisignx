@@ -175,7 +175,7 @@ Authenticated. Returns what the screen should play.
 | `playlist` | `null` when nothing plays (`source.type` is `none`). Then `items` is `[]`: show a "no content" screen with the display name. |
 | `items` | Play in this order, then loop. |
 | `id` | Playlist item ID (report it as `current_item_id`). |
-| `type` | `image`, `video` or `web`. Skip types you don't support. |
+| `type` | `image`, `video`, `web` or `plugin` (see [Plugin items](#plugin-items)). Skip types you don't support. |
 | `url` | Image and video: a path on this server; resolve it against the server base URL and fetch it with your token. Web: an absolute `http(s)://` URL to show in a web view, without your token. |
 | `sha256`, `size` | Checksum and byte size of the file, when known. Useful for an offline cache. |
 | `duration_ms` | How long the item stays on screen. This is a hard limit. |
@@ -287,6 +287,73 @@ Authenticated. Returns the image or video file for an item `url`.
 - `Cache-Control: private, max-age=31536000, immutable`. The URL changes when the file changes,
   so a cached file never needs to be checked again.
 - `404 not_found` when the media was deleted or the name doesn't match.
+
+## Plugin items
+
+Items with `type: "plugin"` (clock, weather, radar, RSS, stocks, YouTube, image library; see
+[plugins.md](plugins.md)) carry a `plugin` block. The other item fields keep their meaning;
+`mime`, `sha256`, `size`, `width` and `height` are `null`. A client that cannot run plugins
+skips these items, as it skips any unknown type. The browser player at `/player/` runs them,
+and so do the Windows and Android apps, which load that player.
+
+```json
+{"id": 44, "media_id": 21, "type": "plugin",
+ "url": "/static/player/plugins/weather/index.html#c=3f9a1c0b77de",
+ "mime": null, "sha256": null, "size": null, "width": null, "height": null,
+ "duration_ms": 15000, "media_duration_ms": null, "transition": "fade", "fit": "fit", "muted": true,
+ "plugin": {"key": "weather", "version": "3.0.0", "render": "frame",
+            "config": {"location": {"q": "Oslo", "lat": 59.9139, "lon": 10.7522, "label": "Oslo"},
+                       "units": "metric", "layout": "full", "days": 5, "show_hourly": true,
+                       "theme": "auto", "refresh": 600},
+            "data": "/api/player/v1/plugins/21/data", "refresh_s": 600,
+            "ends_itself": false, "locale": "",
+            "attribution": "Weather data: Open-Meteo.com (CC BY 4.0)"}}
+```
+
+| Field | Meaning |
+|---|---|
+| `url` | Frame plugins: the plugin's runner page under `/static/player/plugins/<key>/`, with no query string. YouTube: the `youtube-nocookie.com` embed URL. Image library: `about:blank#aisignx-plugin=image_library&…`, never loaded. The `#c=` fragment changes whenever the plugin's config changes, so compare `url` to know when to rebuild the slide. |
+| `plugin.key`, `version` | Which plugin, and its version. |
+| `plugin.render` | `frame`: load `url` in an iframe with `sandbox="allow-scripts"` and talk to it as described in `server/aisignx/static/player/plugins/README.md`. `native`: drawn by the plugin's own script on the player page. |
+| `plugin.config` | The item's public options. Private fields (an RSS feed address) are never included. A `timezone` left empty is filled in with the organization time zone. |
+| `plugin.data` | Path of the data endpoint below, or `null` when the plugin has no server data. |
+| `plugin.refresh_s` | How often to fetch the data again while the item is on screen (`null` without data). |
+| `plugin.ends_itself` | `true` only for YouTube: the slide may end before `duration_ms` (when the video ends). Otherwise `duration_ms` always applies. |
+| `plugin.locale` | BCP 47 tag for dates and numbers; empty means the screen's own. |
+| `plugin.attribution` | Data source credit to show, or `null`. |
+| `plugin.embed` | YouTube only: `{video_ids, list, channel, shuffle, captions, play_to_end, live}`. |
+| `plugin.media` | Image library only: the images to show, in order. Each entry has the same `url`, `mime`, `sha256`, `size`, `width` and `height` fields as an image item, plus `media_id` (and `name` when captions are on). **An offline cache should download these like image items.** |
+
+Data requests and data refreshes never change the manifest. Turning a plugin off in the admin
+removes its items from the manifest.
+
+### `GET /plugins/<media_id>/data`
+
+Authenticated, like `/media`. The cached data of a plugin item. The server fetches from the
+provider in the background and never makes a screen wait more than about 2 seconds.
+
+```json
+{"v": 1, "fetched_at_ms": 1731312000000, "stale": false, "error": null, "refresh_s": 600,
+ "data": {"…": "plugin-specific"},
+ "assets": [{"id": "9b0f…32 hex…", "mime": "image/webp", "size": 51234}]}
+```
+
+- `stale` is `true` when the data is older than its refresh time plus a grace period because
+  the provider is failing; `error` then holds a short code such as `timeout`, `http_503` or
+  `blocked_address` (never provider text). Show the data with an "Updated" time.
+- `ETag` on every answer; send `If-None-Match` to get `304 Not Modified`.
+  `Cache-Control: no-store`: keep your own last good copy for offline use.
+- `503 warming` (no data yet, a fetch is running) or `503 upstream_unavailable` (the
+  provider is failing and nothing is cached), each with `Retry-After` in seconds.
+- `404 not_found` when the media is not a plugin item, the plugin is turned off, its config is
+  no longer valid, or the plugin has no data.
+
+### `GET /plugins/<media_id>/assets/<asset_id>`
+
+Authenticated. One picture listed in that item's current or previous data (`asset_id` is 32
+lowercase hex characters). `image/png`, `image/jpeg` or `image/webp`, with
+`Cache-Control: private, max-age=86400, immutable`: an asset ID never changes content.
+`404 not_found` for anything else.
 
 ## Heartbeat
 

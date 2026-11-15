@@ -1,0 +1,140 @@
+/* AiSignX player: image library plugin (native.js). Sized in vmin so landscape and portrait
+   screens both work (see .pl-imglib-root). No `inset` (older Android WebViews lack it). */
+.pl-imglib-root {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Sizes below are given twice: vmin for old WebViews, then cqmin (this box), which also
+     scales right in the admin preview, where the slide is smaller than the window. */
+  container-type: size;
+}
+
+/* ---- One image: the picture, an optional blurred backdrop and an optional caption. */
+.pl-imglib-frame {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  overflow: hidden;
+  background: #000;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+.pl-imglib-img, .pl-imglib-bg {
+  position: absolute;
+  display: block;
+  border: 0;
+}
+.pl-imglib-img { top: 0; left: 0; width: 100%; height: 100%; }
+.pl-imglib-fit-contain { object-fit: contain; }
+.pl-imglib-fit-cover { object-fit: cover; }
+/* Oversized so the blur has no light edges. */
+.pl-imglib-bg {
+  top: -6%; left: -6%; width: 112%; height: 112%;
+  object-fit: cover;
+  filter: blur(6vmin) brightness(.45) saturate(1.15);
+  filter: blur(6cqmin) brightness(.45) saturate(1.15);
+  -webkit-filter: blur(6vmin) brightness(.45) saturate(1.15);
+  -webkit-filter: blur(6cqmin) brightness(.45) saturate(1.15);
+}
+
+.pl-imglib-cap {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 10vmin 5vmin 4vmin;
+  padding: 10cqmin 5cqmin 4cqmin;
+  background: linear-gradient(to top, rgba(0, 0, 0, .75), rgba(0, 0, 0, .35) 55%, rgba(0, 0, 0, 0));
+  font-size: 4.2vmin;
+  font-size: 4.2cqmin;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: .01em;
+  text-shadow: 0 .2vmin .8vmin rgba(0, 0, 0, .6);
+  text-shadow: 0 .2cqmin .8cqmin rgba(0, 0, 0, .6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Transitions. The incoming frame is added on top: .in (start) -> .on; the old one gets .out
+   and is removed once the transition is over. */
+.pl-imglib-t-fade .pl-imglib-frame { transition: opacity 1s ease-in-out; }
+.pl-imglib-t-fade .pl-imglib-in { opacity: 0; }
+
+.pl-imglib-t-slide .pl-imglib-frame { transition: transform .9s cubic-bezier(.65, 0, .35, 1); }
+.pl-imglib-t-slide .pl-imglib-in { transform: translate3d(100%, 0, 0); }
+.pl-imglib-t-slide .pl-imglib-out { transform: translate3d(-100%, 0, 0); }
+
+.pl-imglib-t-cut .pl-imglib-frame { transition: none; }
+
+/* ---- Ken Burns: a slow zoom and pan on the picture (the caption stays put). */
+.pl-imglib-kb {
+  animation-timing-function: ease-in-out;
+  animation-fill-mode: both;
+  animation-iteration-count: 1;
+  will-change: transform;
+}
+.pl-imglib-kb-0 { animation-name: pl-imglib-kb0; }
+.pl-imglib-kb-1 { animation-name: pl-imglib-kb1; }
+.pl-imglib-kb-2 { animation-name: pl-imglib-kb2; }
+.pl-imglib-kb-3 { animation-name: pl-imglib-kb3; }
+@keyframes pl-imglib-kb0 {
+  from { transform: scale(1.02) translate3d(0, 0, 0); }
+  to { transform: scale(1.18) translate3d(-3%, -2%, 0); }
+}
+@keyframes pl-imglib-kb1 {
+  from { transform: scale(1.2) translate3d(3%, 2%, 0); }
+  to { transform: scale(1.03) translate3d(0, 0, 0); }
+}
+@keyframes pl-imglib-kb2 {
+  from { transform: scale(1.08) translate3d(-3.5%, 1%, 0); }
+  to { transform: scale(1.2) translate3d(3.5%, -1%, 0); }
+}
+@keyframes pl-imglib-kb3 {
+  from { transform: scale(1.2) translate3d(2%, -3%, 0); }
+  to { transform: scale(1.06) translate3d(-2%, 2%, 0); }
+}
+.pl-imglib-paused .pl-imglib-kb { animation-play-state: paused; }
+
+/* ---- Collage: a grid of tiles; one tile changes at a time. */
+.pl-imglib-grid {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  display: grid;
+  gap: .8vmin;
+  gap: .8cqmin;
+  padding: .8vmin;
+  padding: .8cqmin;
+  background: #000;
+}
+.pl-imglib-grid-2 { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); }
+.pl-imglib-grid-3 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); }
+.pl-imglib-tile {
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  background: #111;
+  border-radius: .6vmin;
+  border-radius: .6cqmin;
+}
+.pl-imglib-grid-2 .pl-imglib-cap { padding: 6vmin 2.4vmin 2vmin; padding: 6cqmin 2.4cqmin 2cqmin; font-size: 3vmin; font-size: 3cqmin; }
+.pl-imglib-grid-3 .pl-imglib-cap { padding: 4vmin 1.6vmin 1.3vmin; padding: 4cqmin 1.6cqmin 1.3cqmin; font-size: 2.2vmin; font-size: 2.2cqmin; }
+
+/* ---- Shown when no image can be loaded. */
+.pl-imglib-card {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6vmin;
+  padding: 6cqmin;
+  background: #111;
+  text-align: center;
+}
+.pl-imglib-card-title { font-size: 6vmin; font-size: 6cqmin; font-weight: 600; margin-bottom: 1.5vmin; margin-bottom: 1.5cqmin; }
+.pl-imglib-card-text { font-size: 3.2vmin; font-size: 3.2cqmin; opacity: .7; }
