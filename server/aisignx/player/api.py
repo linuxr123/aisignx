@@ -16,7 +16,7 @@ from ..displays import pairing, screenshots
 from ..extensions import db
 from ..media import storage
 from ..models import Display, Media
-from ..models.media import MEDIA_IMAGE, MEDIA_VIDEO
+from ..models.media import MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB
 from ..setup.service import setup_required
 from ..timeutil import utcnow
 from . import api_bp, diag
@@ -251,11 +251,15 @@ def heartbeat():
 @display_required
 def media_file(media_id: int, name: str):
     media = db.session.get(Media, media_id)
-    if (media is None or not media.stored_name or media.stored_name != name
+    snapshot = (media is not None and media.media_type == MEDIA_WEB
+                and bool(media.snapshot_name) and media.snapshot_name == name)
+    if media is None or not snapshot and (
+            not media.stored_name or media.stored_name != name
             or media.media_type not in (MEDIA_IMAGE, MEDIA_VIDEO)):
         return api_error(404, "not_found", "No such media.")
     try:
-        resp = send_from_directory(storage.media_dir(), name, mimetype=media.mime_type,
+        resp = send_from_directory(storage.media_dir(), name,
+                                   mimetype="image/png" if snapshot else media.mime_type,
                                    conditional=True)
     except NotFound:
         return api_error(404, "not_found", "The media file is missing.")

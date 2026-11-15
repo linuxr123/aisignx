@@ -36,11 +36,7 @@ A quick overview. The detailed list of every change follows further down.
    - Back on Android can exit when Lock player is off.
    - The apps' video caches handle range requests correctly.
    - Android: fast forward and rewind work poorly (reported 2026-11-15); fix and test on a device.
-4. **Web pages that refuse to be embedded** (e.g. google.com):
-   - a warning when added;
-   - a "Show as screenshot" option with periodic refresh;
-   - an automatic fallback in the player;
-   - optional live mode in the Windows app.
+4. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
 5. **Device agent and watchdog** (Windows and Android):
    - restarts the player when needed, installs signed updates, reboots, collects logs;
    - Windows kiosk setup (auto-login, replace the shell), all controlled from the display settings.
@@ -83,6 +79,12 @@ A quick overview. The detailed list of every change follows further down.
 
 ### Changed
 - Changing a plugin's organization setting (for example the weather provider or radar source) makes screens show the new provider's data on their next refresh instead of after the old data expires.
+
+### Fixed (content is never interactive)
+- No click, tap, hover, scroll, text selection or key reaches a web page, a YouTube video, a plugin, a video or an image on a screen, whatever the display's settings: the content is switched off for pointer input in CSS, frames are marked `inert`, and the player starts locked so nothing is touchable in the moment before the first settings arrive. The player's own controls (when switched on for a display) still work through their own layer above the content.
+
+### Fixed (web pages that refuse to be embedded)
+- Sites that forbid being shown inside another page (google.com, most dashboards, anything with a login) showed only an error on screens. A web page now has **How to show it**: *Automatic* (the default) checks the site's headers once a day (`X-Frame-Options`, `frame-ancestors`) and plays a page that forbids it as a **screenshot** of the page, retaken by the server's browser every 5 minutes (adjustable, 1-1440); *Live page* always embeds it; *Screenshot* always uses one. Screenshots are Full HD images, so every app and browser can show them and the apps cache them. A screenshot does not scroll or animate. Media cards show a **Screenshot** badge, the edit page shows the status and has **Check the page and retake the screenshot**. A page whose screenshot is not ready yet is left out of the playlist for the moment. Needs Edge, Chrome or Chromium on the server (as for previews). Existing web pages are checked automatically. Database migration `0012_web_pages`, job `media.webpages`.
 
 ### Fixed (offline and server restarts)
 - The player no longer blanks to "None of the items could be played" when every other item fails to load (server down); it keeps the slide that is playing and tries the others again every ~10 s, and carries on as soon as they load.

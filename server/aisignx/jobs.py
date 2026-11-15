@@ -59,6 +59,7 @@ JOBS = (
     Job("pop.rollup", 3600, "aisignx.pop.service:rollup_job"),
     Job("media.orphans", 86400, "aisignx.media.service:orphan_job"),
     Job("media.probe", 300, "aisignx.media.service:probe_missing_job"),
+    Job("media.webpages", 60, "aisignx.media.webpage:job"),
     Job("plugin_cache_prune", 86400, "aisignx.plugins.cache:prune_job"),
 )
 

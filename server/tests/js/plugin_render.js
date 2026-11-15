@@ -111,7 +111,7 @@ async function frame() {
   const p = w.R.prepare(frameItem(), 1);
   const h = w.handles[0];
   const f = h.frame;
-  const out = { attrs: f.attrs, className: f.className, tabIndex: f.tabIndex, srcAtCreate: h.srcAtCreate, src: f.src,
+  const out = { attrs: f.attrs, className: f.className, tabIndex: f.tabIndex, inert: f.inert, srcAtCreate: h.srcAtCreate, src: f.src,
     readyMs: h.io.readyMs };
   h.resolve();
   const slide = await p;

@@ -130,6 +130,7 @@ def test_render_frame_plugin(rr):
     assert f["attrs"]["sandbox"] == "allow-scripts"  # exactly: an opaque origin
     assert f["attrs"]["referrerpolicy"] == "no-referrer" and f["attrs"]["allow"] == ""
     assert f["className"] == "media plugin" and f["tabIndex"] == -1
+    assert f["inert"] is True and f["attrs"]["inert"] == ""  # content is never interactive
     assert f["srcAtCreate"] == ""  # the host knows the frame before it can say hello
     assert f["src"].startswith("/static/player/plugins/echo/index.html#c=")
     assert f["readyMs"] == 8000 and f["isPlugin"] is True

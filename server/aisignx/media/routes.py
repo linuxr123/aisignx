@@ -6,7 +6,7 @@ from ..auth.decorators import editor_required
 from ..extensions import db
 from ..models import MEDIA_TYPES, Media
 from ..models.media import MEDIA_IMAGE, MEDIA_PLUGIN, MEDIA_VIDEO, MEDIA_WEB, THUMB_PENDING
-from . import bp, convert, service, storage, thumbnails, webshot
+from . import bp, convert, service, storage, thumbnails, webpage, webshot
 from .forms import ConvertForm, DeleteForm, MediaEditForm, ReplaceForm, UploadForm, WebPageForm
 from .probe import InvalidMediaError, ffmpeg_available
 
@@ -76,10 +76,11 @@ def add_web():
     form = WebPageForm()
     if form.validate_on_submit():
         media = service.create_web_page(form.name.data, form.url.data, form.duration.data,
-                                        current_user)
-        audit.record("media.create_web", media, detail={"url": media.url})
+                                        current_user, form.web_mode.data, form.refresh_min.data)
+        audit.record("media.create_web", media, detail={"url": media.url, "mode": media.web_mode})
         db.session.commit()
         thumbnails.queue_thumbnail(media)
+        webpage.queue(media)  # does the site allow embedding? take the screenshot if needed
         flash("Web page added. Its preview will appear in a few seconds.", "success")
     else:
         for field_errors in form.errors.values():
@@ -102,20 +103,32 @@ def edit(media_id: int):
         else:
             url_changed = is_web and media.url != form.url.data.strip()
             before = {"name": media.name, "default_duration": media.default_duration,
-                      "url": media.url}
+                      "url": media.url, "web_mode": media.web_mode,
+                      "web_refresh_s": media.web_refresh_s}
             media.name = form.name.data.strip()
             media.default_duration = form.default_duration.data
             if is_web:
                 media.url = form.url.data.strip()
+                media.web_mode = (form.web_mode.data if form.web_mode.data in webpage.MODES
+                                  else "auto")
+                media.web_refresh_s = webpage.clamp_refresh((form.refresh_min.data or 5) * 60)
             changed = {k: [v, getattr(media, k)] for k, v in before.items()
                        if getattr(media, k) != v}
             if changed:
                 audit.record("media.update", media, detail={"changed": changed})
+            web_changed = is_web and (url_changed or "web_mode" in changed
+                                      or "web_refresh_s" in changed)
+            if web_changed:
+                webpage.reset(media, url_changed)
             db.session.commit()
             if url_changed:
                 thumbnails.queue_thumbnail(media)
+            if web_changed:
+                webpage.queue(media)
             flash("Media updated.", "success")
             return redirect(url_for("media.index"))
+    if is_web and not form.is_submitted():
+        form.refresh_min.data = max(1, (media.web_refresh_s or 300) // 60)
     usage = sorted({item.playlist.name for item in media.playlist_items})
     return render_template("media/edit.html", form=form, media=media, usage=usage,
                            delete_form=DeleteForm(), replace_form=ReplaceForm(),
@@ -161,6 +174,23 @@ def delete(media_id: int):
     service.delete_media(media)
     flash(f"Deleted {name}.", "success")
     return redirect(url_for("media.index"))
+
+
+@bp.route("/<int:media_id>/webpage/refresh", methods=["POST"])
+@editor_required
+def refresh_webpage(media_id: int):
+    """Check again whether a web page can be embedded, and take a new screenshot now."""
+    if not DeleteForm().validate_on_submit():
+        abort(400)
+    media = _get_media_or_404(media_id)
+    if media.media_type != MEDIA_WEB:
+        abort(404)
+    media.web_checked_at = None
+    media.snapshot_at = None
+    db.session.commit()
+    webpage.queue(media)
+    flash("Checking the page. Its status updates in a few seconds.", "info")
+    return redirect(url_for("media.edit", media_id=media.id))
 
 
 @bp.route("/<int:media_id>/convert", methods=["POST"])

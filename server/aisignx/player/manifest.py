@@ -43,6 +43,8 @@ def is_playable(item) -> bool:
     if media.media_type in _FILE_TYPES:
         return bool(media.stored_name)
     if media.media_type == MEDIA_WEB:
+        if media.shows_snapshot:  # a page that cannot be embedded plays as its screenshot
+            return bool(media.snapshot_name)
         return (media.url or "").strip().lower().startswith(("http://", "https://"))
     if media.media_type == MEDIA_PLUGIN:
         from ..plugins.service import is_playable_plugin
@@ -72,6 +74,20 @@ def _volume(item) -> int:
     return 100 if v is None else max(0, min(100, int(v)))
 
 
+def _snapshot_entry(media) -> dict:
+    """The file fields of a web page's screenshot (media/webpage.py), played as an image."""
+    from ..media.webpage import SNAPSHOT_SIZE
+
+    return {
+        "url": url_for("player_api.media_file", media_id=media.id, name=media.snapshot_name),
+        "mime": "image/png",
+        "sha256": media.snapshot_sha256,
+        "size": media.snapshot_size,
+        "width": SNAPSHOT_SIZE[0],
+        "height": SNAPSHOT_SIZE[1],
+    }
+
+
 def _video_facts(media) -> dict | None:
     """codec string, size, frame rate and bitrate of a video, so the player can ask its browser
     whether this screen decodes it smoothly (device.js mediaSupport). None when unknown."""
@@ -92,6 +108,7 @@ def _item_entry(item, fit: str | None = None) -> dict | None:
     media = item.media
     is_video = media.media_type == MEDIA_VIDEO
     plugin = None
+    shown_type = media.media_type
     if media.media_type in _FILE_TYPES:
         entry = _file_entry(media)
     elif media.media_type == MEDIA_PLUGIN:
@@ -102,6 +119,9 @@ def _item_entry(item, fit: str | None = None) -> dict | None:
             return None
         entry = {"url": plugin["url"], "mime": None, "sha256": None, "size": None,
                  "width": None, "height": None}
+    elif media.shows_snapshot:  # a web page shown as a screenshot: an image to the player
+        entry = _snapshot_entry(media)
+        shown_type = MEDIA_IMAGE
     else:  # web page
         entry = {"url": media.url.strip(), "mime": None, "sha256": None, "size": None,
                  "width": None, "height": None}
@@ -113,7 +133,7 @@ def _item_entry(item, fit: str | None = None) -> dict | None:
     result = {
         "id": item.id,
         "media_id": media.id,
-        "type": media.media_type,
+        "type": shown_type,
         **entry,
         "duration_ms": item.effective_duration * 1000,
         "media_duration_ms": media_ms,

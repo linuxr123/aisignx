@@ -164,3 +164,13 @@ def test_failing_items_keep_the_current_slide(harness):
     assert r["stuck"]["cur"] == 1 and r["onlyWorking"] is True  # only the working slide played
     assert r["stuck"]["noContent"] is False                    # never a blank message
     assert {2, 3} <= set(r["after"])                           # the others play again once they load
+
+
+def test_content_is_never_interactive_whatever_the_settings(configured, client):
+    """Web pages, YouTube, plugins, videos and images never take clicks, taps or keys."""
+    html = client.get("/player/").get_data(as_text=True)
+    assert '<body class="no-input"' in html  # nothing is touchable before the settings arrive
+    css = (STATIC / "player.css").read_text(encoding="utf-8")
+    assert ".slide .media, .slide iframe" in css and "pointer-events: none !important" in css
+    render = (STATIC / "render.js").read_text(encoding="utf-8")
+    assert 'media.tagName === "IFRAME"' in render and "media.inert = true" in render

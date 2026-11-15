@@ -57,13 +57,14 @@ def browser_path() -> str | None:
     return find_browser(current_app.config.get("BROWSER_PATH"))
 
 
-def capture(url: str, dest: Path, timeout: int | None = None) -> bool:
-    """Save a VIEWPORT-sized PNG screenshot of url to dest. Returns True on success."""
+def capture(url: str, dest: Path, timeout: int | None = None, size: tuple[int, int] = VIEWPORT) -> bool:
+    """Save a PNG screenshot of url (a window of `size`, VIEWPORT by default) to dest. Returns
+    True on success."""
     browser = browser_path()
     if not browser:
         return False
     timeout = timeout or current_app.config.get("WEBSHOT_TIMEOUT", 45)
-    width, height = VIEWPORT
+    width, height = size
     # A throwaway profile per capture: no cookies or history carried between pages.
     with tempfile.TemporaryDirectory(prefix="profile-", dir=storage.work_dir(),
                                      ignore_cleanup_errors=True) as profile:

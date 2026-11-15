@@ -23,6 +23,12 @@
           {% if media.video_summary %}<dt class="col-5">Video</dt><dd class="col-7">{{ media.video_summary }}</dd>{% endif %}
           {% if media.is_video %}<dt class="col-5">Length</dt><dd class="col-7">{{ media.duration_seconds|duration if media.duration_seconds else "Unknown" }}</dd>{% endif %}
           {% if media.playback_warnings %}<dt class="col-5 text-warning-emphasis">Playback</dt><dd class="col-7 text-warning-emphasis">{% for w in media.playback_warnings %}<div>{{ w }}</div>{% endfor %}</dd>{% endif %}
+          {% if media.media_type == "web" %}
+          <dt class="col-5">Shown as</dt><dd class="col-7">{% if media.shows_snapshot %}Screenshot{% else %}Live page{% endif %}
+            {% if media.web_mode == "auto" and media.web_embeddable is false %}<div class="small text-warning-emphasis">This site does not allow being embedded.</div>
+            {% elif media.web_mode == "auto" and media.web_embeddable is none %}<div class="small text-secondary">Not checked yet.</div>{% endif %}</dd>
+          {% if media.shows_snapshot %}<dt class="col-5">Screenshot</dt><dd class="col-7">{% if media.snapshot_at %}taken {{ media.snapshot_at|localtime }}{% else %}being taken&hellip;{% endif %}</dd>{% endif %}
+          {% endif %}
           <dt class="col-5">Uploaded</dt><dd class="col-7">{{ media.created_at.strftime('%Y-%m-%d %H:%M') }} UTC{% if media.uploaded_by %} by {{ media.uploaded_by.username }}{% endif %}</dd>
           <dt class="col-5">Used in</dt><dd class="col-7">{{ usage|join(", ") if usage else "No playlists" }}</dd>
         </dl>
@@ -34,7 +40,11 @@
       <form method="post" novalidate>
         {{ form.hidden_tag() }}
         {{ field(form.name, autofocus=true) }}
-        {% if media.media_type == "web" %}{{ field(form.url) }}{% endif %}
+        {% if media.media_type == "web" %}{{ field(form.url) }}
+        {{ field(form.web_mode) }}
+        {{ field(form.refresh_min) }}
+        <p class="form-text mt-n2">Many sites (google.com, most dashboards and anything with a login) do not allow being shown inside another page. <em>Automatic</em> checks this and shows a screenshot, retaken at this interval, when needed. A screenshot does not scroll or animate.</p>
+        {% endif %}
         {{ field(form.default_duration) }}
         {% if media.is_video %}
         <p class="form-text mt-n2">Videos play for their full length. This is only used when the length is unknown.</p>
@@ -87,6 +97,13 @@
         <div class="form-text text-warning-emphasis">ffmpeg was not found on the server.</div>
         {% endif %}
       </div>
+      {% endif %}
+      {% if media.media_type == "web" %}
+      <hr>
+      <form method="post" action="{{ url_for('media.refresh_webpage', media_id=media.id) }}" class="d-inline">
+        {{ delete_form.hidden_tag() }}
+        <button class="btn btn-outline-secondary" type="submit">Check the page and retake the screenshot</button>
+      </form>
       {% endif %}
       <hr>
       <form method="post" action="{{ url_for('media.refresh_thumbnail', media_id=media.id) }}" class="d-inline">

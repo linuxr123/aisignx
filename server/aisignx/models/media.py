@@ -37,8 +37,19 @@ class Media(db.Model):
     file_size = db.Column(db.BigInteger, nullable=True)
     checksum_sha256 = db.Column(db.String(64), nullable=True, index=True)
 
-    # Web pages.
+    # Web pages. Many sites forbid being shown inside another page (X-Frame-Options, CSP
+    # frame-ancestors). web_mode: "auto" shows the live page unless the site forbids it (then a
+    # screenshot), "live" always embeds it, "screenshot" always shows a screenshot that the
+    # server retakes every web_refresh_s seconds (media/webpage.py).
     url = db.Column(db.String(2048), nullable=True)
+    web_mode = db.Column(db.String(12), nullable=False, default="auto", server_default="auto")
+    web_refresh_s = db.Column(db.Integer, nullable=False, default=300, server_default="300")
+    web_embeddable = db.Column(db.Boolean, nullable=True)  # NULL: not checked yet
+    web_checked_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    snapshot_name = db.Column(db.String(64), nullable=True)  # PNG in the media folder
+    snapshot_sha256 = db.Column(db.String(64), nullable=True)
+    snapshot_size = db.Column(db.BigInteger, nullable=True)
+    snapshot_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     # Detected metadata.
     width = db.Column(db.Integer, nullable=True)
@@ -98,6 +109,13 @@ class Media(db.Model):
         if self.width and self.height:
             return f"{self.width}×{self.height}"
         return None
+
+    @property
+    def shows_snapshot(self) -> bool:
+        """A web page that plays as a screenshot: chosen, or the site forbids embedding."""
+        return (self.media_type == MEDIA_WEB
+                and (self.web_mode == "screenshot"
+                     or (self.web_mode in (None, "auto") and self.web_embeddable is False)))
 
     @property
     def playback_warnings(self) -> list[str]:

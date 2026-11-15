@@ -37,6 +37,9 @@
       <div class="col-md-3">{{ web_form.name.label(class_="form-label") }}{{ web_form.name(class_="form-control", required=true) }}</div>
       <div class="col-md-5">{{ web_form.url.label(class_="form-label") }}{{ web_form.url(class_="form-control", type="url", placeholder="https://", required=true) }}</div>
       <div class="col-md-2">{{ web_form.duration.label(class_="form-label") }}{{ web_form.duration(class_="form-control", min=1, placeholder=default_duration) }}</div>
+      <div class="col-md-2"></div>
+      <div class="col-md-6">{{ web_form.web_mode.label(class_="form-label") }}{{ web_form.web_mode(class_="form-select") }}</div>
+      <div class="col-md-4">{{ web_form.refresh_min.label(class_="form-label") }}{{ web_form.refresh_min(class_="form-control", min=1, max=1440, placeholder="5") }}</div>
       <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Add</button></div>
     </form>
     {% if not browser_ok %}
@@ -74,6 +77,7 @@
         <div class="small text-secondary d-flex flex-wrap gap-2 align-items-center">
           <span title="Media ID (for the API and the PowerPoint add-in)">ID {{ m.id }}</span>
           {{ type_badge(m) }} {{ preview_warning(m) }}
+          {% if m.media_type == "web" and m.shows_snapshot %}<span class="badge text-bg-info" title="{{ 'This site does not allow being embedded, so screens show a screenshot' if m.web_mode == 'auto' else 'Screens show a screenshot' }}, retaken every {{ (m.web_refresh_s // 60) }} min">Screenshot</span>{% endif %}
           {% if m.playback_warnings %}<span class="badge text-bg-warning" title="{{ m.playback_warnings|join(' ') }}">May stutter</span>{% endif %}
           <span>{{ m.effective_duration|duration }}</span>
           {% if m.resolution %}<span>{{ m.resolution }}</span>{% endif %}

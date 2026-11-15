@@ -237,6 +237,16 @@ body.rot-90 .screen-box, body.rot-270 .screen-box { max-width: 90vh; }
 body.rot-90 #emergency.layout-fullscreen .em-msg, body.rot-270 #emergency.layout-fullscreen .em-msg { max-width: 90vh; }
 body.rot-90 #emergency.layout-banner, body.rot-270 #emergency.layout-banner { max-height: 25vw; padding: 2vw 4vh; }
 
+/* ---- Content is never interactive. No click, tap, hover, scroll or text selection reaches a
+   web page, a YouTube video, a plugin, a video or an image, whatever the display's settings
+   (the controls layer below handles the player's own gestures above the content). The body
+   starts as no-input so nothing is touchable before the first settings arrive. */
+.slide .media, .slide iframe {
+  pointer-events: none !important;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* ---- Input lock (device.js): web items cannot be touched or clicked; input-on shows a cursor. */
 body.no-input .slide.active { pointer-events: none; }
 body.input-on, body.input-on * { cursor: auto; }

@@ -34,6 +34,7 @@ restart does not make a daily job run again.
 | `backup.scheduled` | 15 minutes | Makes the daily backup once its hour has passed |
 | `audit.purge` | 6 hours | Deletes audit rows past their retention |
 | `pop.rollup` | hour | Builds the daily proof-of-play totals and purges old plays |
+| `media.webpages` | minute | Checks whether web pages allow being embedded (once a day each) and retakes the screenshots of pages shown as screenshots when their refresh interval has passed (2 per run) |
 | `media.probe` | 5 min | Reads the codec, size, bitrate and frame rate of videos uploaded before those were recorded (10 per run), for the "May stutter" warnings |
 | `media.orphans` | day | Deletes upload files no media item uses (older than 1 hour; not in the first day after a restore) and temp files older than a day |
 

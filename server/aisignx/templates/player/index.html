@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename=path, v=build) }}">
   {%- endfor %}
 </head>
-<body data-api="{{ request.script_root }}/api/player/v1" data-root="{{ request.script_root }}" data-build="{{ build }}">
+<body class="no-input" data-api="{{ request.script_root }}/api/player/v1" data-root="{{ request.script_root }}" data-build="{{ build }}">
   <div id="stage"></div>
   <div id="controls" hidden></div>
   <div id="screen" class="screen screen-connecting" role="status" aria-live="polite">

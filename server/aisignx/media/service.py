@@ -9,7 +9,7 @@ from ..extensions import db
 from ..models import Media, Setting
 from ..models.media import (DEFAULT_DURATION, MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB, THUMB_FAILED,
                             THUMB_OK)
-from . import probe, storage, thumbnails
+from . import probe, storage, thumbnails, webpage
 
 log = logging.getLogger(__name__)
 
@@ -133,13 +133,16 @@ def remove_files(names: tuple[str | None, str | None]) -> None:
     storage.remove_file(storage.thumbs_dir(), thumb)
 
 
-def create_web_page(name: str, url: str, duration: int | None, user) -> Media:
+def create_web_page(name: str, url: str, duration: int | None, user, web_mode: str = "auto",
+                    refresh_min: int | None = None) -> Media:
     media = Media(
         name=name.strip()[:200],
         media_type=MEDIA_WEB,
         url=url.strip(),
         default_duration=duration or default_duration(),
         uploaded_by_id=getattr(user, "id", None),
+        web_mode=web_mode if web_mode in webpage.MODES else "auto",
+        web_refresh_s=webpage.clamp_refresh((refresh_min or 5) * 60),
     )
     db.session.add(media)
     return media
@@ -148,10 +151,12 @@ def create_web_page(name: str, url: str, duration: int | None, user) -> Media:
 def delete_media(media: Media) -> None:
     """Delete the row (playlist items cascade) and its files. Audited as media.delete."""
     old = (media.stored_name, media.thumbnail_name)
+    snapshot = media.snapshot_name
     audit.record("media.delete", media)
     db.session.delete(media)
     db.session.commit()
     remove_files(old)
+    storage.remove_file(storage.media_dir(), snapshot)
 
 
 # --- housekeeping -----------------------------------------------------------------------
@@ -207,7 +212,7 @@ def orphan_job() -> str:
     now = time.time()
     restored = Setting.get_datetime("backup.last_restore_at")
     held = restored is not None and abs(now - restored.timestamp()) < RESTORE_GRACE_S
-    rows = db.session.query(Media.stored_name, Media.thumbnail_name).all()
+    rows = db.session.query(Media.stored_name, Media.thumbnail_name, Media.snapshot_name).all()
     referenced = {name for row in rows for name in row if name}
     removed = skipped = 0
     for folder in () if held else (storage.media_dir(), storage.thumbs_dir()):

@@ -56,6 +56,12 @@
 
   // Each prepared slide is inserted hidden (opacity 0, below the active one).
   function attach(slide, media) {
+    // Content is never interactive: an inert frame takes no pointer, keyboard or focus input
+    // (the CSS also turns off its pointer events; older browsers ignore "inert").
+    if (media && media.tagName === "IFRAME") {
+      media.inert = true;
+      media.setAttribute("inert", "");
+    }
     slide.media = media;
     slide.el.appendChild(media);
     stage.appendChild(slide.el);
