@@ -42,7 +42,8 @@ Plugins (see docs/plugins.md). Per process, like everything above.
     AISIGNX_PLUGIN_HTTP_PROXY optional http://host:port proxy for outbound plugin requests
                           (HTTPS CONNECT only; environment proxies are otherwise ignored)
     Plugin secrets (API keys) use the variable each plugin declares, for example
-    AISIGNX_FINNHUB_KEY. They are read from the environment only; restart to change them.
+    AISIGNX_FINNHUB_KEY. The variable wins; otherwise an admin can enter the key on the
+    Plugins page (stored encrypted in the database).
 
 PLUGIN_FETCH_SYNC (run plugin fetches inline), PLUGIN_DIRS (extra plugin folders) and
 PLUGIN_FETCH_TEST_LOOPBACK (let the HTTP client reach a loopback test server; honoured

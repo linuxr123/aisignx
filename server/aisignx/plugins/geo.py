@@ -7,7 +7,6 @@ whole server; a lookup that would exceed it raises RateLimited instead of waitin
 Open-Meteo's free geocoder is for non-commercial use; with AISIGNX_OPENMETEO_KEY set the
 customer endpoint is used and the key is redacted from logs.
 """
-import os
 import re
 import threading
 import time
@@ -18,12 +17,12 @@ from flask import current_app
 
 from . import schema
 from .fetch import Buckets, Client, FetchError, RateLimited
+from .registry import get_plugin
 
 OPEN_METEO = "geocoding-api.open-meteo.com"
 OPEN_METEO_CUSTOMER = "customer-geocoding-api.open-meteo.com"
 NOMINATIM = "nominatim.openstreetmap.org"
 HOSTS = (OPEN_METEO, OPEN_METEO_CUSTOMER, NOMINATIM)
-KEY_ENV = "AISIGNX_OPENMETEO_KEY"
 MAX_QUERY = 100
 MAX_RESULTS = 5
 BUDGET_S = 8.0
@@ -90,7 +89,9 @@ def _point(lat, lon, label: str) -> dict | None:
 
 
 def _open_meteo(q: str) -> list[dict]:
-    key = current_app.config.get(KEY_ENV) or os.environ.get(KEY_ENV) or ""
+    from . import service  # late: service imports this package
+    plugin = get_plugin("weather")
+    key = (service.secret_value(plugin, "openmeteo_key") if plugin else None) or ""
     params = {"name": q, "count": MAX_RESULTS, "language": _language(), "format": "json"}
     host = OPEN_METEO
     if key.strip():

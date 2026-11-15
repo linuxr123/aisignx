@@ -44,5 +44,5 @@
   ],
   "secrets": [{"name": "finnhub_key", "env": "AISIGNX_FINNHUB_KEY", "label": "Finnhub API key"}],
   "attribution": "Data: Finnhub",
-  "terms": "Quotes come from Finnhub (finnhub.io) and need a Finnhub API key in the AISIGNX_FINNHUB_KEY environment variable (restart after changing it). Finnhub's free plan is for personal, non-commercial use. Showing quotes on public or business screens is redistribution and may need a paid Finnhub plan and exchange display licences. Stocks slides are not shown on screens until the key is set."
+  "terms": "Quotes come from Finnhub (finnhub.io) and need a Finnhub API key, entered above or set in the AISIGNX_FINNHUB_KEY environment variable. Finnhub's free plan is for personal, non-commercial use. Showing quotes on public or business screens is redistribution and may need a paid Finnhub plan and exchange display licences. Stocks slides are not shown on screens until the key is set."
 }

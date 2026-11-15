@@ -19,9 +19,11 @@ Hooks (optional functions in bundled/<key>/__init__.py):
     auto_duration(config) -> int | None        a default duration computed at save
 
 Settings: plugins.<key>.enabled ("1" by default), plugins.<key>.<setting> (declared in
-plugin.json "settings"), plugins.ua_contact and plugins.locale. Secrets come from the
-environment only (app.config first, so tests can inject them) and never leave the server.
+plugin.json "settings"), plugins.ua_contact and plugins.locale. Secrets (API keys) come
+from the environment first (app.config first, so tests can inject them), else from a value
+an admin saved on the Plugins page, stored encrypted (see below). They never leave the server.
 """
+import base64
 import functools
 import hashlib
 import json
@@ -31,6 +33,7 @@ import re
 import time
 from dataclasses import dataclass, field
 
+from cryptography.fernet import Fernet, InvalidToken
 from flask import current_app, url_for
 
 from ..extensions import db
@@ -81,18 +84,62 @@ def setting_values(plugin: PluginDef) -> dict:
     return {f["name"]: setting_value(plugin, f["name"]) for f in plugin.settings}
 
 
-def secret_value(plugin: PluginDef, name: str) -> str | None:
+def _fernet() -> Fernet:
+    """Cipher for saved secrets, keyed from the instance secret key (backups carry it)."""
+    raw = str(current_app.config["SECRET_KEY"]).encode()
+    digest = hashlib.sha256(b"aisignx.plugin-secrets.v1\0" + raw).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def secret_setting_key(plugin: PluginDef, name: str) -> str:
+    return f"plugins.{plugin.key}.secret.{name}"
+
+
+def _secret_spec(plugin: PluginDef, name: str) -> dict:
     spec = next((s for s in plugin.secrets if s["name"] == name), None)
     if spec is None:
         raise KeyError(name)
+    return spec
+
+
+def _env_secret(spec: dict) -> str | None:
     value = current_app.config.get(spec["env"]) or os.environ.get(spec["env"]) or ""
     return str(value).strip() or None
 
 
+def _saved_secret(plugin: PluginDef, name: str) -> str | None:
+    token = Setting.get(secret_setting_key(plugin, name))
+    if not token:
+        return None
+    try:
+        return _fernet().decrypt(token.encode()).decode().strip() or None
+    except (InvalidToken, ValueError):
+        log.warning("Saved %s/%s cannot be decrypted (secret key changed?); enter it again.",
+                    plugin.key, name)
+        return None
+
+
+def secret_value(plugin: PluginDef, name: str) -> str | None:
+    """The environment variable if set, else the key an admin saved on the Plugins page."""
+    return _env_secret(_secret_spec(plugin, name)) or _saved_secret(plugin, name)
+
+
+def save_secret(plugin: PluginDef, name: str, value: str | None) -> None:
+    """Store (encrypted) or, with an empty value, remove a secret. Caller commits."""
+    _secret_spec(plugin, name)
+    value = (value or "").strip()
+    Setting.set(secret_setting_key(plugin, name),
+                _fernet().encrypt(value.encode()).decode() if value else None)
+
+
 def secret_status(plugin: PluginDef) -> list[dict]:
-    """[{name, label, env, configured}] (never the value)."""
-    return [{**s, "configured": secret_value(plugin, s["name"]) is not None}
-            for s in plugin.secrets]
+    """[{name, label, env, configured, source}] (never the value). source is "env",
+    "saved" or None."""
+    out = []
+    for s in plugin.secrets:
+        source = "env" if _env_secret(s) else "saved" if _saved_secret(plugin, s["name"]) else None
+        out.append({**s, "configured": source is not None, "source": source})
+    return out
 
 
 def ua_contact() -> str:

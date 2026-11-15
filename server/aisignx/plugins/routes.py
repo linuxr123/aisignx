@@ -158,6 +158,18 @@ def plugin_settings(key: str):
     for fld in plugin.settings:
         new[service.setting_key(plugin, fld["name"])] = schema.to_setting(fld, values[fld["name"]])
     changed = []
+    for spec in plugin.secrets:
+        field = f"secret-{spec['name']}"
+        entered = (request.form.get(field) or "").strip()
+        if entered and (len(entered) > 200 or not entered.isprintable() or " " in entered):
+            flash(f"{plugin.name}: {spec['label']}: not a valid key.", "danger")
+            return redirect(url_for("plugins.index"), 303)
+        if entered:
+            service.save_secret(plugin, spec["name"], entered)
+            changed.append(f"secret.{spec['name']}")
+        elif request.form.get(f"clear-{field}") and service.secret_status(plugin):
+            service.save_secret(plugin, spec["name"], None)
+            changed.append(f"secret.{spec['name']}")
     for setting, value in new.items():
         current = Setting.get(setting)
         if current is None and setting.endswith(".enabled"):

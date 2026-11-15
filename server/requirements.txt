@@ -11,3 +11,4 @@ Pillow>=10.1
 waitress>=3.0,<4
 feedparser>=6.0,<7
 segno>=1.6,<2
+cryptography>=42,<46

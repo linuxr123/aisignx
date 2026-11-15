@@ -43,9 +43,11 @@ Firewall hosts, environment variables and licence notes are in
     refresh.
 - **Roles.** Admins change plugin settings and clear the cache. Editors create and edit items,
   preview unsaved forms and use **Find**. Viewers see the plugins page and item previews.
-- **API keys** are read from environment variables only (in `server/.env` or the service
-  environment). The admin shows "configured" or "missing" and the variable name, never the
-  value. **Restart the server after changing a key.**
+- **API keys** can be entered by an admin in the plugin's card on this page, or set as an
+  environment variable (in `server/.env` or the service environment). A saved key is stored
+  encrypted in the database (keyed from the instance secret key, so a backup restores it with the
+  secret key) and never shown again, only "configured" or "missing". If the environment variable
+  is set it wins, and the field says so. Changing a saved key takes effect without a restart.
 
 **Duration.** The playlist item's duration (or the item's default duration) is how long the
 slide stays on screen. Plugins never keep their own duration or loop count. Two exceptions:
@@ -121,7 +123,7 @@ in between.
 ### Stocks
 - **Options:** up to 20 symbols (for example `AAPL, MSFT, BINANCE:BTCUSDT`), title, mode (grid,
   board, ticker), ticker speed, company names, percent change, theme, refresh (at least 60 s).
-- **Needs `AISIGNX_FINNHUB_KEY`.** Without it, stocks slides are never sent to screens. The key
+- **Needs a Finnhub key** (enter it on the Plugins page, or set `AISIGNX_FINNHUB_KEY`). Without it, stocks slides are never sent to screens. The key
   is sent to Finnhub in a header and never leaves the server.
 - **Terms:** Finnhub's free plan is for personal, non-commercial use. Showing quotes on public
   or business screens is redistribution and may need a paid Finnhub plan and exchange display

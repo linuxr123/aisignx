@@ -22,34 +22,36 @@ A quick overview. The detailed list of every change follows further down.
 - **Designs being written:** the device agent/watchdog, and content extras.
 
 ### Planned (in this order)
-1. **Player fixes:**
+1. **Admin interface makeover** (moved up on 2026-11-15):
+   - a navigation bar on the left that collapses to icons;
+   - light and dark themes;
+   - better-organized menus (system settings, admin settings, logs);
+   - the media library as a grid with filters, and drag-and-drop upload of many files at once;
+   - a nicer display edit page.
+2. **PowerPoint add-in:** finish and test it (export to MP4, upload or replace with an API token).
+3. **Player fixes:**
    - The arrow keys always mean fast forward/rewind (smaller steps for short videos), and the hints say "Fast forward"/"Rewind". "Next"/"Previous" only appear when changing slides.
    - Mouse: press and drag to fast forward or rewind a video, like on a touch screen. A plain click still pauses.
    - Going to the next or previous slide by hand slides left or right, whatever the playlist's transition is. Automatic changes keep the playlist's transition.
    - Back on Android can exit when Lock player is off.
    - The offline banner shows sooner (setting).
    - The apps' video caches handle range requests correctly.
-2. **Web pages that refuse to be embedded** (e.g. google.com):
+   - Android: fast forward and rewind work poorly (reported 2026-11-15); fix and test on a device.
+4. **Web pages that refuse to be embedded** (e.g. google.com):
    - a warning when added;
    - a "Show as screenshot" option with periodic refresh;
    - an automatic fallback in the player;
    - optional live mode in the Windows app.
-3. **Device agent and watchdog** (Windows and Android):
+5. **Device agent and watchdog** (Windows and Android):
    - restarts the player when needed, installs signed updates, reboots, collects logs;
    - Windows kiosk setup (auto-login, replace the shell), all controlled from the display settings.
-4. **Emergency improvements:**
+6. **Emergency improvements:**
    - saved emergency templates;
    - scheduled emergencies;
    - triggering an emergency from another device (API, button or webhook).
-5. **Admin interface makeover:**
-   - a navigation bar on the left that collapses to icons;
-   - light and dark themes;
-   - better-organized menus (system settings, admin settings, logs);
-   - the media library as a grid with filters, and drag-and-drop upload of many files at once;
-   - a nicer display edit page.
-6. **Synced playback** between displays (from v2). Player controls are turned off on synced displays, because pause, next or previous on one screen would break the sync.
-7. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
-8. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+7. **Synced playback** between displays (from v2). Player controls are turned off on synced displays, because pause, next or previous on one screen would break the sync.
+8. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
+9. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
 
 ## Unreleased: Plugins
 
@@ -62,6 +64,7 @@ A quick overview. The detailed list of every change follows further down.
   - **Stocks:** quotes from Finnhub as cards, a board or a ticker. Needs `AISIGNX_FINNHUB_KEY`; the key never reaches a screen. The admin page explains Finnhub's terms for public display.
   - **YouTube:** videos (with start and end times), a playlist or a live stream in the privacy-enhanced embed, with shuffle, mute, captions and "play to the end".
   - **Image library:** a slideshow, Ken Burns show or 2×2 / 3×3 collage of library images you choose or the newest ones, with an automatic duration.
+- **API keys on the Plugins page:** admins enter the Finnhub (stocks) and Open-Meteo keys in the plugin's card. They are stored encrypted in the database, never shown again and never sent to screens. An environment variable still wins if set. No restart needed. Adds the `cryptography` dependency (run `pip install -r requirements.txt`).
 - **Plugins page** (`/plugins/`): version, outbound hosts, data terms, API key status and cache size per plugin. Admins turn plugins on or off, set provider settings, a contact for data providers and a locale, and clear the plugin cache. All changes are audited and reach screens at once.
 - **Preview** of plugin items at 16:9 and 9:16, also before saving.
 - **Server-side data:** the server fetches and caches plugin data in the background (stale-while-revalidate), so a slow provider never holds up screens or the admin. Outbound requests go through a guarded client: per-plugin host allowlist, private addresses refused, redirects re-checked, size and time limits, per-host rate limits, an optional proxy (`AISIGNX_PLUGIN_HTTP_PROXY`). The cache (`AISIGNX_PLUGIN_CACHE_DIR`, `AISIGNX_PLUGIN_CACHE_MB`) is pruned daily and never backed up.

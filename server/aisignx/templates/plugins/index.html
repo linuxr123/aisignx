@@ -64,6 +64,25 @@
           {% for f in d.settings %}
           {{ field(f, p.settings.get(f.name), None, prefix="ps-" ~ d.key ~ "-") }}
           {% endfor %}
+          {% for sec in p.secrets %}
+          <div class="mb-3">
+            <label class="form-label" for="secret-{{ d.key }}-{{ sec.name }}">{{ sec.label }}</label>
+            {% if sec.source == 'env' %}
+            <input class="form-control" type="text" disabled value="Set by the {{ sec.env }} environment variable">
+            <div class="form-text">The environment variable takes precedence. Remove it and restart to enter the key here.</div>
+            {% else %}
+            <input class="form-control" type="password" id="secret-{{ d.key }}-{{ sec.name }}" name="secret-{{ sec.name }}" autocomplete="new-password" spellcheck="false" maxlength="200"
+                   placeholder="{% if sec.configured %}Saved. Type a new key to replace it{% else %}Paste your key{% endif %}">
+            {% if sec.configured %}
+            <div class="form-check mt-1">
+              <input class="form-check-input" type="checkbox" id="clear-{{ d.key }}-{{ sec.name }}" name="clear-secret-{{ sec.name }}" value="1">
+              <label class="form-check-label small" for="clear-{{ d.key }}-{{ sec.name }}">Remove the saved key</label>
+            </div>
+            {% endif %}
+            <div class="form-text">Stored encrypted on this server; never sent to screens. You can also use <code>{{ sec.env }}</code>.</div>
+            {% endif %}
+          </div>
+          {% endfor %}
           <button class="btn btn-sm btn-primary" type="submit">Save {{ d.name }}</button>
         </form>
         {% endif %}
