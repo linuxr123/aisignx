@@ -478,17 +478,25 @@ def plugin_fields(plugin: PluginDef, config: dict, media: Media,
     return {"url": url, "muted": bool(muted), "plugin": block}
 
 
-def manifest_fields(media: Media, muted: bool | None = None) -> dict | None:
+def manifest_fields(media: Media, muted: bool | None = None, synced: bool = False) -> dict | None:
     """plugin_fields() for a stored, playable item, wired to the player data endpoint.
     muted: the playlist item's Mute box; plugins with sound (plugin.audio) use it.
+    synced: the screen plays in a synchronized group, where a slide always runs for its set duration
+    and a plugin cannot end it early: a plugin that normally ends its own slide (YouTube) is asked
+    to keep going instead (it loops for the whole duration).
     None when the plugin's manifest_extra() fails (the item is then left out)."""
     plugin = plugin_for(media)
     config = stored_config(media, plugin)
     if plugin.audio and muted is not None:
         config = {**config, "mute": bool(muted)}
+    if synced and plugin.ends_itself:
+        config = {**config, "play_to_end": False}
     data_url = url_for("player_api.plugin_data", media_id=media.id) if plugin.data else None
     try:
-        return plugin_fields(plugin, config, media, data_url)
+        fields = plugin_fields(plugin, config, media, data_url)
+        if synced and plugin.ends_itself:
+            fields["plugin"]["ends_itself"] = False
+        return fields
     except Exception:
         log.exception("plugin %s: manifest entry failed for media %s", plugin.key, media.id)
         return None

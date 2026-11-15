@@ -101,8 +101,9 @@ def _video_facts(media) -> dict | None:
             "fps": info.get("fps") or 25, "bitrate": info.get("bitrate") or 0}
 
 
-def _item_entry(item, fit: str | None = None) -> dict | None:
-    """One manifest item. fit: the display's override for every item, if any."""
+def _item_entry(item, fit: str | None = None, synced: bool = False) -> dict | None:
+    """One manifest item. fit: the display's override for every item, if any. synced: the display's
+    group plays in sync (slides run for their set duration; see build_manifest)."""
     if not is_playable(item):
         return None
     media = item.media
@@ -114,7 +115,7 @@ def _item_entry(item, fit: str | None = None) -> dict | None:
     elif media.media_type == MEDIA_PLUGIN:
         from ..plugins.service import manifest_fields
 
-        plugin = manifest_fields(media, muted=item.mute)
+        plugin = manifest_fields(media, muted=item.mute, synced=synced)
         if plugin is None:
             return None
         entry = {"url": plugin["url"], "mime": None, "sha256": None, "size": None,
@@ -178,9 +179,11 @@ def build_manifest(display: Display, now: datetime | None = None, ctx=None) -> d
     playlist = res.playlist
     items = []
     fit = display.fit_override if display.fit_override in FIT_MODES else None
+    group = display.group
+    synced = bool(group is not None and group.sync_playback)
     if playlist is not None:
         for item in sorted(playlist.items, key=lambda i: (i.position, i.id)):
-            entry = _item_entry(item, fit)
+            entry = _item_entry(item, fit, synced)
             if entry is not None:
                 items.append(entry)
 
@@ -194,8 +197,7 @@ def build_manifest(display: Display, now: datetime | None = None, ctx=None) -> d
         "emergency": _emergency_entry(res),
         "settings": settings_payload(display),
     }
-    group = display.group
-    if group is not None and group.sync_playback and items:
+    if synced and items:
         # Synchronized playback: every screen of the group works out the current slide from the
         # shared server clock and the item durations, so no chatter is needed (static/player/
         # sync.js). The anchor is the Unix epoch: the same for every screen and every restart,

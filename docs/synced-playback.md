@@ -28,9 +28,10 @@ decoders can be a little behind while a new slide loads.
 
 - **Player controls are off** (pause, next, seek): one screen going its own way would break the sync.
   The display page says so.
-- **Slides always run for their set duration.** A video that is shorter than its slide stays on its
-  last frame (a single-item playlist loops); a plugin cannot end its slide early (YouTube's "end the
-  slide when the video ends" does not apply).
+- **Slides always run for their set duration.** A video that is shorter than its slide plays again
+  (a single-item playlist loops); a plugin cannot end its slide early. A YouTube video therefore
+  **loops** for the whole slide (its "end the slide when the video ends" option does not apply).
+  Set the slide's duration to about the length of the video, or the video repeats.
 - Changing the playlist, an item's duration or the group setting restarts the whole group on the
   new timeline at the same moment.
 - Emergency messages still show on every screen as usual.
@@ -41,7 +42,9 @@ decoders can be a little behind while a new slide loads.
   playlist, or the same schedule). Screens of a group that play different playlists are each in
   step with themselves only.
 - Use **images, videos and plugins with a fixed duration** for the best result. Live web pages are
-  fine, but each screen loads them on its own.
+  fine, but each screen loads them on its own. **YouTube is not frame-accurate:** each screen starts
+  its own copy when its slide begins, so copies can be a second or two apart. For a video wall use
+  an uploaded video instead.
 - The display page shows each synced screen's clock offset and round trip (Diagnostics).
 
 ## Player API

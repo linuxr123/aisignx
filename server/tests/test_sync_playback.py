@@ -122,3 +122,37 @@ def test_display_page_shows_the_group_sync_and_clock(app, configured, paired_dis
         db.session.commit()
     page = c.get(f"/displays/{paired_display[0]}").get_data(as_text=True)
     assert "Synced playback" in page and "-12 ms from the server" in page and "round trip 8 ms" in page
+
+
+# --- plugins that end their own slide (YouTube) must not leave a synced screen empty --------------
+
+def test_youtube_loops_for_the_whole_slide_in_a_synced_group(tmp_path, monkeypatch):
+    """A synced slide always runs for its set duration, so a YouTube video that ends early must
+    start again instead of leaving the screen empty until the slide's time is up."""
+    from urllib.parse import parse_qs, urlsplit
+    from .plugin_fixtures import add_item, make_plugin_app, paired_with
+
+    app = make_plugin_app(tmp_path, monkeypatch)
+    make_user(app, "admin", "admin")  # an admin must exist, or the player API answers setup_required
+    try:
+        media_id = add_item(app, "youtube", {"source": "videos", "videos": "dQw4w9WgXcQ", "play_to_end": True},
+                            duration=300)
+        token = paired_with(app, media_id)
+        client = app.test_client()
+        item, = client.get(f"{API}/manifest", headers=bearer(token)).get_json()["items"]
+        assert item["plugin"]["ends_itself"] is True and item["plugin"]["embed"]["play_to_end"] is True
+        assert parse_qs(urlsplit(item["url"]).query).get("loop") is None
+        with app.app_context():                      # now put the screen in a synced group
+            display = Display.query.one()
+            group = DisplayGroup(name="Wall", sync_playback=True)
+            db.session.add(group)
+            display.group = group
+            db.session.commit()
+        m = client.get(f"{API}/manifest", headers=bearer(token)).get_json()
+        item, = m["items"]
+        assert m["sync"]["cycle_ms"] == 300_000
+        assert item["plugin"]["ends_itself"] is False and item["plugin"]["embed"]["play_to_end"] is False
+        assert parse_qs(urlsplit(item["url"]).query)["loop"] == ["1"]   # YouTube starts it again
+    finally:
+        with app.app_context():
+            db.engine.dispose()
