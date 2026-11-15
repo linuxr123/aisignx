@@ -22,10 +22,7 @@ A quick overview. The detailed list of every change follows further down.
 - **Designs being written:** the device agent/watchdog, and content extras.
 
 ### Planned (in this order)
-1. **Admin interface makeover** (moved up on 2026-11-15):
-   - a navigation bar on the left that collapses to icons;
-   - light and dark themes;
-   - better-organized menus (system settings, admin settings, logs);
+1. **Admin interface makeover** (moved up on 2026-11-15; layout, menus and themes are done):
    - the media library as a grid with filters, and drag-and-drop upload of many files at once;
    - a nicer display edit page.
 2. **PowerPoint add-in:** finish and test it (export to MP4, upload or replace with an API token).
@@ -47,6 +44,12 @@ A quick overview. The detailed list of every change follows further down.
 7. **Synced playback** between displays (from v2). Player controls are turned off on synced displays, because pause, next or previous on one screen would break the sync.
 8. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
 9. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+
+## Unreleased: Admin interface makeover
+
+### Changed
+- **New layout:** a left sidebar replaces the top bar. Menus are grouped: Content (Media, Plugins, Playlists), Screens (Displays, Groups, Schedules, Emergency), Monitoring (Alerts, Reports) and, for admins, Administration (Users, Settings, All API tokens, Audit log, Backups, System, Logs). The sidebar collapses to icons (the choice is remembered), and on phones and tablets it slides in over the page.
+- **Light and dark themes:** a button in the sidebar cycles *follows the system*, *light* and *dark* (remembered per browser, applied before the page paints, so nothing flashes). Icons are built in (no network needed).
 
 ## Unreleased: Video playback warnings
 

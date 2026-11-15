@@ -4,6 +4,56 @@
 
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";
 
+  // ---- Theme (light / dark / follow the system) and the collapsible sidebar. Both are kept in
+  // localStorage; the inline script in base.html applies them before the first paint.
+  const root = document.documentElement;
+  const store = {
+    get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
+    set(key, value) { try { localStorage.setItem(key, value); } catch (e) { /* private mode */ } },
+  };
+  const THEMES = ["auto", "light", "dark"];
+  const THEME_TITLES = { auto: "Theme: follows the system", light: "Theme: light", dark: "Theme: dark" };
+  function applyTheme(theme) {
+    const dark = theme === "dark" || (theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    root.setAttribute("data-bs-theme", dark ? "dark" : "light");
+    root.setAttribute("data-theme", theme);
+    document.querySelectorAll("[data-theme-icon]").forEach((el) => { el.hidden = el.dataset.themeIcon !== theme; });
+    document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
+      btn.title = THEME_TITLES[theme] + " (click to change)";
+    });
+  }
+  applyTheme(root.getAttribute("data-theme") || "auto");
+  document.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-theme-toggle]");
+    if (!toggle) return;
+    const next = THEMES[(THEMES.indexOf(root.getAttribute("data-theme") || "auto") + 1) % THEMES.length];
+    store.set("aisignx.theme", next);
+    applyTheme(next);
+  });
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => {
+    if ((root.getAttribute("data-theme") || "auto") === "auto") applyTheme("auto");
+  });
+
+  function setSidebar(collapsed) {
+    if (collapsed) root.setAttribute("data-sidebar", "collapsed"); else root.removeAttribute("data-sidebar");
+    store.set("aisignx.sidebar", collapsed ? "collapsed" : "expanded");
+    document.querySelectorAll("[data-sidebar-toggle]").forEach((btn) => {
+      btn.title = collapsed ? "Expand the menu" : "Collapse the menu";
+      btn.setAttribute("aria-label", btn.title);
+    });
+  }
+  setSidebar(root.getAttribute("data-sidebar") === "collapsed");
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-sidebar-toggle]")) setSidebar(root.getAttribute("data-sidebar") !== "collapsed");
+    else if (event.target.closest("[data-sidebar-open]")) document.body.classList.add("sidebar-open");
+    else if (event.target.closest("[data-sidebar-close]") || (document.body.classList.contains("sidebar-open") && event.target.closest(".sidebar .nav-link[href]"))) {
+      document.body.classList.remove("sidebar-open");
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") document.body.classList.remove("sidebar-open");
+  });
+
   // <form data-confirm="Are you sure?"> asks before submitting.
   // POST forms are sent once: a double-click would otherwise submit twice (e.g. pairing a
   // display, then reporting the already-used code as invalid).

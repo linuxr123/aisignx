@@ -67,3 +67,85 @@
 .picker-card:has(.picker-check:checked) {
   outline: 3px solid var(--bs-primary);
 }
+
+/* ---- App shell: sidebar + content (templates/base.html). ------------------------------------
+   The sidebar is always dark (it carries data-bs-theme="dark"); the content follows the theme. */
+:root { --sidebar-w: 15rem; --sidebar-w-collapsed: 4.4rem; }
+
+.app-shell { display: flex; min-height: 100vh; }
+.app-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.app-content { flex: 1 0 auto; width: 100%; max-width: 1500px; margin: 0 auto; padding: 1.5rem 1.5rem 1rem; }
+.app-footer { padding: 0 1.5rem 1.25rem; max-width: 1500px; width: 100%; margin: 0 auto; }
+
+.sidebar {
+  flex: 0 0 var(--sidebar-w);
+  width: var(--sidebar-w);
+  position: sticky; top: 0; height: 100vh;
+  display: flex; flex-direction: column;
+  background: #1a1e26;
+  border-right: 1px solid rgba(255, 255, 255, .06);
+  z-index: 1040;
+  transition: width .15s ease, flex-basis .15s ease;
+}
+html[data-bs-theme="dark"] .sidebar { background: #12151b; }
+.sidebar-head { padding: 1rem .9rem .5rem; }
+.sidebar-brand { display: flex; align-items: center; gap: .7rem; color: #fff; text-decoration: none; font-weight: 600; white-space: nowrap; overflow: hidden; }
+.sidebar-brand small { display: block; font-weight: 400; font-size: .72rem; color: #8b93a1; }
+.brand-mark {
+  flex: none; width: 2.2rem; height: 2.2rem; border-radius: .6rem;
+  display: grid; place-items: center; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, var(--bs-primary), #6f42c1);
+}
+.sidebar-nav { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: .25rem 0 .75rem; scrollbar-width: thin; }
+.nav-group { padding: 1rem 1.5rem .3rem; font-size: .68rem; letter-spacing: .09em; text-transform: uppercase; color: #6f7886; white-space: nowrap; }
+.sidebar .nav-link {
+  position: relative; display: flex; align-items: center; gap: .75rem;
+  margin: .08rem .6rem; padding: .5rem .85rem; border-radius: .55rem;
+  color: #b4bcc9; white-space: nowrap; background: none; border: 0; width: calc(100% - 1.2rem); text-align: left;
+}
+.sidebar .nav-link .icon { flex: none; }
+.sidebar .nav-link:hover, .sidebar .nav-link:focus-visible { background: rgba(255, 255, 255, .07); color: #fff; }
+.sidebar .nav-link.active { background: rgba(var(--bs-primary-rgb), .28); color: #fff; font-weight: 500; }
+.sidebar .nav-link.nav-danger { color: #ff9b92; }
+.sidebar .nav-link.nav-danger.active, .sidebar .nav-link.nav-danger:hover { background: rgba(220, 53, 69, .25); color: #fff; }
+.nav-badge { font-size: .68rem; }
+.sidebar-foot { padding: .6rem 0 .8rem; border-top: 1px solid rgba(255, 255, 255, .07); }
+.foot-tools { display: flex; gap: .25rem; padding: .35rem .6rem 0; }
+.foot-btn { color: #b4bcc9; background: none; border: 0; padding: .4rem .55rem; }
+.foot-btn:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.user-button .badge { font-weight: 500; }
+.dropup .dropdown-menu { min-width: 12rem; }
+
+/* Collapsed to icons (desktop only). */
+@media (min-width: 992px) {
+  html[data-sidebar="collapsed"] .sidebar { flex-basis: var(--sidebar-w-collapsed); width: var(--sidebar-w-collapsed); }
+  html[data-sidebar="collapsed"] .nav-label,
+  html[data-sidebar="collapsed"] .brand-text { display: none; }
+  html[data-sidebar="collapsed"] .nav-group { height: 1px; padding: 0; margin: .7rem 1.1rem; background: rgba(255, 255, 255, .08); font-size: 0; }
+  html[data-sidebar="collapsed"] .sidebar .nav-link { justify-content: center; padding: .6rem 0; margin: .08rem .55rem; width: calc(100% - 1.1rem); }
+  html[data-sidebar="collapsed"] .nav-badge { position: absolute; top: .1rem; right: .1rem; padding: .15em .4em; }
+  html[data-sidebar="collapsed"] .sidebar-head { padding-left: .9rem; }
+  html[data-sidebar="collapsed"] .foot-tools { flex-direction: column; align-items: center; }
+  html[data-sidebar="collapsed"] [data-sidebar-toggle] .icon { transform: rotate(180deg); }
+  .topbar, .sidebar-backdrop { display: none !important; }
+}
+
+/* Phones and tablets: the sidebar slides in over the page. */
+@media (max-width: 991.98px) {
+  .sidebar { position: fixed; left: 0; top: 0; width: 16.5rem; transform: translateX(-100%); transition: transform .2s ease; box-shadow: none; }
+  body.sidebar-open .sidebar { transform: none; box-shadow: 0 0 2rem rgba(0, 0, 0, .5); }
+  .sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: 1030; }
+  body.sidebar-open .sidebar-backdrop { display: block; }
+  [data-sidebar-toggle] { display: none; }
+  .topbar {
+    display: flex; align-items: center; gap: .5rem; position: sticky; top: 0; z-index: 1020;
+    padding: .5rem .75rem; background: #1a1e26; color: #fff;
+  }
+  .topbar .foot-btn { color: #fff; }
+  .topbar-brand { color: #fff; text-decoration: none; font-weight: 600; }
+  .app-content { padding: 1rem .9rem .5rem; }
+}
+
+/* Badges that were "light" in the old navbar theme: readable in both themes. */
+.badge.text-bg-light { background-color: var(--bs-secondary-bg) !important; color: var(--bs-secondary-color) !important; }
+.badge.bg-light.text-dark { background-color: var(--bs-secondary-bg) !important; color: var(--bs-body-color) !important; }

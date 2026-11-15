@@ -55,7 +55,7 @@ def test_list_page_for_admin_and_viewer(papp, pclient):
     html = page.data.decode()
     assert "Echo" in html and "echo.example.com" in html and "Test data only." in html
     assert "/plugins/echo/settings" not in html and "Clear cache" not in html
-    assert ">Plugins</a>" in html  # nav link
+    assert 'href="/plugins/"' in html and 'nav-label">Plugins</span>' in html  # nav link
     pclient.post("/logout")
     login(pclient, "admin")
     html = pclient.get("/plugins/").data.decode()
