@@ -26,6 +26,16 @@ def _int(value) -> int | None:
         return MAX_INT if value > 0 else 0
 
 
+def _sint(value) -> int | None:
+    """A signed integer, clamped to +-one day in ms (a clock offset)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+        return None
+    try:
+        return max(-86_400_000, min(86_400_000, int(value)))
+    except (OverflowError, ValueError):
+        return None
+
+
 def _num(value) -> float | None:
     """A small positive float (device pixel ratio)."""
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
@@ -104,6 +114,7 @@ _FIELDS = {
     "storage_free_bytes": _int,
     "errors": _errors,
     "media_support": _support,
+    "sync": lambda v: _obj(v, {"offset_ms": _sint, "rtt_ms": _int}),
 }
 
 

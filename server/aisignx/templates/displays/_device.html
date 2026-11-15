@@ -119,6 +119,10 @@
     <dd class="col-sm-8">{% if shell.name %}{{ shell.name }} {{ shell.version or "" }}{% if shell.caps %} <span class="text-body-secondary">({{ shell.caps|join(", ") }})</span>{% endif %}{% if shell.lock %} &middot; lock: {{ shell.lock }}{% endif %}{% else %}Browser{% endif %}</dd>
     <dt class="col-sm-4">Uptime</dt>
     <dd class="col-sm-8">app {{ uptime(shell.uptime_s) }} &middot; page {{ uptime(diag.page_uptime_s) }}</dd>
+    {% if diag.sync is mapping %}
+    <dt class="col-sm-4">Synced playback</dt>
+    <dd class="col-sm-8">clock {{ "%+d"|format(diag.sync.offset_ms or 0) }} ms from the server &middot; round trip {{ diag.sync.rtt_ms or 0 }} ms</dd>
+    {% endif %}
     <dt class="col-sm-4">Media cache</dt>
     <dd class="col-sm-8">{% if cache.files is number %}{{ cache.files }} files{% if cache.bytes is number %}, {{ cache.bytes|filesize }}{% endif %}{% else %}&mdash;{% endif %}</dd>
     <dt class="col-sm-4">Free storage</dt>

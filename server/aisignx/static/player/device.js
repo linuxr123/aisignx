@@ -269,6 +269,8 @@
         if (typeof st.lock === "string") d.shell.lock = st.lock.slice(0, 16);
       }
     }
+    var sy = A.sync;
+    if (sy && sy.active && sy.clock.ready()) d.sync = { offset_ms: Math.round(sy.clock.offset()), rtt_ms: Math.round(sy.clock.rtt()) };
     if (support.checked) d.media_support = { checked: support.checked, problems: support.problems.slice(0, MAX_SUPPORT_CHECKS) };
     if (errors.length) d.errors = errors.slice();
     while (d.errors && d.errors.length && byteLength(JSON.stringify(d)) > DIAG_MAX) d.errors.shift();

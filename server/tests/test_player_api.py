@@ -679,7 +679,7 @@ def test_player_page(app, configured, client):
              for attrs, _ in scripts]
     # Native plugins' player scripts follow the plugin host (test_plugins_runner_html.py).
     names = [n for n in names if not n.startswith("plugins/") or n == "plugins/host"]
-    assert names == ["net", "render", "plugins/host", "emergency", "device", "pop", "controls",
+    assert names == ["net", "sync", "render", "plugins/host", "emergency", "device", "pop", "controls",
                      "player"]
     for _, body in scripts:
         assert body.strip() == ""  # no inline script

@@ -241,6 +241,7 @@
   }
 
   function send(path, init, ms) {
+    var sentAt = Date.now();  // results carry sentAt/recvAt: the clock estimate (sync.js) needs them
     var ctrl = typeof AbortController === "function" ? new AbortController() : null;
     if (ctrl) init.signal = ctrl.signal;
     var timer;
@@ -252,7 +253,8 @@
     });
     var request = fetch(API + path, init).then(function (res) {
       var retryAfter = parseInt(res.headers.get("Retry-After") || "", 10) || 0;
-      if (res.status === 304) return { kind: "not_modified", status: 304, data: null, retryAfter: 0 };
+      var recvAt = Date.now();
+      if (res.status === 304) return { kind: "not_modified", status: 304, data: null, retryAfter: 0, sentAt: sentAt, recvAt: recvAt };
       return res.text().then(function (text) {
         var data = null;
         try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
@@ -263,7 +265,7 @@
         else if (res.status === 401 && code === "unauthorized") kind = "unauthorized";
         else if (res.status === 503 && code === "setup_required") kind = "setup";
         else if (res.status === 404 && code === "expired") kind = "expired";
-        return { kind: kind, status: res.status, data: data, retryAfter: retryAfter };
+        return { kind: kind, status: res.status, data: data, retryAfter: retryAfter, sentAt: sentAt, recvAt: recvAt };
       });
     });
     return Promise.race([request, timeout]).then(function (r) {

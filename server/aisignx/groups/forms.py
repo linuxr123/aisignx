@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from sqlalchemy import func
-from wtforms import SelectMultipleField, StringField, TextAreaField
+from wtforms import BooleanField, SelectMultipleField, StringField, TextAreaField
 from wtforms.fields.choices import SelectChoice
 from wtforms.validators import DataRequired, Length, Optional, ValidationError
 
@@ -12,6 +12,7 @@ class GroupForm(FlaskForm):
                        render_kw={"placeholder": "e.g. Lobby screens"})
     description = TextAreaField("Description", validators=[Optional(), Length(max=255)],
                                 render_kw={"rows": 2})
+    sync_playback = BooleanField("Synchronized playback")
     # Rendered as a checkbox list in groups/form.html.
     members = SelectMultipleField("Members", coerce=int, default=[])
 

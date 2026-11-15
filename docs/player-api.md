@@ -174,6 +174,7 @@ Authenticated. Returns what the screen should play.
 | `heartbeat_s` | How often to send a heartbeat. |
 | `playlist` | `null` when nothing plays (`source.type` is `none`). Then `items` is `[]`: show a "no content" screen with the display name. |
 | `items` | Play in this order, then loop. |
+| `sync` | Only in manifests of screens in a group with synchronized playback: `{group_id, anchor_ms, cycle_ms}`. The slide at server time `T` comes from walking the items' `duration_ms` (each at least 1000) through `(T - anchor_ms) mod cycle_ms`; slides run for their duration, never ended early. The server clock is `server_time_ms` corrected by half the round trip. See [synced-playback.md](synced-playback.md). Clients that do not know it play normally. |
 | `id` | Playlist item ID (report it as `current_item_id`). |
 | `type` | `image`, `video`, `web` or `plugin` (see [Plugin items](#plugin-items)). Skip types you don't support. |
 | `url` | Image and video: a path on this server; resolve it against the server base URL and fetch it with your token. Web: an absolute `http(s)://` URL to show in a web view, without your token. |

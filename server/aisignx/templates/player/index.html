@@ -36,6 +36,7 @@
   </template>
   <noscript><p class="noscript">The AiSignX player needs JavaScript.</p></noscript>
   <script src="{{ url_for('static', filename='player/net.js', v=build) }}"></script>
+  <script src="{{ url_for('static', filename='player/sync.js', v=build) }}"></script>
   <script src="{{ url_for('static', filename='player/render.js', v=build) }}"></script>
   <script src="{{ url_for('static', filename='player/plugins/host.js', v=build) }}"></script>
   {%- for path in plugins.scripts %}

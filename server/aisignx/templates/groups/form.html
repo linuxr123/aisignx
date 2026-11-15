@@ -9,6 +9,8 @@
     {{ form.hidden_tag() }}
     {{ field(form.name, autofocus=true) }}
     {{ field(form.description) }}
+    {{ field(form.sync_playback) }}
+    <p class="form-text mt-n2">The group's screens show the same slide at the same moment, even on different networks: each one works out where the playlist should be from a shared clock. Player controls (pause, next, seek) are switched off on them, because one screen going its own way would break the sync. Slides then always run for their set duration (a video that is shorter than its slide repeats; a plugin cannot end its slide early). Screens that play different playlists at the same time are each in step with themselves only.</p>
     <fieldset class="mb-3">
       <legend class="form-label fs-6">{{ form.members.label.text }}</legend>
       {% if form.displays %}

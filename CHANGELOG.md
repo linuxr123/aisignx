@@ -22,25 +22,29 @@ A quick overview. The detailed list of every change follows further down.
 - **Designs being written:** the device agent/watchdog, and content extras.
 
 ### Planned (in this order)
-1. **Synced playback** between displays (from v2; moved up on 2026-11-15). Player controls are turned off on synced displays, because pause, next or previous on one screen would break the sync.
-2. **PowerPoint add-in:** finish and test it (export to MP4, upload or replace with an API token).
-3. **Player fixes:**
+1. **PowerPoint add-in:** finish and test it (export to MP4, upload or replace with an API token).
+2. **Player fixes:**
    - The arrow keys always mean fast forward/rewind (smaller steps for short videos), and the hints say "Fast forward"/"Rewind". "Next"/"Previous" only appear when changing slides.
    - Mouse: press and drag to fast forward or rewind a video, like on a touch screen. A plain click still pauses.
    - Going to the next or previous slide by hand slides left or right, whatever the playlist's transition is. Automatic changes keep the playlist's transition.
    - Back on Android can exit when Lock player is off.
    - The apps' video caches handle range requests correctly.
    - Android: fast forward and rewind work poorly (reported 2026-11-15); fix and test on a device.
-4. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
-5. **Device agent and watchdog** (Windows and Android):
+3. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
+4. **Device agent and watchdog** (Windows and Android):
    - restarts the player when needed, installs signed updates, reboots, collects logs;
    - Windows kiosk setup (auto-login, replace the shell), all controlled from the display settings.
-6. **Emergency improvements:**
+5. **Emergency improvements:**
    - saved emergency templates;
    - scheduled emergencies;
    - triggering an emergency from another device (API, button or webhook).
-7. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
-8. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+6. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
+7. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+
+## Unreleased: Synchronized playback
+
+### Added
+- **Synchronized playback** for a group of displays (**Groups > Edit > Synchronized playback**): the group's screens show the same slide at the same moment. Each screen works out the current slide from the shared server clock and the playlist's durations, so it needs no extra traffic, survives restarts and network gaps, and a screen with a wrong clock is fine (only its distance from the server clock matters, estimated from the answers it already gets, corrected by round trip). Videos join at the right position and are pulled back if they drift; a screen that joins late jumps to where the group is. Player controls are off on synced screens, and slides run for their set duration. Display pages show "Synced playback" with each screen's clock offset. Database migration `0013_group_sync`. See [docs/synced-playback.md](docs/synced-playback.md).
 
 ## Unreleased: Admin interface makeover
 

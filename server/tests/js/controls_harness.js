@@ -9,7 +9,7 @@ const vm = require("vm");
 
 const DIR = process.argv[2];
 const read = (f) => fs.readFileSync(path.join(DIR, f), "utf-8");
-const CONTROLS = read("controls.js"), PLAYER = read("player.js"), RENDER = read("render.js");
+const CONTROLS = read("controls.js"), PLAYER = read("player.js"), RENDER = read("render.js"), SYNC = read("sync.js");
 const quiet = { log() {}, info() {}, warn() {}, error() {}, debug() {} };  // stdout is the JSON result
 const flush = () => new Promise((r) => setImmediate(r));
 
@@ -34,7 +34,7 @@ function element(id) {
 // items: manifest items; opts: {allow_input, resume_after_s, rotation, shell}
 async function make(items, opts) {
   opts = opts || {};
-  const clock = { t: 1000 };
+  const clock = { t: opts.t0 || 1000 };  // true time; opts.skew makes this screen's Date.now() wrong by that much
   const timers = [];
   let seq = 0;
   const addTimer = (fn, ms, repeat) => { const id = ++seq; timers.push({ id, fn, at: clock.t + (ms || 0), ms: ms || 0, repeat }); return id; };
@@ -116,6 +116,7 @@ async function make(items, opts) {
     onControl(fn) { shell.control = fn; },
   } : null;
   const manifest = { version: "v1", items, settings: {} };
+  if (opts.sync) manifest.sync = { anchor_ms: 0, cycle_ms: items.reduce((a, i) => a + i.duration_ms, 0), group_id: 1 };
   const net = {
     shell: () => shell, clientId: () => "c",
     store: { KEYS: { manifest: "m", pairing: "p" }, local: { get: () => null, set() {}, remove() {} },
@@ -123,7 +124,10 @@ async function make(items, opts) {
     Backoff: () => ({ next: () => 1000, reset() {} }),
     Events: (h) => { Object.assign(handlers, h); return { start() {}, stop() {}, status: "live" }; },
     Heartbeat: () => ({ start() {}, stop() {}, now() {}, setSeconds() {} }),
-    api: () => Promise.resolve({ kind: "ok", data: manifest }),
+    // The server stamps server_time_ms (true time) halfway through a 40 ms round trip; this screen's own
+    // clock (Date.now) is wrong by opts.skew.
+    api: () => Promise.resolve({ kind: "ok", data: Object.assign({}, manifest, { server_time_ms: clock.t }),
+      sentAt: clock.t + (opts.skew || 0) - 20, recvAt: clock.t + (opts.skew || 0) + 20 }),
   };
   const POP = {};
   ["begin", "end", "pause", "resume"].forEach((k) => { POP[k] = (a) => calls.pop.push(k === "begin" ? "begin:" + a.id : k); });
@@ -144,9 +148,10 @@ async function make(items, opts) {
     setInterval: (fn, ms) => addTimer(fn, ms, true), clearInterval: clearTimer,
     Promise, JSON, Object, Array, Math, Number, RegExp, isFinite, String,
   };
-  ctx.Date = { now: () => clock.t };
+  ctx.Date = { now: () => clock.t + (opts.skew || 0) };
   window.performance = ctx.performance;
   vm.createContext(ctx);
+  vm.runInContext(SYNC, ctx);
   vm.runInContext(CONTROLS, ctx);
   vm.runInContext(PLAYER, ctx);
   await flush(); await flush();
@@ -458,6 +463,57 @@ async function main() {
     await h.advance(30000);
     const after = h.calls.swaps.slice(stuck.swaps);
     out.offlineKeeps = { stuck, onlyWorking: h.calls.swaps.slice(0, stuck.swaps).every((id) => id === 1), after };
+  }
+
+  // Synchronized playback: three screens whose own clocks are 3 s slow, 2 s fast and 0.4 s fast (one
+  // of them joins 7.3 s late) must show the same slide, judged against the shared timeline.
+  {
+    const items = [IMG(1, 4000), IMG(2, 6000), IMG(3, 5000)];
+    const cycle = 15000, starts = [0, 4000, 10000];
+    const at = (T) => { const t = T % cycle; return t < 4000 ? 1 : t < 10000 ? 2 : 3; };
+    const near = (T) => starts.concat([cycle]).some((b) => Math.abs((T % cycle) - b) < 450);
+    const a = await make(items, { sync: true, skew: -3000 });
+    await a.advance(7300);
+    const b = await make(items, { sync: true, skew: 2000, t0: a.clock.t });
+    const c = await make(items, { sync: true, skew: 400, t0: a.clock.t });
+    const players = [a, b, c];
+    let wrong = [0, 0, 0], checked = 0;
+    for (let i = 0; i < 900; i++) {          // 90 s in 100 ms steps
+      for (const p of players) await p.advance(100);
+      const T = a.clock.t;
+      if (i < 30 || near(T)) continue;        // let the late joiners settle; skip boundaries
+      checked++;
+      players.forEach((p, k) => { if (p.cur() !== at(T)) wrong[k]++; });
+    }
+    out.sync = { checked, wrong, controlsOff: a.pb.enabled() === false || a.pb.enabled() === undefined,
+      paused: [a, b, c].map((p) => { p.key("ArrowRight"); return p.cur(); }).length };
+    // A video joined mid-slide starts where the shared timeline says, and an item is never cut short
+    // by the video ending (sync: always the set duration).
+    const v = await make([VID(7, 20), IMG(8, 5000)], { sync: true, skew: 1500, t0: 1000 + 8000 });
+    out.syncVideo = { cur: v.cur(), time: v.video() ? v.video().currentTime : null };
+    const none = await make([IMG(1, 4000), IMG(2, 4000)], {});
+    out.noSync = { cur: none.cur() };
+  }
+
+  // sync.js: the position math and the clock estimate.
+  {
+    const c = { window: {}, Date, Math, Number, isFinite };
+    vm.createContext(c);
+    vm.runInContext(SYNC, c);
+    const SY = c.window.AiSignX.sync;
+    const pos = (d, a, t) => SY.position(d, a, t);
+    const clock = SY.Clock();
+    // Two answers: a slow one (400 ms round trip, offset wrong by 150) and a fast one (20 ms, exact).
+    clock.sample(1000150 + 200, 1000000, 1000400);            // offset = 1000350 + 200 - 1000400 = 150
+    const slowOnly = clock.offset();
+    clock.sample(2000010, 2000000, 2000020);                   // offset = 2000010 + 10 - 2000020 = 0
+    out.syncUnit = {
+      first: pos([4000, 6000, 5000], 0, 0), mid: pos([4000, 6000, 5000], 0, 9999), wrap: pos([4000, 6000, 5000], 0, 15000 * 3 + 4000),
+      anchor: pos([4000, 6000], 1000, 5000), before: pos([4000, 6000], 100000, 99000),
+      short: pos([200, 6000], 0, 500), empty: pos([], 0, 5), zero: pos([0, 0], 0, 5), bad: pos([1000], 0, NaN),
+      slowOnly, best: clock.offset(), rtt: clock.rtt(), ready: clock.ready(), now: clock.now(5000),
+      junk: [clock.sample(NaN, 0, 1), clock.sample(1, 100, 50), clock.sample(1, 0, 20000)],
+    };
   }
 
   // render.js helpers on a fake video.

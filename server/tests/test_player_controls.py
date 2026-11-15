@@ -28,7 +28,7 @@ def test_player_page_has_control_elements_and_script_order(configured, client):
     assert '<div id="controls" hidden></div>' in html
     assert 'id="paused"' in html and 'class="p-sub"' in html and 'id="hint"' in html
     order = re.findall(r"player/(\w+)\.js", html)
-    assert order == ["net", "render", "emergency", "device", "pop", "controls", "player"]
+    assert order == ["net", "sync", "render", "emergency", "device", "pop", "controls", "player"]
 
 
 def test_controls_script_served_and_es2018():
@@ -156,6 +156,34 @@ def test_seeks_are_coalesced_while_the_video_is_still_seeking(harness):
     assert c["duringSeek"] == [110]            # one write; the rest wait for 'seeked'
     assert c["afterSeeked"] == [110, 125]      # then one write with the net result
     assert c["end"]["atEnd"] is True
+
+
+@needs_node
+def test_sync_position_math_and_the_clock_estimate(harness):
+    u = harness["syncUnit"]
+    assert u["first"] == {"index": 0, "elapsedMs": 0, "remainingMs": 4000, "cycleMs": 15000}
+    assert u["mid"]["index"] == 1 and u["mid"]["elapsedMs"] == 5999 and u["mid"]["remainingMs"] == 1
+    assert u["wrap"]["index"] == 1 and u["wrap"]["elapsedMs"] == 0     # three cycles on, 4 s in: the 2nd slide begins
+    assert u["anchor"]["index"] == 1 and u["anchor"]["elapsedMs"] == 0  # (5000 - 1000) % 10000 = 4000
+    assert u["before"]["index"] == 1                                    # a time before the anchor still maps in
+    assert u["short"]["index"] == 0 and u["short"]["elapsedMs"] == 500  # slides are never shorter than 1 s
+    assert u["empty"] is None and u["zero"] is None and u["bad"] is None
+    assert u["slowOnly"] == 150 and u["best"] == 0 and u["rtt"] == 20   # the fast answer wins
+    assert u["ready"] is True and u["now"] == 5000
+    assert u["junk"] == [False, False, False]                           # NaN, negative and 20 s round trips are ignored
+
+
+@needs_node
+def test_synced_screens_with_wrong_clocks_show_the_same_slide(harness):
+    r = harness["sync"]
+    assert r["checked"] > 600
+    # Clocks 3 s slow, 2 s fast and 0.4 s fast, one screen joining 7.3 s late: all agree with the
+    # shared timeline (boundaries are skipped: a screen may be a tick early or late there).
+    assert r["wrong"] == [0, 0, 0], r
+    # A video joined 8 s into its 20 s slide starts about 8 s in (clock error aside).
+    v = harness["syncVideo"]
+    assert v["cur"] == 7 and 7 <= v["time"] <= 9.5, v
+    assert harness["noSync"]["cur"] == 1  # without a sync block nothing changes: item 1 first
 
 
 @needs_node

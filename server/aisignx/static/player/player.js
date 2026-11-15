@@ -27,6 +27,7 @@
   var NO_CONTENT_RETRY_MS = 30000, SETUP_RETRY_MS = 10000, PAIRED_SHOW_MS = 2000, DIAG_EVERY = 10;
   var TYPES = { image: 1, video: 1, web: 1, plugin: 1 };
   var SEEK_S = 10, SCRUB_SPAN_S = 120, SCRUB_STEP_MS = 100;
+  var SYNC_CHECK_MS = 5000, SYNC_DRIFT_S = 0.35;  // in sync: how often a video is checked, and how far it may drift
 
   var S = {
     state: "", mode: 0, gen: 0, timers: [], manifest: null, version: null, items: [],
@@ -38,6 +39,7 @@
     paused: null,  // {resumeAt, remaining, video}: the viewer paused the slide on screen
     scrub: null,   // {slide, t0, target, duration, wasPaused, timer}: a drag-scrub in progress
     skipTo: null,  // index a skip asked for while its slide is still loading
+    sync: null,    // {anchor, key}: this display's group plays in sync (the manifest's sync block)
   };
   var manifestBackoff = net.Backoff(2000, 30000);
   var pairBackoff = net.Backoff(2000, 30000);
@@ -47,12 +49,33 @@
   // would otherwise lack its PIN, orientation and input lock until the content changes.
   var shellFed = false;
   var PH = A.pluginHost || null;  // plugins/host.js: frame plugin data, server clock, online state
+  var SY = A.sync || null;        // sync.js: shared clock and slide position (synchronized playback)
   var STARTED = Date.now();
 
   function now() { return window.performance && performance.now ? performance.now() : Date.now(); }
   function note(msg) { S.note = msg; D.noteError(msg); if (window.console) console.info("[player] " + msg); }
   function pop(fn, arg) { if (POP) { try { POP[fn](arg); } catch (e) { if (window.console) console.error(e); } } }
   function durationOf(item) { var d = Number(item.duration_ms); return d > 0 ? Math.max(1000, d) : DEFAULT_DURATION_MS; }
+
+  // ---- Synchronized playback. The slide that should be on screen is a function of the shared
+  // server clock, the playlist's durations and the anchor, so the group needs no coordination.
+  function serverNow() { return SY ? SY.clock.now() : Date.now(); }
+  // The schedule at server time `at` (default: now): {index, elapsedMs, remainingMs} or null.
+  function syncAt(at) {
+    if (!S.sync || !SY) return null;
+    return SY.position(S.items.map(durationOf), S.sync.anchor, at === undefined ? serverNow() : at);
+  }
+  // Index of the slide that plays right after the one on screen ends (or now, if none is shown).
+  function syncNextIndex() {
+    var wait = S.cur ? Math.max(0, S.cur.deadline - now()) : 0;
+    var p = syncAt(serverNow() + wait + 1);
+    return p ? p.index : 0;
+  }
+  function clockSample(res) {
+    if (SY && res && res.kind === "ok" && res.data && typeof res.data.server_time_ms === "number" && res.sentAt) {
+      SY.clock.sample(res.data.server_time_ms, res.sentAt, res.recvAt);
+    }
+  }
 
   // ---- Timers. Mode timers die on any state-machine transition; slide timers on any slide change.
   function enterMode() {
@@ -136,6 +159,7 @@
     else if (res.kind === "setup") goSetup();
     else if (res.kind === "ok" && res.data.manifest_version && res.data.manifest_version !== S.version) fetchManifest();
     if (res.kind === "ok" && PH) PH.setServerTime(res.data.server_time_ms);
+    clockSample(res);
     // network errors: keep playing
   });
   function startLive() {
@@ -163,6 +187,7 @@
       manifestBackoff.reset();
       // Only a manifest fresh from the server sets the plugin clock (a cached one is old).
       if (PH) PH.setServerTime(res.data.server_time_ms);
+      clockSample(res);
       store.local.set(K.manifest, withoutUnlock(res.data));
       applyManifest(res.data);
       if (shell) { shell.onManifest(JSON.stringify(res.data)); shellFed = true; }
@@ -201,10 +226,17 @@
     });
     if (m.heartbeat_s) hb.setSeconds(m.heartbeat_s);
     if (D.mediaSupport) D.mediaSupport(S.items);  // does this screen decode the videos smoothly?
+    // Synchronized playback: when the timeline changes (turned on or off, another playlist or
+    // other durations) the whole group restarts on the new one at the same moment.
+    var before = S.sync ? S.sync.key : "";
+    var ms = m.sync && typeof m.sync === "object" && SY && typeof m.sync.anchor_ms === "number" ? m.sync : null;
+    S.sync = ms ? { anchor: ms.anchor_ms, key: ms.anchor_ms + ":" + S.items.map(function (it) { return it.id + "=" + durationOf(it); }).join(",") } : null;
+    if (SY) SY.active = !!S.sync;
+    var resync = (S.sync ? S.sync.key : "") !== before && S.state === "PLAYING" && S.items.length;
     dropNext();
     S.skipTo = null;  // indexes of the old list mean nothing in the new one
     if (!S.items.length) { showNoContent(false); return; }
-    if (S.state !== "PLAYING") { startPlaying(); return; }
+    if (S.state !== "PLAYING" || resync) { startPlaying(); return; }
     var cur = S.cur;
     if (!cur) { S.pos = -1; return; }
     // The current slide keeps its deadline; the new list takes effect at the boundary,
@@ -274,17 +306,25 @@
   function boundary() {
     if (S.reloadPending) guardedReload();
     if (singleRepeat()) {
-      S.cur.deadline = now() + durationOf(S.cur.item);
+      var again = S.sync ? syncAt() : null;  // in sync: the cycle restarts on the shared clock
+      S.cur.deadline = now() + (again ? again.remainingMs : durationOf(S.cur.item));
       pop("end", true); pop("begin", S.cur.item);  // each repeat counts as a play
       return;
     }
     if (!S.nxt) prepareNext();
-    else if (S.nxt.state === "ready") swapTo(S.nxt);
+    else if (S.nxt.state === "ready") {
+      // In sync, a slide that was prepared for a moment that has passed (a slow load) is dropped
+      // for the one that should be on screen now.
+      var due = S.sync ? syncAt() : null;
+      if (due && due.index !== S.nxt.index && due.index !== (S.nxt.index + S.items.length - 1) % S.items.length) {
+        dropNext(); prepareNext();
+      } else swapTo(S.nxt);
+    }
     // loading: the old slide stays until the new one is ready; wait: failure dwell
   }
   function prepareNext() {
     if (S.nxt || !S.items.length || singleRepeat()) return;
-    var index = (S.pos + 1) % S.items.length;
+    var index = S.sync ? syncNextIndex() : (S.pos + 1) % S.items.length;
     var n = { index: index, item: S.items[index], state: "loading", slide: null };
     S.nxt = n;
     var pending = R.prepare(n.item, S.gen);
@@ -309,17 +349,21 @@
     S.forceSwap = false; S.failures = 0; S.pos = n.index; S.skipTo = null;
     clearControls();
     var item = n.item, g = S.gen, t = now();
+    var elapsed = 0;  // in sync: how far into this slide the shared clock says we already are
+    var sp = S.sync ? syncAt() : null;
+    if (sp) elapsed = sp.index === n.index ? sp.elapsedMs : -sp.remainingMs;  // a hair early: start at the boundary
+    if (sp && elapsed > 500 && R.isVideo(n.slide)) syncSeek(n.slide, item, elapsed);
     R.swap(n.slide, item.transition);
     screenEl.hidden = true;
     pop("end", true); pop("begin", item);
-    S.cur = { slide: n.slide, item: item, shownAt: t, deadline: t + durationOf(item), failed: false };
+    S.cur = { slide: n.slide, item: item, shownAt: t, deadline: t + durationOf(item) - elapsed, failed: false };
     EM.sync();  // a fullscreen emergency keeps the new video silent
     var guard = function (fn) { return function (x) { if (g === S.gen) fn(x); }; };
     if (R.isPlugin && R.isPlugin(n.slide)) {
       R.runPlugin(n.slide, {
         loop: function () { return loops(item); },
         // A plugin that ends itself while the viewer has it paused waits for the resume.
-        done: guard(function () { if (S.paused) return; S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
+        done: guard(function () { if (S.paused || S.sync) return; S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
         fail: guard(slideFailed),
         note: note,
         every: every,
@@ -327,9 +371,10 @@
       return;
     }
     if (!R.isVideo(n.slide)) return;
+    if (S.sync) every(function () { syncDrift(n.slide, item); }, SYNC_CHECK_MS);
     R.runVideo(n.slide, {
       loop: function () { return loops(item); },
-      done: guard(function () { S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
+      done: guard(function () { if (S.sync) return; S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
       fail: guard(slideFailed),
       note: note,
       every: every,
@@ -347,6 +392,25 @@
     cur.deadline = Math.min(cur.deadline, Math.max(now(), cur.shownAt + FAIL_DWELL_MS));
     tick();
   }
+  // Where a synced video should be `elapsedMs` into its slide: it loops only where it would loop
+  // anyway, otherwise it rests on its last frame.
+  function syncWant(slide, item, elapsedMs) {
+    var v = R.videoOf(slide), len = v ? Number(v.duration) : 0;
+    var s = Math.max(0, elapsedMs) / 1000;
+    if (!(len > 0) || !isFinite(len)) return s;
+    return loops(item) ? s % len : Math.min(s, len);
+  }
+  function syncSeek(slide, item, elapsedMs) { R.setVideoTime(slide, syncWant(slide, item, elapsedMs)); }
+  // Every few seconds a synced video is pulled back to the shared timeline if it has drifted.
+  function syncDrift(slide, item) {
+    var cur = S.cur;
+    if (!S.sync || !cur || cur.slide !== slide || cur.failed || S.paused || (R.isSeeking && R.isSeeking(slide))) return;
+    var p = syncAt(), v = R.videoOf(slide);
+    if (!p || !v || p.index !== S.pos) return;
+    var want = syncWant(slide, item, p.elapsedMs);
+    if (Math.abs((Number(v.currentTime) || 0) - want) > SYNC_DRIFT_S) R.setVideoTime(slide, want);
+  }
+
   // A video plays once (its deadline follows its length) unless it fills a longer duration or is alone.
   function loops(item) {
     return S.items.length === 1 ||
@@ -354,7 +418,7 @@
   }
 
   // ---- Controls: pause, skip, seek and scrub (controls.js turns input into these calls).
-  function canControl() { return S.state === "PLAYING" && !!S.cur && EM.shownId === null; }
+  function canControl() { return S.state === "PLAYING" && !!S.cur && EM.shownId === null && !S.sync; }
   function curVideo() { var c = S.cur; return !!(c && !c.failed && R.isVideo(c.slide)); }
   // Plays the on-screen video again; a refused unmuted play() falls back to muted, as runVideo does.
   function playCur() {

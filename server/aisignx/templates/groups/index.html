@@ -16,6 +16,7 @@
         <td>
           {% if current_user.can_edit %}<a href="{{ url_for('groups.edit', group_id=g.id) }}" class="fw-semibold">{{ g.name }}</a>
           {% else %}<span class="fw-semibold">{{ g.name }}</span>{% endif %}
+          {% if g.sync_playback %}<span class="badge text-bg-info ms-1" title="The screens in this group play in sync">Synced</span>{% endif %}
           {% if g.description %}<div class="small text-secondary text-truncate" style="max-width: 24rem">{{ g.description }}</div>{% endif %}
         </td>
         <td>

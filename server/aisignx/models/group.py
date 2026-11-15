@@ -17,6 +17,9 @@ class DisplayGroup(db.Model):
     # Unique as stored; the form also checks case-insensitive uniqueness.
     name = db.Column(db.String(100), nullable=False, unique=True, index=True)
     description = db.Column(db.String(255), nullable=True)
+    # Synchronized playback: the group's displays show the same slide at the same moment
+    # (player/manifest.py "sync", static/player/sync.js). Player controls are off on them.
+    sync_playback = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
 
     displays = db.relationship("Display", back_populates="group", passive_deletes=True,
