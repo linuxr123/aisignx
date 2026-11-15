@@ -269,10 +269,51 @@
         if (typeof st.lock === "string") d.shell.lock = st.lock.slice(0, 16);
       }
     }
+    if (support.checked) d.media_support = { checked: support.checked, problems: support.problems.slice(0, MAX_SUPPORT_CHECKS) };
     if (errors.length) d.errors = errors.slice();
     while (d.errors && d.errors.length && byteLength(JSON.stringify(d)) > DIAG_MAX) d.errors.shift();
     if (d.errors && !d.errors.length) delete d.errors;
     return byteLength(JSON.stringify(d)) > DIAG_MAX ? null : d;
+  }
+
+  // ---- Video support: ask this browser whether it decodes each video in the playlist smoothly
+  // (navigator.mediaCapabilities, the same decoder the player uses), and report the ones that
+  // are not in the diagnostics, so the admin sees "this screen may not play it" before anyone
+  // walks over to it. The server sends the codec, size, frame rate and bitrate of each video.
+  var support = { key: "", gen: 0, checked: 0, problems: [] };
+  var MAX_SUPPORT_CHECKS = 20;
+  function mediaSupport(items) {
+    var mc = typeof navigator !== "undefined" ? navigator.mediaCapabilities : null;
+    if (!mc || typeof mc.decodingInfo !== "function" || !Array.isArray(items)) return;
+    var list = [], seen = {};
+    items.forEach(function (it) {
+      var v = it && it.type === "video" ? it.video : null;
+      if (v && typeof v.codec === "string" && !seen[it.media_id] && list.length < MAX_SUPPORT_CHECKS) {
+        seen[it.media_id] = 1;
+        list.push(it);
+      }
+    });
+    var key = list.map(function (it) { return it.media_id + ":" + (it.sha256 || ""); }).join(",");
+    if (key === support.key) return;  // the same videos as last time: nothing to ask again
+    support.key = key;
+    var gen = ++support.gen;
+    support.checked = 0;
+    support.problems = [];
+    list.forEach(function (it) {
+      var v = it.video, type = String(it.mime || "video/mp4").split(";")[0];
+      var query;
+      try {
+        query = mc.decodingInfo({ type: "file", video: {
+          contentType: type + '; codecs="' + v.codec + '"', width: v.width, height: v.height,
+          bitrate: Math.max(1, v.bitrate || 1), framerate: v.fps || 25 } });
+      } catch (e) { return; }
+      Promise.resolve(query).then(function (r) {
+        if (gen !== support.gen || !r) return;
+        support.checked++;
+        if (!r.supported) support.problems.push({ id: it.media_id, s: "no" });
+        else if (!r.smooth) support.problems.push({ id: it.media_id, s: "rough" });
+      }, function () { /* this browser cannot say: report nothing */ });
+    });
   }
 
   // ---- Offline banner: only while playing (or showing "no content") and cut off for a while.
@@ -311,5 +352,6 @@
     noteError: noteError,
     diag: diag,
     checkOffline: checkOffline,
+    mediaSupport: mediaSupport,
   };
 })();

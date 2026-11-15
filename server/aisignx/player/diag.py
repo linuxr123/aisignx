@@ -70,6 +70,26 @@ def _size(value):
     return _obj(value, {"w": _int, "h": _int})
 
 
+MAX_SUPPORT = 20
+
+
+def _support(value) -> dict | None:
+    """Which of the playlist's videos this screen says it cannot decode smoothly:
+    {"checked": n, "problems": [{"id": media id, "s": "no" | "rough"}]}."""
+    if not isinstance(value, dict):
+        return None
+    checked = _int(value.get("checked"))
+    problems = []
+    for entry in (value.get("problems") if isinstance(value.get("problems"), list) else [])[:MAX_SUPPORT]:
+        if isinstance(entry, dict) and entry.get("s") in ("no", "rough"):
+            ident = _int(entry.get("id"))
+            if ident:
+                problems.append({"id": ident, "s": entry["s"]})
+    if checked is None:
+        return None
+    return {"checked": checked, "problems": problems}
+
+
 _FIELDS = {
     "ua": lambda v: _str(v, 300),
     "build": lambda v: _str(v, 40),
@@ -83,6 +103,7 @@ _FIELDS = {
     "cache": lambda v: _obj(v, {"files": _int, "bytes": _int}),
     "storage_free_bytes": _int,
     "errors": _errors,
+    "media_support": _support,
 }
 
 

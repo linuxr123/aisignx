@@ -104,6 +104,16 @@ def resume_seconds(value) -> int:
     return max(RESUME_MIN_S, min(RESUME_MAX_S, value))
 
 
+def support_problems(diag: dict | None) -> list[dict]:
+    """[{id, s}] the player reported as not decodable smoothly ("no" or "rough"); [] if none."""
+    ms = diag.get("media_support") if isinstance(diag, dict) else None
+    problems = ms.get("problems") if isinstance(ms, dict) else None
+    if not isinstance(problems, list):
+        return []
+    return [p for p in problems if isinstance(p, dict) and isinstance(p.get("id"), int)
+            and p.get("s") in ("no", "rough")]
+
+
 def parse_diag(text: str | None) -> dict | None:
     """The stored diagnostics JSON as a dict, for the detail page. None on any error."""
     if not text:

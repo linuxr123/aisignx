@@ -70,6 +70,29 @@
 </div></div>
 {% endmacro %}
 
+{% macro playback_card(support, diag) %}
+{# Videos this screen's own decoder says it cannot play smoothly (the player asks its browser). #}
+{% if support %}
+<div class="card border-warning mb-4" style="max-width: 48rem"><div class="card-body">
+  <h2 class="h5">Playback warnings</h2>
+  <p class="small text-body-secondary">This screen reported that it may not play {{ "this video" if support|length == 1 else "these videos" }} smoothly.
+    A 1080p H.264 copy (media page &rarr; <em>Make TV-friendly copy</em>) usually fixes it.</p>
+  <ul class="mb-0">
+    {% for row in support %}
+    <li>
+      {% if row.media %}<a href="{{ url_for('media.edit', media_id=row.media.id) }}">{{ row.media.name }}</a>
+        <span class="small text-body-secondary">({{ row.media.resolution or "" }}{% if row.media.video_summary %} &middot; {{ row.media.video_summary }}{% endif %})</span>
+      {% else %}Video {{ row.id }} (deleted){% endif %}
+      &mdash; <span class="{{ 'text-danger' if row.state == 'no' else 'text-warning-emphasis' }}">{{ "this screen cannot decode it" if row.state == "no" else "may stutter" }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div></div>
+{% elif diag and diag.media_support is mapping and diag.media_support.checked %}
+<p class="small text-body-secondary mb-4">Playback check: this screen can play all {{ diag.media_support.checked }} video{{ "" if diag.media_support.checked == 1 else "s" }} in its playlist smoothly.</p>
+{% endif %}
+{% endmacro %}
+
 {% macro diagnostics_card(display, diag, can_edit, action_form) %}
 <div class="card mb-4" style="max-width: 48rem"><div class="card-body">
   <div class="d-flex justify-content-between align-items-center mb-2">

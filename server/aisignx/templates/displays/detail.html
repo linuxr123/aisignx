@@ -2,7 +2,7 @@
 {% from "audit/_history.html" import history_link with context %}
 {% from "displays/_badge.html" import badge %}
 {% from "displays/_week.html" import now_playing, week_list %}
-{% from "displays/_device.html" import settings_card, screenshot_card, diagnostics_card %}
+{% from "displays/_device.html" import settings_card, screenshot_card, diagnostics_card, playback_card %}
 {% block title %}{{ display.name }}{% endblock %}
 {% macro when(dt) %}{% if dt %}{{ dt|localtime }}{% else %}&mdash;{% endif %}{% endmacro %}
 {% macro text(value) %}{% if value %}{{ value }}{% else %}&mdash;{% endif %}{% endmacro %}
@@ -81,6 +81,7 @@
 </div></div>
 {{ settings_card(display, pin_set, current_user.is_admin, unlock_form) }}
 {% if display.is_paired or has_screenshot %}{{ screenshot_card(display, has_screenshot, screenshot_pending) }}{% endif %}
+{{ playback_card(support, diag) }}
 {{ diagnostics_card(display, diag, current_user.can_edit, action_form) }}
 <div class="card" style="max-width: 48rem"><div class="card-body">
   <div class="d-flex justify-content-between align-items-center">

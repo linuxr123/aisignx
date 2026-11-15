@@ -199,6 +199,7 @@
       return it && TYPES[it.type] && typeof it.url === "string" && it.url;
     });
     if (m.heartbeat_s) hb.setSeconds(m.heartbeat_s);
+    if (D.mediaSupport) D.mediaSupport(S.items);  // does this screen decode the videos smoothly?
     dropNext();
     S.skipTo = null;  // indexes of the old list mean nothing in the new one
     if (!S.items.length) { showNoContent(false); return; }

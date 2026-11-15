@@ -10,7 +10,7 @@ from ..audit import service as audit
 from ..auth.decorators import admin_required, editor_required
 from ..extensions import db
 from ..emergency.service import clear_for_target
-from ..models import Display, Schedule
+from ..models import Display, Media, Schedule
 from ..player.broker import get_broker
 from ..player.manifest import build_manifest
 from ..pop import service as pop_service
@@ -57,7 +57,18 @@ def index():
                            states=service.states(displays), labels=service.STATE_LABELS,
                            live={d.id: service.is_live(d.id) for d in displays},
                            now_playing_map={d.id: resolve(d, ctx.now, ctx) for d in displays},
-                           schedule_counts=_schedule_counts(), action_form=ActionForm())
+                           schedule_counts=_schedule_counts(), action_form=ActionForm(),
+                           support_counts={d.id: len(options.support_problems(options.parse_diag(d.diagnostics)))
+                                           for d in displays})
+
+
+def _support_rows(diag: dict | None) -> list[dict]:
+    """The videos a player says it cannot decode smoothly, with their names and facts."""
+    problems = options.support_problems(diag)
+    if not problems:
+        return []
+    names = {m.id: m for m in Media.query.filter(Media.id.in_([p["id"] for p in problems])).all()}
+    return [{"media": names.get(p["id"]), "id": p["id"], "state": p["s"]} for p in problems]
 
 
 @bp.route("/status.json")
@@ -103,6 +114,7 @@ def detail(display_id: int):
     ctx = load_context()
     version = build_manifest(display, ctx.now, ctx)["version"] if display.is_paired else None
     week = split_by_day(week_segments(display, ctx.now, 7, ctx), ctx.tz)
+    diag = options.parse_diag(display.diagnostics)
     return render_template("displays/detail.html", display=display,
                            state=service.states([display])[display.id],
                            labels=service.STATE_LABELS, live=service.is_live(display.id),
@@ -112,7 +124,7 @@ def detail(display_id: int):
                            current_item=service.current_item_name(display),
                            awaiting=(not display.is_paired
                                      and pairing.awaiting_claim(display)),
-                           diag=options.parse_diag(display.diagnostics),
+                           diag=diag, support=_support_rows(diag),
                            pin_set=bool(display.unlock_pin_hash),
                            screenshot_pending=bool(screenshots.pending(display)),
                            has_screenshot=screenshots.exists(display.id),

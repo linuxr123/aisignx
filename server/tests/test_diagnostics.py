@@ -156,3 +156,61 @@ def test_detail_page_survives_far_future_error_time(app, admin_client, paired_di
     _set_diag(app, display_id, json.dumps({"errors": [{"t": 253_402_300_799_000, "msg": "x"},
                                                       {"t": 2**53, "msg": "y"}]}))
     assert admin_client.get(f"/displays/{display_id}").status_code == 200
+
+
+# --- Video support reported by the player (media_support) --------------------------------
+
+def test_clean_keeps_only_valid_media_support():
+    data = json.loads(diag.clean({"media_support": {
+        "checked": 5.9, "extra": 1,
+        "problems": [{"id": 3, "s": "no", "x": 1}, {"id": 4, "s": "rough"}, {"id": 5, "s": "bad"},
+                     {"id": "7", "s": "no"}, "text", {"id": 0, "s": "no"}] + [{"id": 9, "s": "no"}] * 40}}))
+    assert data["media_support"]["checked"] == 5
+    assert data["media_support"]["problems"][:2] == [{"id": 3, "s": "no"}, {"id": 4, "s": "rough"}]
+    assert len(data["media_support"]["problems"]) <= 20
+    assert diag.clean({"media_support": {"problems": []}}) == "{}"  # no "checked": dropped
+    assert diag.clean({"media_support": "x"}) == "{}"
+
+
+def test_displays_pages_show_what_the_player_cannot_play(app, admin_client, paired_display):
+    from aisignx.models import Media
+    display_id = paired_display[0]
+    with app.app_context():
+        big = Media(name="Lobby film", media_type="video", width=3840, height=2160,
+                    video_info={"codec": "h264", "profile": "High", "level": 51, "fps": 25.0, "bitrate": 40_000_000})
+        db.session.add(big)
+        db.session.commit()
+        big_id = big.id
+    _set_diag(app, display_id, json.dumps({"media_support": {"checked": 2, "problems": [
+        {"id": big_id, "s": "no"}, {"id": 9999, "s": "rough"}]}}))
+    page = admin_client.get(f"/displays/{display_id}").get_data(as_text=True)
+    assert "Playback warnings" in page and "Lobby film" in page and "this screen cannot decode it" in page
+    assert "3840×2160" in page and "H264 High" in page and "(deleted)" in page and "Make TV-friendly copy" in page
+    assert "May stutter" in admin_client.get("/displays/").get_data(as_text=True)
+
+    _set_diag(app, display_id, json.dumps({"media_support": {"checked": 2, "problems": []}}))
+    page = admin_client.get(f"/displays/{display_id}").get_data(as_text=True)
+    assert "Playback warnings" not in page and "can play all 2 videos" in page
+    assert "May stutter" not in admin_client.get("/displays/").get_data(as_text=True)
+
+
+def test_manifest_gives_the_player_the_video_facts(app, configured, client, paired_display):
+    from aisignx.models import Media, Playlist, PlaylistItem
+    with app.app_context():
+        pl = db.session.get(Display, paired_display[0]).playlist
+        if pl is None:
+            pl = Playlist(name="P")
+            db.session.add(pl)
+            db.session.get(Display, paired_display[0]).playlist = pl
+        known = Media(name="Known", media_type="video", stored_name="a.mp4", mime_type="video/mp4", file_size=1,
+                      checksum_sha256="a" * 64, width=3840, height=2160, duration_seconds=5,
+                      video_info={"codec": "h264", "profile": "High", "level": 51, "fps": 25.0, "bitrate": 40_000_000})
+        unknown = Media(name="Unknown", media_type="video", stored_name="b.mp4", mime_type="video/mp4", file_size=1,
+                        checksum_sha256="b" * 64, width=640, height=360, duration_seconds=5)
+        pl.items.append(PlaylistItem(media=known, position=0))
+        pl.items.append(PlaylistItem(media=unknown, position=1))
+        db.session.commit()
+    resp = client.get(f"{API}/manifest", headers=bearer(DISPLAY_TOKEN))
+    items = resp.get_json()["items"]
+    assert items[0]["video"] == {"codec": "avc1.640033", "width": 3840, "height": 2160, "fps": 25.0, "bitrate": 40_000_000}
+    assert "video" not in items[1]  # nothing known: the player has nothing to ask

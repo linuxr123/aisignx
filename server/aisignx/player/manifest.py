@@ -72,6 +72,19 @@ def _volume(item) -> int:
     return 100 if v is None else max(0, min(100, int(v)))
 
 
+def _video_facts(media) -> dict | None:
+    """codec string, size, frame rate and bitrate of a video, so the player can ask its browser
+    whether this screen decodes it smoothly (device.js mediaSupport). None when unknown."""
+    from ..media import compat
+
+    codec = compat.codec_string(media.video_info)
+    if not codec or not media.width or not media.height:
+        return None
+    info = media.video_info
+    return {"codec": codec, "width": media.width, "height": media.height,
+            "fps": info.get("fps") or 25, "bitrate": info.get("bitrate") or 0}
+
+
 def _item_entry(item, fit: str | None = None) -> dict | None:
     """One manifest item. fit: the display's override for every item, if any."""
     if not is_playable(item):
@@ -96,6 +109,7 @@ def _item_entry(item, fit: str | None = None) -> dict | None:
     media_ms = None
     if is_video and media.duration_seconds:
         media_ms = round(media.duration_seconds * 1000)
+    video = _video_facts(media) if is_video else None
     result = {
         "id": item.id,
         "media_id": media.id,
@@ -108,6 +122,8 @@ def _item_entry(item, fit: str | None = None) -> dict | None:
         "muted": bool(item.mute) if is_video else True,
         "volume": _volume(item),
     }
+    if video:
+        result["video"] = video
     if plugin is not None:
         result["muted"] = plugin["muted"]
         result["plugin"] = plugin["plugin"]

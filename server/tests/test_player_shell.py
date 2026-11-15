@@ -95,3 +95,15 @@ def test_shell_screenshot_of_css_rotated_screen_is_turned_upright():
         assert (canvas["w"], canvas["h"]) == ((1080, 1920) if sideways else (1920, 1080))
     # Unrotated screens and shells that rotate the device natively upload the capture as is.
     assert r0 == {"blob": "raw", "drawn": []} and native == {"blob": "raw", "drawn": []}
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js")
+def test_player_asks_its_browser_which_videos_it_can_decode():
+    script = Path(__file__).resolve().parent / "js" / "device_support.js"
+    out = json.loads(subprocess.run(["node", str(script), str(STATIC / "device.js")], capture_output=True,
+                                    text=True, timeout=30, check=True).stdout)
+    assert out["report"] == {"checked": 3, "problems": [{"id": 1, "s": "no"}, {"id": 2, "s": "rough"}]}
+    assert out["asked"][0] == ["file", 'video/mp4; codecs="avc1.640033"', 3840, 25, 40000000]
+    assert len(out["asked"]) == 3 and out["askedAgain"] == 3   # one question per video, none repeated
+    assert out["afterChange"] == {"checked": 1, "problems": []}
+    assert out["noApi"]["diag"] is True and out["throws"] is True

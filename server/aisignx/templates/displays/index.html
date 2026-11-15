@@ -16,7 +16,8 @@
       <tr>
         <td class="text-nowrap">{{ badge(states[d.id], labels, d.id) }}
           <span class="text-success{% if not live[d.id] %} d-none{% endif %}" data-display-live="{{ d.id }}" title="Live push connected">&#9679;</span></td>
-        <td><a href="{{ url_for('displays.detail', display_id=d.id) }}" class="fw-semibold">{{ d.name }}</a></td>
+        <td><a href="{{ url_for('displays.detail', display_id=d.id) }}" class="fw-semibold">{{ d.name }}</a>
+          {% if support_counts[d.id] %}<a href="{{ url_for('displays.detail', display_id=d.id) }}" class="badge text-bg-warning text-decoration-none ms-1" title="This screen reported that it may not play {{ support_counts[d.id] }} video{{ '' if support_counts[d.id] == 1 else 's' }} in its playlist smoothly">May stutter</a>{% endif %}</td>
         <td>{{ now_playing(now_playing_map[d.id]) }}</td>
         <td class="small text-secondary text-nowrap" data-display-seen="{{ d.id }}">{% if d.last_seen_at %}{{ d.last_seen_at.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}&mdash;{% endif %}</td>
         <td class="small">{{ d.last_ip or '' }}</td>
