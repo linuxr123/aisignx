@@ -22,8 +22,7 @@ A quick overview. The detailed list of every change follows further down.
 - **Designs being written:** the device agent/watchdog, and content extras.
 
 ### Planned (in this order)
-1. **Admin interface makeover** (moved up on 2026-11-15; layout, menus and themes are done):
-   - a nicer display edit page.
+1. **Synced playback** between displays (from v2; moved up on 2026-11-15). Player controls are turned off on synced displays, because pause, next or previous on one screen would break the sync.
 2. **PowerPoint add-in:** finish and test it (export to MP4, upload or replace with an API token).
 3. **Player fixes:**
    - The arrow keys always mean fast forward/rewind (smaller steps for short videos), and the hints say "Fast forward"/"Rewind". "Next"/"Previous" only appear when changing slides.
@@ -40,9 +39,8 @@ A quick overview. The detailed list of every change follows further down.
    - saved emergency templates;
    - scheduled emergencies;
    - triggering an emergency from another device (API, button or webhook).
-7. **Synced playback** between displays (from v2). Player controls are turned off on synced displays, because pause, next or previous on one screen would break the sync.
-8. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
-9. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+7. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
+8. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
 
 ## Unreleased: Admin interface makeover
 
@@ -50,6 +48,7 @@ A quick overview. The detailed list of every change follows further down.
 - **New layout:** a left sidebar replaces the top bar. Menus are grouped: Content (Media, Plugins, Playlists), Screens (Displays, Groups, Schedules, Emergency), Monitoring (Alerts, Reports) and, for admins, Administration (Users, Settings, All API tokens, Audit log, Backups, System, Logs). The sidebar collapses to icons (the choice is remembered), and on phones and tablets it slides in over the page.
 - **Light and dark themes:** a button in the sidebar cycles *follows the system*, *light* and *dark* (remembered per browser, applied before the page paints, so nothing flashes). Icons are built in (no network needed).
 - **Media library:** drag and drop images and videos anywhere on the page (or click the drop zone), many at once. Each file gets its own progress bar (two upload at a time), problems are shown per file (wrong type, too big, not a valid image), and the page refreshes when everything is in. Filter chips with counts (All, Images, Videos, Web pages, Plugins) and the search box work instantly, with no page reload. Without JavaScript the plain upload form still works.
+- **Display pages:** the edit page is now titled cards (General, Screen, Controls and lock) in two columns with a Save bar that stays in view; the display page uses the full width, with the status and settings on the left and the screenshot, playback check, next 7 days and diagnostics on the right.
 
 ## Unreleased: Video playback warnings
 

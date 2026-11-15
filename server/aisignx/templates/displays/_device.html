@@ -14,7 +14,7 @@
 {% macro settings_card(display, pin_set, can_unlock=false, unlock_form=none) %}
 {% set orientations = {0: "Landscape", 90: "Portrait (90°)", 180: "Landscape upside down", 270: "Portrait (270°)"} %}
 {% set fits = {"fit": "Fit (letterbox)", "fill": "Fill (crop)", "stretch": "Stretch"} %}
-<div class="card mb-4" style="max-width: 48rem"><div class="card-body">
+<div class="card mb-4"><div class="card-body">
   <h2 class="h5">Settings</h2>
   <dl class="row mb-0">
     <dt class="col-sm-4">Location</dt>
@@ -54,7 +54,7 @@
 {% endmacro %}
 
 {% macro screenshot_card(display, has_screenshot, pending) %}
-<div class="card mb-4" style="max-width: 48rem"{% if pending %} data-screenshot-pending="{{ display.id }}" data-status-url="{{ url_for('displays.status') }}" data-screenshot-at="{{ display.screenshot_at|iso_z if display.screenshot_at else '' }}"{% endif %}><div class="card-body">
+<div class="card mb-4"{% if pending %} data-screenshot-pending="{{ display.id }}" data-status-url="{{ url_for('displays.status') }}" data-screenshot-at="{{ display.screenshot_at|iso_z if display.screenshot_at else '' }}"{% endif %}><div class="card-body">
   <h2 class="h5">Screenshot</h2>
   {% if pending %}
   <p class="text-body-secondary"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Waiting for the screen&hellip;</p>
@@ -73,7 +73,7 @@
 {% macro playback_card(support, diag) %}
 {# Videos this screen's own decoder says it cannot play smoothly (the player asks its browser). #}
 {% if support %}
-<div class="card border-warning mb-4" style="max-width: 48rem"><div class="card-body">
+<div class="card border-warning mb-4"><div class="card-body">
   <h2 class="h5">Playback warnings</h2>
   <p class="small text-body-secondary">This screen reported that it may not play {{ "this video" if support|length == 1 else "these videos" }} smoothly.
     A 1080p H.264 copy (media page &rarr; <em>Make TV-friendly copy</em>) usually fixes it.</p>
@@ -94,7 +94,7 @@
 {% endmacro %}
 
 {% macro diagnostics_card(display, diag, can_edit, action_form) %}
-<div class="card mb-4" style="max-width: 48rem"><div class="card-body">
+<div class="card mb-4"><div class="card-body">
   <div class="d-flex justify-content-between align-items-center mb-2">
     <h2 class="h5 mb-0">Diagnostics</h2>
     {% if can_edit and display.is_paired %}

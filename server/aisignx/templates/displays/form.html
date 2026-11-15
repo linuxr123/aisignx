@@ -1,47 +1,64 @@
 {% extends "base.html" %}
 {% from "audit/_history.html" import history_link with context %}
 {% from "_form.html" import field %}
+{% from "_icons.html" import icon %}
 {% block title %}Edit display{% endblock %}
 {% block content %}
-<h1 class="h3 mb-4">Edit {{ display.name }}</h1>
-<div class="card" style="max-width: 36rem"><div class="card-body">
-  <form method="post" novalidate>
-    {{ form.hidden_tag() }}
-    {{ field(form.name, autofocus=true) }}
-    {{ field(form.playlist) }}
-    <p class="form-text mt-n2">{{ form.playlist.description }} The screen switches within a few seconds.</p>
-    {{ field(form.group) }}
-    <p class="form-text mt-n2">Schedules and emergency messages can target a whole group.</p>
-    {{ field(form.location) }}
-    {{ field(form.description) }}
-    <p class="form-text mt-n2">Location and notes are for the admin only; the screen never receives them.</p>
+<div class="mb-3">
+  <a class="small text-secondary text-decoration-none" href="{{ url_for('displays.detail', display_id=display.id) }}">&larr; {{ display.name }}</a>
+  <h1 class="h3 mb-0">Edit {{ display.name }}</h1>
+</div>
+<form method="post" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="row g-4">
+    <div class="col-xl-6">
+      <div class="card h-100 edit-card"><div class="card-body">
+        <h2 class="edit-card-title">{{ icon("monitor", 16) }} General</h2>
+        {{ field(form.name, autofocus=true) }}
+        {{ field(form.playlist) }}
+        <p class="form-text mt-n2">{{ form.playlist.description }} The screen switches within a few seconds.</p>
+        {{ field(form.group) }}
+        <p class="form-text mt-n2">Schedules and emergency messages can target a whole group.</p>
+        {{ field(form.location) }}
+        {{ field(form.description) }}
+        <p class="form-text mt-n2 mb-0">Location and notes are for the admin only; the screen never receives them.</p>
+      </div></div>
+    </div>
+    <div class="col-xl-6 d-flex flex-column gap-4">
+      <div class="card edit-card"><div class="card-body">
+        <h2 class="edit-card-title">{{ icon("sliders", 16) }} Screen</h2>
+        <div class="row g-3">
+          <div class="col-md-6">{{ field(form.orientation) }}</div>
+          <div class="col-md-6">{{ field(form.fit_override) }}</div>
+        </div>
+        <p class="form-text mt-n2">Rotation is for screens whose device cannot rotate its own output. Fit overrides how every item fills the screen.</p>
+        {{ field(form.volume) }}
+        {{ field(form.show_offline_banner) }}
+      </div></div>
 
-    <h2 class="h6 mt-4 mb-3 border-bottom pb-1">Screen</h2>
-    {{ field(form.orientation) }}
-    <p class="form-text mt-n2">Rotation is for screens whose device cannot rotate its own output.</p>
-    {{ field(form.fit_override) }}
-    <p class="form-text mt-n2">Overrides how every item fills the screen.</p>
-    {{ field(form.volume) }}
-    {{ field(form.show_offline_banner) }}
+      <div class="card edit-card"><div class="card-body">
+        <h2 class="edit-card-title">{{ icon("key", 16) }} Controls and lock</h2>
+        {% if form.is_admin_form %}
+        {{ field(form.allow_input) }}
+        <p class="form-text mt-n2">Tap or Space pauses; arrows seek 10 s in videos or change item; swipe or PageUp/PageDown change item. Content itself (web pages, YouTube, plugins) is never clickable, with this on or off.</p>
+        {{ field(form.resume_after_min) }}
+        <p class="form-text mt-n2">A paused screen always resumes after this time.</p>
+        {{ field(form.kiosk_lock) }}
+        <p class="form-text mt-n2">Windows and Android apps only: no way out without the unlock PIN (Android: lock task mode; full lockdown needs Device Owner, see docs). A plain browser cannot be locked.</p>
+        {{ field(form.unlock_pin) }}
+        <p class="form-text mt-n2">The PIN guards leaving the Windows and Android apps. Blank keeps the current PIN ({{ "set" if pin_set else "none set" }}).</p>
+        {% if pin_set %}{{ field(form.clear_pin) }}{% endif %}
+        {% else %}
+        <p class="text-body-secondary mb-0">Controls: {{ "on" if display.allow_input else "off" }} &middot; Lock: {{ "on" if display.kiosk_lock else "off" }} &middot; Resume after: {{ (display.resume_after_s or 300) // 60 }} min &middot; Unlock PIN: {{ "set" if pin_set else "not set" }} &middot; admins only</p>
+        {% endif %}
+      </div></div>
+    </div>
+  </div>
 
-    <h2 class="h6 mt-4 mb-3 border-bottom pb-1">Controls and lock</h2>
-    {% if form.is_admin_form %}
-    {{ field(form.allow_input) }}
-    <p class="form-text mt-n2">Tap or Space pauses; arrows seek 10 s in videos or change item; swipe or PageUp/PageDown change item. Web pages in the playlist can no longer be clicked while this is on.</p>
-    {{ field(form.resume_after_min) }}
-    <p class="form-text mt-n2">A paused screen always resumes after this time.</p>
-    {{ field(form.kiosk_lock) }}
-    <p class="form-text mt-n2">Windows and Android apps only: no way out without the unlock PIN (Android: lock task mode; full lockdown needs Device Owner, see docs). A plain browser cannot be locked.</p>
-    {{ field(form.unlock_pin) }}
-    <p class="form-text mt-n2">The PIN guards leaving the Windows and Android apps. Blank keeps the current PIN ({{ "set" if pin_set else "none set" }}).</p>
-    {% if pin_set %}{{ field(form.clear_pin) }}{% endif %}
-    {% else %}
-    <p class="text-body-secondary">Controls: {{ "on" if display.allow_input else "off" }} &middot; Lock: {{ "on" if display.kiosk_lock else "off" }} &middot; Resume after: {{ (display.resume_after_s or 300) // 60 }} min &middot; Unlock PIN: {{ "set" if pin_set else "not set" }} &middot; admins only</p>
-    {% endif %}
-
+  <div class="action-bar">
     <button class="btn btn-primary" type="submit">Save</button>
-    <a class="btn btn-link" href="{{ url_for('displays.detail', display_id=display.id) }}">Cancel</a>
-    {{ history_link('display', display.id, 'btn btn-link') }}
-  </form>
-</div></div>
+    <a class="btn btn-outline-secondary" href="{{ url_for('displays.detail', display_id=display.id) }}">Cancel</a>
+    <span class="ms-auto">{{ history_link('display', display.id, 'btn btn-link') }}</span>
+  </div>
+</form>
 {% endblock %}

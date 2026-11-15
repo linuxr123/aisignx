@@ -44,12 +44,14 @@
 <div class="alert alert-warning">This display is not paired.{% if current_user.can_edit %} Open <code>{{ request.host_url }}player/</code> on the screen, then <a href="{{ url_for('displays.pair') }}">pair it</a> as {{ display.name }}.{% endif %}</div>
 {% endif %}
 {% if res.emergency %}
-<div class="alert alert-danger d-flex flex-wrap justify-content-between align-items-center gap-2" style="max-width: 48rem">
+<div class="alert alert-danger d-flex flex-wrap justify-content-between align-items-center gap-2">
   <div><span class="badge {{ {"info": "text-bg-primary", "warning": "text-bg-warning"}.get(res.emergency.level, "text-bg-danger") }} text-uppercase me-1">{{ res.emergency.level }}</span> Emergency on this screen: <strong>{{ res.emergency.title }}</strong></div>
   <a class="alert-link" href="{{ url_for('emergency.index') }}">Manage</a>
 </div>
 {% endif %}
-<div class="card mb-4" style="max-width: 48rem"><div class="card-body">
+<div class="row g-4">
+<div class="col-xl-6">
+<div class="card mb-4"><div class="card-body">
   <dl class="row mb-0">
     <dt class="col-sm-4">Now playing</dt>
     <dd class="col-sm-8">{{ now_playing(res) }}</dd>
@@ -80,15 +82,19 @@
   </dl>
 </div></div>
 {{ settings_card(display, pin_set, current_user.is_admin, unlock_form) }}
+</div>
+<div class="col-xl-6">
 {% if display.is_paired or has_screenshot %}{{ screenshot_card(display, has_screenshot, screenshot_pending) }}{% endif %}
 {{ playback_card(support, diag) }}
-{{ diagnostics_card(display, diag, current_user.can_edit, action_form) }}
-<div class="card" style="max-width: 48rem"><div class="card-body">
+<div class="card mb-4"><div class="card-body">
   <div class="d-flex justify-content-between align-items-center">
     <h2 class="h5 mb-0">Next 7 days</h2>
     {% if current_user.can_edit %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('schedules.create', target='d:' ~ display.id) }}">Add schedule</a>{% endif %}
   </div>
   {{ week_list(week, tz_name) }}
 </div></div>
+{{ diagnostics_card(display, diag, current_user.can_edit, action_form) }}
+</div>
+</div>
 <a class="btn btn-link px-0 mt-3" href="{{ url_for('displays.index') }}">&larr; All displays</a>
 {% endblock %}
