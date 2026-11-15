@@ -316,11 +316,22 @@
     });
   }
 
-  // ---- Offline banner: only while playing (or showing "no content") and cut off for a while.
+  // ---- Offline: the AiSignX server cannot be reached. The live push connection is down and
+  // either the last heartbeat failed and nothing has succeeded for OFFLINE_FAST_MS (a failed beat
+  // is proof, so a short outage shows within seconds), or no heartbeat has succeeded for 2.5
+  // intervals (a link that just hangs). Used by the banner and by plugins.
+  var OFFLINE_FAST_MS = 12000;
+  function isOffline(hb, events) {
+    if (events.status === "live") return false;
+    var age = Date.now() - (hb.lastOkAt || STARTED);
+    if (hb.lastAt && hb.lastKind !== "ok" && age > OFFLINE_FAST_MS) return true;
+    return age > 2.5 * hb.seconds * 1000;
+  }
+  // ---- Offline banner: only while playing (or showing "no content").
   function checkOffline(hb, events, state) {
     if (!offlineEl) return;
     var show = cfg.show_offline_banner && (state === "PLAYING" || state === "NO_CONTENT") &&
-      events.status !== "live" && Date.now() - (hb.lastOkAt || STARTED) > 2.5 * hb.seconds * 1000;
+      isOffline(hb, events);
     if (offlineEl.hidden === show) offlineEl.hidden = !show;
   }
 
@@ -352,6 +363,7 @@
     noteError: noteError,
     diag: diag,
     checkOffline: checkOffline,
+    isOffline: isOffline,
     mediaSupport: mediaSupport,
   };
 })();

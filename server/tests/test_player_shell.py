@@ -107,3 +107,7 @@ def test_player_asks_its_browser_which_videos_it_can_decode():
     assert len(out["asked"]) == 3 and out["askedAgain"] == 3   # one question per video, none repeated
     assert out["afterChange"] == {"checked": 1, "problems": []}
     assert out["noApi"]["diag"] is True and out["throws"] is True
+    # The offline rule: shown within ~12 s of a failed heartbeat, never while the live link is up.
+    assert out["offline"] == {"liveNeverOffline": False, "healthy": False, "justFailed": False,
+                              "failedFor13s": True, "okButSlow": False, "hangs": True,
+                              "neverAnswered": False}

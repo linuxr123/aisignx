@@ -22,6 +22,7 @@
   var CLIENT_ID = net.clientId();
 
   var TICK_MS = 250, PRELOAD_MS = 3000, FAIL_DWELL_MS = 2000, DEFAULT_DURATION_MS = 10000;
+  var PROBE_MS = 10000;  // heartbeat this often while the live connection is down
   var RETRY_AFTER_FAIL_MS = 10000;  // all other items failed: try them again this soon
   var NO_CONTENT_RETRY_MS = 30000, SETUP_RETRY_MS = 10000, PAIRED_SHOW_MS = 2000, DIAG_EVERY = 10;
   var TYPES = { image: 1, video: 1, web: 1, plugin: 1 };
@@ -637,8 +638,11 @@
   function housekeeping() {
     if (S.reloadPending && S.state !== "PLAYING") guardedReload();
     D.checkOffline(hb, events, S.state);
+    // While the live connection is down, try the server every PROBE_MS (not only every
+    // heartbeat interval) so an outage is noticed, and its end too, within seconds.
+    if (events.status !== "live" && Date.now() - (hb.lastAt || 0) > PROBE_MS) hb.now();
     // Plugins hear the same offline state as the banner (without the banner setting).
-    if (PH) PH.setOffline(events.status !== "live" && Date.now() - (hb.lastOkAt || STARTED) > 2.5 * hb.seconds * 1000);
+    if (PH) PH.setOffline(D.isOffline(hb, events));
     if (!dbg) return;
     var age = hb.lastAt ? Math.round((Date.now() - hb.lastAt) / 1000) + "s ago (" + hb.lastKind + ")" : "never";
     dbg.textContent = "state      " + S.state + (S.reloadPending ? " (reload pending)" : "") +
