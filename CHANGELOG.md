@@ -23,15 +23,19 @@ A quick overview. The detailed list of every change follows further down.
 
 ### Planned (in this order)
 1. **Device agent and watchdog** (Windows and Android; design in [docs/device-agent-design.md](docs/device-agent-design.md)). First release done (settings, durable commands, watchdogs, restart, collect logs). Later phases need decisions: command signing, reboot, signed updates, kiosk helpers.
-2. **Downloads area** on the server: after logging in, users download the Windows player, the Android app and the PowerPoint add-in (versions and checksums); admins upload new builds.
-3. **Update check and signed one-click update:** the server checks GitHub releases, shows admins "update available" with release notes, and a button downloads, verifies a signature (public key built into the server), backs up the database, upgrades and restarts. Works for servers set up by the installer scripts; other setups get the notice only.
-4. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
-5. **Emergency improvements:**
+2. **Update check and signed one-click update:** the server checks GitHub releases, shows admins "update available" with release notes, and a button downloads, verifies a signature (public key built into the server), backs up the database, upgrades and restarts. Works for servers set up by the installer scripts; other setups get the notice only.
+3. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
+4. **Emergency improvements:**
    - saved emergency templates;
    - scheduled emergencies;
    - triggering an emergency from another device (API, button or webhook).
-6. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
-7. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+5. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
+6. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+
+## Unreleased: Downloads area
+
+### Added
+- **Downloads page** (user menu > Downloads): any signed-in user downloads the Windows player, the Android APK and the PowerPoint add-in, with version, size and SHA-256. Admins upload and remove files (audited). Files are stored outside the media folder under random names and served as attachments. Migration 0015.
 
 ## Unreleased: Server installers
 

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Downloads{% endblock %}
+{% block content %}
+<h1 class="h3 mb-2">Downloads</h1>
+<p class="text-secondary">Apps and add-ins for this server. After downloading, compare the checksum (SHA-256) with the one shown here if you want to be sure the file is intact.
+  Setup guides: <code>docs/clients.md</code>, <code>docs/powerpoint-addin.md</code>.</p>
+
+{% for label, items in groups %}
+<div class="card mb-3">
+  <div class="card-header fw-semibold">{{ label }}</div>
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead><tr><th>File</th><th>Version</th><th>Size</th><th>Added</th><th>SHA-256</th><th></th></tr></thead>
+      <tbody>
+      {% for d in items %}
+        <tr>
+          <td><a href="{{ url_for('downloads.get', download_id=d.id) }}" download>{{ d.filename }}</a>
+            {% if d.notes %}<div class="small text-secondary">{{ d.notes }}</div>{% endif %}</td>
+          <td>{{ d.version or "-" }}</td>
+          <td class="text-nowrap">{{ (d.size / 1048576)|round(1) }} MB</td>
+          <td class="small text-nowrap">{{ d.created_at|localtime }}{% if d.uploaded_by %}<br><span class="text-secondary">{{ d.uploaded_by }}</span>{% endif %}</td>
+          <td><code class="small text-break" title="{{ d.sha256 }}">{{ d.sha256[:16] }}…</code></td>
+          <td class="text-end text-nowrap">
+            <a class="btn btn-sm btn-primary" href="{{ url_for('downloads.get', download_id=d.id) }}" download>Download</a>
+            {% if can_manage %}
+            <form method="post" action="{{ url_for('downloads.delete', download_id=d.id) }}" class="d-inline" onsubmit="return confirm('Remove {{ d.filename|e }}?')">
+              {{ action_form.csrf_token }}
+              <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card mb-3"><div class="card-body text-secondary">
+  Nothing here yet.{% if can_manage %} Upload the installers below so everyone can get them from this page.{% else %} Ask an administrator to add them.{% endif %}
+</div></div>
+{% endfor %}
+
+{% if can_manage %}
+<div class="card">
+  <div class="card-header fw-semibold">Add a file</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('downloads.upload') }}" enctype="multipart/form-data" class="row g-3">
+      {{ upload_form.csrf_token }}
+      <div class="col-md-6"><label class="form-label" for="file">File</label>
+        <input class="form-control" type="file" name="file" id="file" required></div>
+      <div class="col-md-3"><label class="form-label" for="kind">{{ upload_form.kind.label.text }}</label>
+        {{ upload_form.kind(class="form-select") }}</div>
+      <div class="col-md-3"><label class="form-label" for="version">Version</label>
+        {{ upload_form.version(class="form-control", placeholder="3.0.2") }}</div>
+      <div class="col-12"><label class="form-label" for="notes">Notes (optional)</label>
+        {{ upload_form.notes(class="form-control") }}</div>
+      <div class="col-12"><button class="btn btn-primary" type="submit">Upload</button>
+        <span class="text-secondary small ms-2">Allowed: exe, msi, zip, apk, pdf and a few more. Up to the server's upload limit.</span></div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

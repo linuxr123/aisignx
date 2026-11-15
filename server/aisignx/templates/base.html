@@ -84,6 +84,7 @@
         <ul class="dropdown-menu">
           <li><a class="dropdown-item" href="{{ url_for('auth.profile') }}">Profile</a></li>
           <li><a class="dropdown-item" href="{{ url_for('tokens.index') }}">My API tokens</a></li>
+          <li><a class="dropdown-item" href="{{ url_for('downloads.index') }}">Downloads</a></li>
           <li><hr class="dropdown-divider"></li>
           <li>
             <form method="post" action="{{ url_for('auth.logout') }}">
