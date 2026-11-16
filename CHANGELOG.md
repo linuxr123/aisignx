@@ -29,6 +29,7 @@ A quick overview. The detailed list of every change follows further down.
    - ~~saved emergency templates~~ (done);
    - scheduled emergencies;
    - ~~triggering an emergency from another device~~ (done: API).
+   - ~~scheduled emergencies~~ (done).
 5. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
 6. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
 
@@ -36,6 +37,7 @@ A quick overview. The detailed list of every change follows further down.
 
 ### Added
 - **Saved emergency messages:** save the send form as a named template; send it in one click from the Emergency page. A template whose group or display was deleted refuses to send rather than widening to all screens. Migration 0016.
+- **Scheduled emergencies:** pick a saved message, a start time and an optional "stays up for" time; the server sends it, then clears it ("expired"). A plan more than 10 minutes late is marked missed and not sent. Migration 0017.
 - **Emergency API:** new token permission `emergency:send` (editors and admins). `POST /api/v1/emergency/templates/<id>/send`, `POST /api/v1/emergency/clear`, `GET /api/v1/emergency` and `/templates`, for buttons, scripts and webhooks. Prepared messages only, no duplicate stacking, audited. See [docs/emergency-api.md](docs/emergency-api.md).
 
 ## Unreleased: Sync fixes, test checklist

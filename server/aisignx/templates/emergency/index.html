@@ -79,6 +79,44 @@
 </div></div>
 {% endif %}
 
+{% if templates and current_user.can_edit or plans %}
+<h2 class="h5 mb-3">Scheduled</h2>
+<div class="card mb-4"><div class="card-body">
+  {% if templates and current_user.can_edit %}
+  <form method="post" action="{{ url_for('emergency.add_plan') }}" class="row g-2 align-items-end mb-3">
+    {{ action_form.hidden_tag() }}
+    <div class="col-md-4"><label class="form-label small mb-0" for="plan-template">Saved message</label>
+      <select class="form-select" id="plan-template" name="template_id" required>
+        {% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+      </select></div>
+    <div class="col-md-3"><label class="form-label small mb-0" for="plan-start">Starts (organization time)</label>
+      <input class="form-control" type="datetime-local" id="plan-start" name="starts_at" required></div>
+    <div class="col-md-3"><label class="form-label small mb-0" for="plan-dur">Stays up (minutes, optional)</label>
+      <input class="form-control" type="number" id="plan-dur" name="duration_min" min="1" max="1440" placeholder="until cleared"></div>
+    <div class="col-md-2"><button class="btn btn-outline-danger w-100" type="submit">Schedule</button></div>
+  </form>
+  {% endif %}
+  {% if plans %}
+  <table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Message</th><th>Starts</th><th>Stays up</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for p in plans %}
+      <tr>
+        <td>{{ p.template.name }}</td>
+        <td class="small text-nowrap">{{ p.starts_at|localtime }}</td>
+        <td class="small">{{ p.duration_min ~ " min" if p.duration_min else "until cleared" }}</td>
+        <td class="small">{{ p.state }}{% if p.note %}<div class="text-secondary">{{ p.note }}</div>{% endif %}</td>
+        <td class="text-end">{% if p.state == "pending" and current_user.can_edit %}
+          <form method="post" action="{{ url_for('emergency.cancel_plan', plan_id=p.id) }}" class="d-inline" data-confirm="Cancel this scheduled message?">
+            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit">Cancel</button></form>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="text-secondary small mb-0">Nothing scheduled.</p>{% endif %}
+</div></div>
+{% endif %}
+
 {% if form %}
 <h2 class="h5 mb-3">Send a message</h2>
 <div class="card mb-4" style="max-width: 40rem"><div class="card-body">

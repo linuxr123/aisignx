@@ -35,4 +35,14 @@ Safety by design:
 - Every send and clear is audited with the token's owner and `via: api`.
 - Use HTTPS if the token travels beyond your LAN ([https.md](https.md)).
 
-Scheduled emergencies (start and end at set times) are not built yet.
+## Scheduled emergencies
+
+Under **Scheduled** on the Emergency page, pick a saved message, a start time (in the organization's time zone,
+set in Settings) and optionally how many minutes it stays up. At the start time the server sends it by itself
+and, if you gave a duration, clears it at the end (shown as "expired" in the history).
+
+- Checked every 30 seconds, so allow up to about half a minute.
+- If the server was off at the start time and is more than 10 minutes late, the plan is marked **missed** and
+  is **not** sent: a drill announced late is worse than none.
+- A plan whose screens were deleted is marked **failed**; it never widens to all screens.
+- Cancel a pending plan at any time.

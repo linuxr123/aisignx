@@ -58,7 +58,9 @@ class EmergencyMessage(db.Model):
     cleared_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
     cleared_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"),
                               nullable=True)
-    clear_reason = db.Column(db.String(20), nullable=True)  # manual | target_deleted
+    clear_reason = db.Column(db.String(20), nullable=True)  # manual | target_deleted | expired
+    # A scheduled message clears itself at this time (set by a plan; None = until cleared by hand).
+    ends_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     playlist = db.relationship("Playlist")
     display = db.relationship("Display")

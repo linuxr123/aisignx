@@ -11,7 +11,8 @@ from .. import targets
 from ..audit import service as audit
 from ..auth.decorators import editor_required
 from ..extensions import db
-from ..models import EmergencyMessage, EmergencyTemplate
+from ..models import EmergencyMessage, EmergencyPlan, EmergencyTemplate
+from ..timeutil import as_utc, org_tz, utcnow
 from . import bp, service
 from .forms import ActionForm, EmergencyForm
 
@@ -58,8 +59,9 @@ def _render(form: EmergencyForm | None, status: int = 200):
                .order_by(EmergencyMessage.created_at.desc(), EmergencyMessage.id.desc())
                .limit(HISTORY_LIMIT).all())
     templates = EmergencyTemplate.query.order_by(EmergencyTemplate.name).all()
+    plans = (EmergencyPlan.query.order_by(EmergencyPlan.starts_at.desc()).limit(20).all())
     return render_template("emergency/index.html", live=service.live(), history=history,
-                           templates=templates, form=form, action_form=ActionForm()), status
+                           templates=templates, plans=plans, form=form, action_form=ActionForm()), status
 
 
 @bp.route("/")
@@ -184,4 +186,54 @@ def delete_template(template_id: int):
     db.session.delete(tpl)
     db.session.commit()
     flash("Template removed.", "info")
+    return redirect(url_for("emergency.index"))
+
+
+@bp.route("/plans", methods=["POST"])
+@editor_required
+def add_plan():
+    """Schedule a saved message: starts_at is a local time in the organization's time zone."""
+    from datetime import datetime, timedelta
+
+    from . import plans as plan_service
+
+    if not ActionForm().validate_on_submit():
+        abort(400)
+    tpl = db.session.get(EmergencyTemplate, request.form.get("template_id", type=int) or 0)
+    try:
+        local = datetime.strptime(request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M")
+    except ValueError:
+        local = None
+    duration = request.form.get("duration_min", type=int)
+    if tpl is None or local is None:
+        flash("Choose a saved message and a start time.", "danger")
+        return redirect(url_for("emergency.index"))
+    starts = as_utc(local.replace(tzinfo=org_tz()))
+    if starts <= utcnow() - timedelta(minutes=1):
+        flash("The start time is in the past.", "danger")
+        return redirect(url_for("emergency.index"))
+    if duration is not None and not 1 <= duration <= plan_service.MAX_DURATION_MIN:
+        flash("Stay up for 1 to 1440 minutes, or leave it empty.", "danger")
+        return redirect(url_for("emergency.index"))
+    plan = EmergencyPlan(template_id=tpl.id, starts_at=starts, duration_min=duration,
+                         created_by_id=current_user.id)
+    db.session.add(plan)
+    db.session.flush()
+    audit.record("emergency.plan_add", ("emergency_plan", plan.id, tpl.name),
+                 detail={"starts_at": starts.isoformat(), "duration_min": duration})
+    db.session.commit()
+    flash(f"Scheduled {tpl.name}.", "success")
+    return redirect(url_for("emergency.index"))
+
+
+@bp.route("/plans/<int:plan_id>/cancel", methods=["POST"])
+@editor_required
+def cancel_plan(plan_id: int):
+    _require_action_form()
+    plan = db.session.get(EmergencyPlan, plan_id) or abort(404)
+    if plan.state == "pending":
+        plan.state = "cancelled"
+        audit.record("emergency.plan_cancel", ("emergency_plan", plan.id, plan.template.name))
+        db.session.commit()
+        flash("Cancelled.", "info")
     return redirect(url_for("emergency.index"))

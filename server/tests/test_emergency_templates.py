@@ -88,3 +88,63 @@ def test_api_scope_and_role_are_enforced(configured, client, app):
     vraw = make_token(app, vid, scopes="emergency:send")        # a viewer cannot hold the scope
     assert client.post(f"/api/v1/emergency/templates/{tid}/send",
                        headers={"Authorization": f"Bearer {vraw}"}).status_code == 403
+
+
+def test_plans_fire_expire_and_skip_stale_ones(admin_client, app):
+    from datetime import timedelta
+    from aisignx.emergency import plans
+    from aisignx.models import EmergencyPlan
+    from aisignx.timeutil import utcnow
+    tid = _template(app)
+    now = utcnow()
+    with app.app_context():
+        db.session.add_all([
+            EmergencyPlan(template_id=tid, starts_at=now - timedelta(seconds=5), duration_min=30),   # due now
+            EmergencyPlan(template_id=tid, starts_at=now - timedelta(hours=2)),                       # stale
+            EmergencyPlan(template_id=tid, starts_at=now + timedelta(hours=1))])                      # later
+        db.session.commit()
+        assert plans.fire_due(now) == 1
+        states = sorted(p.state for p in EmergencyPlan.query.all())
+        assert states == ["fired", "missed", "pending"]
+        msg = EmergencyMessage.query.one()
+        assert msg.live and msg.ends_at is not None
+        assert plans.expire_due(now) == 0                                   # not yet
+        assert plans.expire_due(now + timedelta(minutes=31)) == 1
+        db.session.refresh(msg)
+        assert not msg.live and msg.clear_reason == "expired"
+        assert plans.fire_due(now) == 0                                      # nothing fires twice
+
+
+def test_plan_with_a_gone_target_fails_instead_of_widening(admin_client, app):
+    from datetime import timedelta
+    from aisignx.emergency import plans
+    from aisignx.models import EmergencyPlan
+    from aisignx.timeutil import utcnow
+    tid = _template(app, target="g:424242")
+    with app.app_context():
+        db.session.add(EmergencyPlan(template_id=tid, starts_at=utcnow()))
+        db.session.commit()
+        assert plans.fire_due() == 0
+        assert EmergencyPlan.query.one().state == "failed" and EmergencyMessage.query.count() == 0
+
+
+def test_schedule_page_flow(admin_client, app):
+    tid = _template(app)
+    token = _csrf(admin_client)
+    bad = admin_client.post("/emergency/plans", data={"csrf_token": token, "template_id": tid,
+                                                      "starts_at": "2001-01-01T10:00"})
+    assert bad.status_code == 302
+    from aisignx.models import EmergencyPlan
+    with app.app_context():
+        assert EmergencyPlan.query.count() == 0                        # in the past: refused
+    ok = admin_client.post("/emergency/plans", data={"csrf_token": token, "template_id": tid,
+                                                     "starts_at": "2099-01-01T10:00", "duration_min": "15"})
+    assert ok.status_code == 302
+    with app.app_context():
+        p = EmergencyPlan.query.one()
+        assert p.state == "pending" and p.duration_min == 15
+        pid = p.id
+    assert b"Scheduled" in admin_client.get("/emergency/").data
+    admin_client.post(f"/emergency/plans/{pid}/cancel", data={"csrf_token": _csrf(admin_client)})
+    with app.app_context():
+        assert EmergencyPlan.query.one().state == "cancelled"
