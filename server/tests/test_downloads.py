@@ -94,3 +94,20 @@ def test_cli_add_publishes_and_replaces(app, tmp_path):
         assert row.version == "3.0.3" and row.uploaded_by == "cli"
     bad = tmp_path / "x.html"; bad.write_text("hi")
     assert runner.invoke(downloads_cli, ["add", str(bad), "--kind", "other"]).exit_code != 0
+
+
+def test_app_update_compares_reported_version_with_downloads(app):
+    from aisignx.downloads.service import app_update, latest_version
+    with app.app_context():
+        assert app_update({"name": "android", "version": "3.0.0"}) is None       # nothing published
+        for kind, v in (("android-player", "3.0.2"), ("android-player", "3.0.10"), ("windows-player", "3.1.0")):
+            db.session.add(Download(kind=kind, version=v, filename=f"{kind}{v}.apk", stored_name=f"s{kind}{v}",
+                                    size=1, sha256="0" * 64))
+        db.session.commit()
+        assert latest_version("android-player") == "3.0.10"                      # 3.0.10 > 3.0.2, not text order
+        assert app_update({"name": "android", "version": "3.0.2"})["latest"] == "3.0.10"
+        assert app_update({"name": "android", "version": "3.0.10"}) is None
+        assert app_update({"name": "electron", "version": "3.1.0"}) is None
+        assert app_update({"name": "electron", "version": "3.0.9"})["kind"] == "windows-player"
+        assert app_update({"name": "browser", "version": "1"}) is None
+        assert app_update(None) is None and app_update({"name": "android", "version": "x"}) is None

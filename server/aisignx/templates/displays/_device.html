@@ -129,7 +129,7 @@
 {% endif %}
 {% endmacro %}
 
-{% macro diagnostics_card(display, diag, can_edit, action_form) %}
+{% macro diagnostics_card(display, diag, can_edit, action_form, app_update=none) %}
 <div class="card mb-4"><div class="card-body">
   <div class="d-flex justify-content-between align-items-center mb-2">
     <h2 class="h5 mb-0">Diagnostics</h2>
@@ -152,7 +152,10 @@
     <dt class="col-sm-4">Viewport</dt>
     <dd class="col-sm-8">{% if viewport.w and viewport.h %}{{ viewport.w }} &times; {{ viewport.h }}{% else %}&mdash;{% endif %}</dd>
     <dt class="col-sm-4">Shell</dt>
-    <dd class="col-sm-8">{% if shell.name %}{{ shell.name }} {{ shell.version or "" }}{% if shell.caps %} <span class="text-body-secondary">({{ shell.caps|join(", ") }})</span>{% endif %}{% if shell.lock %} &middot; lock: {{ shell.lock }}{% endif %}{% else %}Browser{% endif %}</dd>
+    <dd class="col-sm-8">{% if shell.name %}{{ shell.name }} {{ shell.version or "" }}{% if shell.caps %} <span class="text-body-secondary">({{ shell.caps|join(", ") }})</span>{% endif %}{% if shell.lock %} &middot; lock: {{ shell.lock }}{% endif %}{% else %}Browser{% endif %}
+      {% if app_update %}<div><span class="badge text-bg-warning">Update available: {{ app_update.latest }}</span>
+        <a class="small ms-1" href="{{ url_for('downloads.index') }}">Downloads</a>
+        <span class="small text-secondary">(open that page on the device to install it)</span></div>{% endif %}</dd>
     <dt class="col-sm-4">Uptime</dt>
     <dd class="col-sm-8">app {{ uptime(shell.uptime_s) }} &middot; page {{ uptime(diag.page_uptime_s) }}</dd>
     {% if diag.sync is mapping %}

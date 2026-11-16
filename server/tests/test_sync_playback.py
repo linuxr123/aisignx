@@ -185,3 +185,19 @@ def test_synced_youtube_clip_lasts_start_to_end_not_the_whole_duration(tmp_path,
     finally:
         with app.app_context():
             db.engine.dispose()
+
+
+def test_display_page_flags_an_outdated_app(app, configured, paired_display):
+    import json as _json
+    from aisignx.models import Download
+    make_user(app, "boss2", "admin")
+    c = app.test_client()
+    login(c, "boss2")
+    with app.app_context():
+        db.session.add(Download(kind="android-player", version="3.0.2", filename="a.apk", stored_name="zz1",
+                                size=1, sha256="0" * 64))
+        db.session.execute(update(Display).where(Display.id == paired_display[0]).values(
+            diagnostics=_json.dumps({"shell": {"name": "android", "version": "3.0.0"}}), diagnostics_at=db.func.now()))
+        db.session.commit()
+    page = c.get(f"/displays/{paired_display[0]}").get_data(as_text=True)
+    assert "Update available: 3.0.2" in page

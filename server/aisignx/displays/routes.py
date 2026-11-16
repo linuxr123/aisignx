@@ -15,6 +15,7 @@ from ..player.broker import get_broker
 from ..player.manifest import build_manifest
 from ..pop import service as pop_service
 from ..schedules.resolve import load_context, resolve, split_by_day, week_segments
+from ..downloads.service import app_update
 from . import agent, bp, options, pairing, screenshots, service
 from .forms import ActionForm, DisplayForm, PairForm, UnlockForm
 
@@ -125,6 +126,7 @@ def detail(display_id: int):
                            awaiting=(not display.is_paired
                                      and pairing.awaiting_claim(display)),
                            diag=diag, support=_support_rows(diag),
+                           app_update=app_update(diag.get("shell") if isinstance(diag, dict) else None),
                            agent_caps=agent.capabilities(display),
                            agent_cmds=DeviceCommand.query.filter_by(display_id=display.id)
                            .order_by(DeviceCommand.id.desc()).limit(5).all(),

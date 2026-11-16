@@ -94,7 +94,7 @@
   </div>
   {{ week_list(week, tz_name) }}
 </div></div>
-{{ diagnostics_card(display, diag, current_user.can_edit, action_form) }}
+{{ diagnostics_card(display, diag, current_user.can_edit, action_form, app_update) }}
 </div>
 </div>
 <a class="btn btn-link px-0 mt-3" href="{{ url_for('displays.index') }}">&larr; All displays</a>

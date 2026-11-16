@@ -39,6 +39,7 @@ A quick overview. The detailed list of every change follows further down.
 - **YouTube clip looping in a synced group:** a single video with a start and an end time now gets a slide exactly that long in synced groups, so it plays once and the playlist moves on. (With only a start time the slide still lasts the item's duration.)
 
 ### Added
+- **App update notice:** a display's page shows "Update available" when its Android or Windows app is older than the newest installer on the Downloads page (versions compared properly, 3.0.10 > 3.0.2). It only informs; installing is manual from the device's Downloads page. Pushing installs to devices waits for command signing and a release key ([docs/updates.md](docs/updates.md)).
 - `flask --app wsgi downloads add FILE --kind ...` to publish installers to the Downloads page; [docs/downloads.md](docs/downloads.md).
 - [docs/testing-checklist.md](docs/testing-checklist.md): the manual tests, step by step.
 
