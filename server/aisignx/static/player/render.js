@@ -14,6 +14,7 @@
   var WEB_SHOW_ANYWAY_MS = 8000;
   var TEARDOWN_SAFETY_MS = 1500;
   var STALL_MS = 10000;
+  var NUDGE_MS = 3000;   // a frozen video gets one play() nudge after this long
   var PLUGIN_READY_MS = 8000;
   var DEGRADED_MS = 10000;  // a degraded plugin (fallback or loading card) moves on after 10 s
 
@@ -243,6 +244,10 @@
       return;
     }
     var h = slide.plugin;
+    if (ctx.syncStart && h.slideClock) {  // synchronized playback: tell the frame when its slide began
+      var began = ctx.syncStart();
+      if (typeof began === "number") h.slideClock(began);
+    }
     h.on("complete", function () { if (alive() && slide.item.plugin.ends_itself) ctx.done(); });
     h.on("error", function (msg, fatal) {
       if (!alive()) return;
@@ -402,6 +407,7 @@
     });
     // Stall watchdog: currentTime frozen for 10 s while supposed to play.
     var lastTime = -1, lastAt = Date.now();
+    var nudged = false;
     ctx.every(function () {
       if (!alive()) return;
       var now = Date.now();
@@ -409,6 +415,13 @@
       if (v.paused || v.ended || v.seeking === true || v.currentTime !== lastTime) {
         lastTime = v.currentTime;
         lastAt = now;
+        nudged = false;
+      } else if (!nudged && now - lastAt > NUDGE_MS) {
+        // Frozen for a few seconds (often the first showing, while the file is still loading): ask the
+        // browser to play again before giving up on the slide.
+        nudged = true;
+        ctx.note("video not advancing, nudging");
+        playVideo(v, function () { /* the watchdog decides */ });
       } else if (now - lastAt > STALL_MS) {
         lastAt = now;
         ctx.fail("video stalled");

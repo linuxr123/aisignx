@@ -126,6 +126,7 @@
       attributionText: typeof m.attribution === "string" ? m.attribution : "",
       data: null, stale: false, warming: false, fetchedAt: 0, offline: !!m.offline, assets: [],
       now: function () { return Date.now() + offset; },
+      slideStart: null,   // set in synchronized playback (see the "slideclock" hook)
       every: function (fn, ms) { return addTimer(fn, ms, true); },
       aligned: addAligned,
       later: function (fn, ms) { return addTimer(fn, ms, false); },
@@ -243,6 +244,10 @@
       case "asset": onAsset(m); break;
       case "net": ctx.offline = !!m.offline; call("net", m); break;
       case "show": case "pause": case "resume": call(m.t, m); break;
+      case "slideclock":  // synchronized playback: when this slide began, on the server clock
+        ctx.slideStart = typeof m.start === "number" && isFinite(m.start) ? m.start : null;
+        call("slideclock", m);
+        break;
       case "destroy": destroy(m); break;
       default: break;
     }

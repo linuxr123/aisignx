@@ -253,6 +253,7 @@
     m.attribution = String(p.attribution || "");
     post(h, m);
     if (h.shown) post(h, { t: "show" });
+    if (typeof h.slideStart === "number") post(h, { t: "slideclock", start: h.slideStart });
   }
   function sendAsset(h, id) {
     id = String(id || "");
@@ -341,6 +342,12 @@
       item: item,
       on: function (name, fn) { h.handlers[name] = fn; },
       degraded: function () { return h.degraded; },
+      // In sync: the shared-clock time (server ms) this slide began, so the frame can start on its first page.
+      slideClock: function (start) {
+        if (h.dead || typeof start !== "number" || !isFinite(start)) return;
+        h.slideStart = start;
+        if (h.inited) post(h, { t: "slideclock", start: start });
+      },
       show: function () {
         if (h.dead || h.shown) return;
         h.shown = true;

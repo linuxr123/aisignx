@@ -33,6 +33,12 @@ A quick overview. The detailed list of every change follows further down.
 5. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
 6. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
 
+## Unreleased: Sync polish
+
+### Fixed
+- **Synced video freezing until the next slide (first showing):** a video that is still loading is no longer seeked by the drift correction (which restarted its download), corrections are limited to one per 10 s, and a video that stops advancing for 3 s gets a play() nudge before the 10 s stall rule gives up on it. Not reproduced here; please watch for it again.
+- **News page order on synced screens:** list pages now count from the start of the slide, so every screen starts on page 1 and goes 1, 2, 3 (before it followed the wall clock: 2, 3, 1). Plugin frames get the slide's start time (`ctx.slideStart`).
+
 ## Unreleased: Emergency templates and API
 
 ### Added

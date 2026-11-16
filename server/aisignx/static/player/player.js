@@ -27,7 +27,7 @@
   var NO_CONTENT_RETRY_MS = 30000, SETUP_RETRY_MS = 10000, PAIRED_SHOW_MS = 2000, DIAG_EVERY = 10;
   var TYPES = { image: 1, video: 1, web: 1, plugin: 1 };
   var SEEK_S = 10, SCRUB_SPAN_S = 120, SCRUB_STEP_MS = 100;
-  var SYNC_CHECK_MS = 5000, SYNC_DRIFT_S = 0.35;  // in sync: how often a video is checked, and how far it may drift
+  var SYNC_CHECK_MS = 5000, SYNC_DRIFT_S = 0.35, SYNC_SEEK_GAP_MS = 10000;  // in sync: how often a video is checked, and how far it may drift
 
   var S = {
     state: "", mode: 0, gen: 0, timers: [], manifest: null, version: null, items: [],
@@ -375,6 +375,12 @@
           var p = S.sync ? syncAt() : null;
           return p && S.cur && S.cur.item === item && p.index === S.pos ? p.elapsedMs : null;
         },
+        // In sync: the shared-clock time this slide started (server ms), else null. A plugin that rotates
+        // its own pages uses it to start on its first page and change pages in step with the others.
+        syncStart: function () {
+          var p = S.sync ? syncAt() : null;
+          return p && S.cur && S.cur.item === item && p.index === S.pos ? serverNow() - p.elapsedMs : null;
+        },
         // A plugin that ends itself while the viewer has it paused waits for the resume.
         done: guard(function () { if (S.paused || S.sync) return; S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
         fail: guard(slideFailed),
@@ -420,8 +426,16 @@
     if (!S.sync || !cur || cur.slide !== slide || cur.failed || S.paused || (R.isSeeking && R.isSeeking(slide))) return;
     var p = syncAt(), v = R.videoOf(slide);
     if (!p || !v || p.index !== S.pos) return;
+    // A video that is still loading (the first showing, before it is cached) cannot be corrected: seeking
+    // it only restarts the download and it never gets going. Let it buffer; correct it once it plays.
+    if (v.readyState < 3) return;
     var want = syncWant(slide, item, p.elapsedMs);
-    if (Math.abs((Number(v.currentTime) || 0) - want) > SYNC_DRIFT_S) R.setVideoTime(slide, want);
+    if (Math.abs((Number(v.currentTime) || 0) - want) > SYNC_DRIFT_S) {
+      var t = Date.now();
+      if (cur.lastDriftSeek && t - cur.lastDriftSeek < SYNC_SEEK_GAP_MS) return;  // at most one correction per 10 s
+      cur.lastDriftSeek = t;
+      R.setVideoTime(slide, want);
+    }
   }
 
   // A video plays once (its deadline follows its length) unless it fills a longer duration or is alone.

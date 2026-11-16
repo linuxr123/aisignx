@@ -225,6 +225,13 @@
     return card;
   }
 
+  // Time that decides which page shows: in synchronized playback the time since this slide began (so
+  // every screen starts on page 1 and moves on together), else the shared wall clock.
+  function phase() {
+    var start = S.ctx.slideStart;
+    return typeof start === "number" ? Math.max(0, S.ctx.now() - start) : S.ctx.now();
+  }
+
   // ---- rotation (list pages and cards) -----------------------------------------------------------
 
   function show(i, waits) {
@@ -249,12 +256,12 @@
     var bar = S.progress;
     if (!bar) return;
     // The bar shows the time to the next change on the shared clock, so it fills in step on every screen.
-    var phase = (S.ctx.now() % S.cfg.rotateMs) / S.cfg.rotateMs;
+    var frac = (phase() % S.cfg.rotateMs) / S.cfg.rotateMs;
     bar.style.transition = "none";
-    bar.style.width = S.slides.length > 1 ? (phase * 100).toFixed(1) + "%" : "100%";
+    bar.style.width = S.slides.length > 1 ? (frac * 100).toFixed(1) + "%" : "100%";
     if (S.slides.length < 2 || !S.shown || S.paused) return;
     void bar.offsetWidth;
-    bar.style.transition = "width " + Math.round(S.cfg.rotateMs * (1 - phase)) + "ms linear";
+    bar.style.transition = "width " + Math.round(S.cfg.rotateMs * (1 - frac)) + "ms linear";
     bar.style.width = "100%";
   }
 
@@ -263,12 +270,20 @@
     if (S.slides.length < 2 || !S.shown || S.paused) return;
     runProgress();
     // On the shared clock: every screen changes to the same headline at the same moment.
-    S.timer = S.ctx.aligned(function () {
+    var step = function () {
       // A changed feed is applied here, on the shared boundary, so screens that fetched it at
       // different moments still switch together.
       if (S.pendingData) { S.data = S.pendingData; S.pendingData = null; draw(); return; }
-      show(startIndex(S.ctx.now(), S.cfg.rotateMs, S.slides.length));
-    }, S.cfg.rotateMs);
+      show(startIndex(phase(), S.cfg.rotateMs, S.slides.length));
+    };
+    if (typeof S.ctx.slideStart === "number") {  // in sync: boundaries counted from the start of the slide
+      var chain = function () {
+        S.timer = S.ctx.later(function () { chain(); step(); }, S.cfg.rotateMs - (phase() % S.cfg.rotateMs) + 2);
+      };
+      chain();
+      return;
+    }
+    S.timer = S.ctx.aligned(step, S.cfg.rotateMs);
   }
 
   function stopRotation() {
@@ -379,7 +394,7 @@
       S.column = S.cfg.showImages && list.some(function (item) { return !!item.image; });
       S.slides = listSlides(list).map(function (page) { return function (w) { return buildPage(page, w); }; });
     }
-    show(startIndex(ctx.now(), S.cfg.rotateMs, S.slides.length), waits);
+    show(startIndex(phase(), S.cfg.rotateMs, S.slides.length), waits);
     startRotation();
     return Promise.all(waits);
   }
@@ -428,6 +443,13 @@
       show: function () {
         S.shown = true;
         setPaused(S.paused);
+      },
+      // Synchronized playback: the slide's start time arrived. Begin on its first page and re-time the rotation.
+      slideclock: function () {
+        if (S.cfg.mode === "ticker" || S.slides.length < 2) return;
+        stopRotation();
+        show(startIndex(phase(), S.cfg.rotateMs, S.slides.length));
+        startRotation();
       },
       net: function () { if (S.data) badge(); },
       pause: function () { setPaused(true); },
