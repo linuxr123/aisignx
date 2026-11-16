@@ -86,6 +86,7 @@ video, a YouTube clip.
 | E4 | Go offline (unplug) with news, stocks and YouTube slides | Screen shows the offline notice or the last data, then moves on; it does not freeze | |
 | E5 | Android Shield: the big MP4 with fast-forward and rewind | Smooth, no freezes | |
 | E6 | A web page item | Shows the page (or a screenshot), no error | |
+| E7 | Restart the app on the Galaxy and the Shield (so nothing is cached), then play the biggest MP4 in a synced playlist. Watch the FIRST showing, and note how it looks | Plays without freezing and without a green block. If it still freezes, it should recover within a few seconds (look in the display's diagnostics/errors for "video not advancing, nudging play()" or "sync seek waits for the video to load"). Tell me what you saw | |
 
 ## F. Content and server basics
 

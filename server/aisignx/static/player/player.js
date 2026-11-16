@@ -359,7 +359,7 @@
     var elapsed = 0;  // in sync: how far into this slide the shared clock says we already are
     var sp = S.sync ? syncAt() : null;
     if (sp) elapsed = sp.index === n.index ? sp.elapsedMs : -sp.remainingMs;  // a hair early: start at the boundary
-    if (sp && elapsed > 500 && R.isVideo(n.slide)) syncSeek(n.slide, item, elapsed);
+    if (sp && elapsed > 500 && R.isVideo(n.slide)) syncSeekWhenReady(n.slide, item, elapsed);
     R.swap(n.slide, trans);
     screenEl.hidden = true;
     pop("end", true); pop("begin", item);
@@ -392,6 +392,7 @@
     if (!R.isVideo(n.slide)) return;
     if (S.sync) every(function () { syncDrift(n.slide, item); }, SYNC_CHECK_MS);
     R.runVideo(n.slide, {
+      isHeld: function () { return !!S.paused; },  // the viewer paused it on purpose
       loop: function () { return loops(item); },
       done: guard(function () { if (S.sync) return; S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
       fail: guard(slideFailed),
@@ -420,6 +421,32 @@
     return loops(item) ? s % len : Math.min(s, len);
   }
   function syncSeek(slide, item, elapsedMs) { R.setVideoTime(slide, syncWant(slide, item, elapsedMs)); }
+  // A slide that starts late joins its video part-way in. A video that has not got enough data yet
+  // (the first showing of a big file that is still loading) must not be seeked: that restarts its
+  // download far from where it is and it may never get going. Start it from the beginning and jump
+  // as soon as it can play, to where the shared clock is by then.
+  function syncSeekWhenReady(slide, item, elapsedMs) {
+    var v = R.videoOf(slide);
+    if (!v || typeof v.readyState !== "number" || v.readyState >= 3 || typeof v.addEventListener !== "function") {
+      syncSeek(slide, item, elapsedMs);
+      return;
+    }
+    note("sync seek waits for the video to load (readyState " + v.readyState + ")");
+    var once = function () {
+      v.removeEventListener("canplay", once);
+      var cur = S.cur, p = syncAt();
+      if (!S.sync || !cur || cur.slide !== slide || cur.failed || !p || p.index !== S.pos) return;
+      R.setVideoTime(slide, syncWant(slide, item, p.elapsedMs));
+    };
+    v.addEventListener("canplay", once);
+  }
+  function isBuffered(v, t) {
+    if (!v.buffered) return true;  // cannot tell: do not hold a correction back
+    try {
+      for (var i = 0; i < v.buffered.length; i++) if (t >= v.buffered.start(i) - 0.1 && t <= v.buffered.end(i)) return true;
+    } catch (e) { /* ignore */ }
+    return false;
+  }
   // Every few seconds a synced video is pulled back to the shared timeline if it has drifted.
   function syncDrift(slide, item) {
     var cur = S.cur;
@@ -428,9 +455,12 @@
     if (!p || !v || p.index !== S.pos) return;
     // A video that is still loading (the first showing, before it is cached) cannot be corrected: seeking
     // it only restarts the download and it never gets going. Let it buffer; correct it once it plays.
-    if (v.readyState < 3) return;
+    if (v.readyState < 3 || v.paused) return;  // a paused video is the watchdog's business, not ours
     var want = syncWant(slide, item, p.elapsedMs);
-    if (Math.abs((Number(v.currentTime) || 0) - want) > SYNC_DRIFT_S) {
+    var off = Math.abs((Number(v.currentTime) || 0) - want);
+    // A small correction into data that has not arrived yet would only stall the video: let it catch up.
+    if (off < 2 && !isBuffered(v, want)) return;
+    if (off > SYNC_DRIFT_S) {
       var t = Date.now();
       if (cur.lastDriftSeek && t - cur.lastDriftSeek < SYNC_SEEK_GAP_MS) return;  // at most one correction per 10 s
       cur.lastDriftSeek = t;

@@ -14,7 +14,11 @@
   var WEB_SHOW_ANYWAY_MS = 8000;
   var TEARDOWN_SAFETY_MS = 1500;
   var STALL_MS = 10000;
-  var NUDGE_MS = 3000;   // a frozen video gets one play() nudge after this long
+  var NUDGE_MS = 3000;   // a video whose time stands still gets a play() nudge after this long
+  var PAUSED_NUDGE_MS = 2000;  // a video that is paused when it should play gets one after this long
+  var NUDGE_EVERY_MS = 2000;   // ... and another every so often
+  var SEEK_RETRY_MS = 6000;    // a seek that has not finished by now is asked for again, once
+  var SEEK_FAIL_MS = 20000;    // ... and one that is still not finished by now fails the slide
   var PLUGIN_READY_MS = 8000;
   var DEGRADED_MS = 10000;  // a degraded plugin (fallback or loading card) moves on after 10 s
 
@@ -405,29 +409,61 @@
     v.addEventListener("error", function () {
       if (alive()) ctx.fail("video error " + (v.error ? v.error.code : ""));
     });
-    // Stall watchdog: currentTime frozen for 10 s while supposed to play.
-    var lastTime = -1, lastAt = Date.now();
-    var nudged = false;
+    var held = function () { return typeof ctx.isHeld === "function" && !!ctx.isHeld(); };
+    // A browser can leave a video paused after a seek or while the file is still loading (seen on the
+    // first showing of a big file): ask it to play again as soon as it can.
+    var resumeIfIdle = function () {
+      if (alive() && v.paused && !v.ended && !held()) playVideo(v, function () { /* the watchdog decides */ });
+    };
+    v.addEventListener("canplay", resumeIfIdle);
+    v.addEventListener("seeked", resumeIfIdle);
+    // Watchdog (once a second): a video that stands still, stays paused or never finishes a seek is
+    // nudged, then given up on (see watchStep).
+    var watch = { lastTime: -1, lastAt: Date.now(), nudgeAt: 0, seekAt: 0, reseeked: false };
     ctx.every(function () {
       if (!alive()) return;
-      var now = Date.now();
-      // A video that is busy seeking (a big file, a long gap between keyframes) is not stalled.
-      if (v.paused || v.ended || v.seeking === true || v.currentTime !== lastTime) {
-        lastTime = v.currentTime;
-        lastAt = now;
-        nudged = false;
-      } else if (!nudged && now - lastAt > NUDGE_MS) {
-        // Frozen for a few seconds (often the first showing, while the file is still loading): ask the
-        // browser to play again before giving up on the slide.
-        nudged = true;
-        ctx.note("video not advancing, nudging");
+      var act = watchStep(watch, { paused: v.paused, ended: v.ended, seeking: v.seeking === true, time: v.currentTime },
+                          Date.now(), held());
+      if (act === "play") {
+        ctx.note("video not advancing, nudging play()");
         playVideo(v, function () { /* the watchdog decides */ });
-      } else if (now - lastAt > STALL_MS) {
-        lastAt = now;
+      } else if (act === "reseek") {
+        ctx.note("seek is taking long, asking again");
+        try { v.currentTime = v.currentTime; } catch (e) { /* ignore */ }
+        playVideo(v, function () { /* the watchdog decides */ });
+      } else if (act === "fail") {
         ctx.fail("video stalled");
       }
     }, 1000);
     playVideo(v, onError);
+  }
+
+  // watchStep(st, f, now, held) -> "ok" | "play" | "reseek" | "fail": one tick of the frozen-video
+  // watchdog. st is its memory; f = {paused, ended, seeking, time}; held = the viewer paused it on
+  // purpose. Pure, so tests can drive it. A video that is playing, ended or deliberately held is fine;
+  // a seek may take a while (a big file) but not forever; anything else that is not moving is asked to
+  // play, over and over, and failed after STALL_MS.
+  function watchStep(st, f, now, held) {
+    if (held || f.ended) { st.lastTime = f.time; st.lastAt = now; st.seekAt = 0; st.nudgeAt = 0; return "ok"; }
+    if (f.seeking) {
+      if (!st.seekAt) st.seekAt = now;
+      var sought = now - st.seekAt;
+      if (sought > SEEK_FAIL_MS) { st.seekAt = now; return "fail"; }
+      if (!st.reseeked && sought > SEEK_RETRY_MS) { st.reseeked = true; return "reseek"; }
+      st.lastTime = f.time; st.lastAt = now;
+      return "ok";
+    }
+    st.seekAt = 0; st.reseeked = false;
+    if (!f.paused && f.time !== st.lastTime) {  // moving: healthy
+      st.lastTime = f.time; st.lastAt = now; st.nudgeAt = 0;
+      return "ok";
+    }
+    st.lastTime = f.time;
+    var frozen = now - st.lastAt;
+    if (frozen > STALL_MS) { st.lastAt = now; st.nudgeAt = 0; return "fail"; }
+    var wait = f.paused ? PAUSED_NUDGE_MS : NUDGE_MS;
+    if (frozen > wait && (!st.nudgeAt || now - st.nudgeAt >= NUDGE_EVERY_MS)) { st.nudgeAt = now; return "play"; }
+    return "ok";
   }
 
   // resume(slide): restart a video the browser paused (e.g. while the tab was hidden), or
@@ -551,6 +587,7 @@
     teardown: teardown,
     clear: clear,
     runVideo: runVideo,
+    watchStep: watchStep,
     resume: resume,
     isVideo: isVideo,
     isPlugin: isPlugin,
