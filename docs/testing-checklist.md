@@ -107,6 +107,28 @@ video, a YouTube clip.
 | G3 | Upload a slide deck as images | Appears under Media | |
 | G4 | Open the deck from a network drive as another user | Works without changes (their own token) | |
 
+## H. Emergency: saved messages, schedule and API
+
+| # | Step | Expect | Result |
+|---|---|---|---|
+| H1 | Emergency > fill the form, name it, **Save as template** | Saved; nothing is sent; no "send now?" prompt | |
+| H2 | **Send now** on the saved message | Asks to confirm, then every chosen screen shows it within seconds | |
+| H3 | Clear it | Screens return to normal content | |
+| H4 | Scheduled: pick the saved message, start 2 minutes from now, stays up 3 minutes | Appears on screens at the start time (within ~30 s), disappears 3 minutes later; history shows "expired" | |
+| H5 | Schedule one, then Cancel it before it starts | Nothing is sent | |
+| H6 | Stop the server for 15 min across a scheduled start, then start it | Plan shows **missed**, nothing is sent late | |
+| H7 | Delete the group a saved message targets, then Send now | Refused with a message; it does NOT go to all screens | |
+| H8 | API: make a token with **emergency:send** (user menu > My API tokens); `curl -X POST -H "Authorization: Bearer TOKEN" http://SERVER:5000/api/v1/emergency/templates/ID/send` (ID is shown on the Emergency page) | 201; screens show it. Run it twice: second answer says already live, no duplicate | |
+| H9 | `curl -X POST -H "Authorization: Bearer TOKEN" http://SERVER:5000/api/v1/emergency/clear` | Screens clear | |
+| H10 | A viewer-role user: try to create a token with emergency:send | Not offered | |
+
+## I. Update notice
+
+| # | Step | Expect | Result |
+|---|---|---|---|
+| I1 | Upload an APK (or Windows installer) to Downloads with a version newer than the one on a device | That display's page shows "Update available: <version>" next to its app | |
+| I2 | Same version as the device | No notice | |
+
 ---
 
 **Report back with:** the row numbers that failed and what you saw (a screenshot helps). Logs: Admin > Logs, and
