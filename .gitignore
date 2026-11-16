@@ -50,3 +50,6 @@ Thumbs.db
 # Release signing key (publisher only, never commit)
 release-key.private
 *.private
+
+# Installer files served on the Downloads page
+server/downloads/

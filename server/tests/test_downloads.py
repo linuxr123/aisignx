@@ -77,3 +77,20 @@ def test_delete_removes_file(admin_client, app):
     r = admin_client.post(f"/downloads/{rid}/delete", data={"csrf_token": token.group(1) if token else ""})
     with app.app_context():
         assert Download.query.count() == 0 and not path.exists()
+
+
+def test_cli_add_publishes_and_replaces(app, tmp_path):
+    from aisignx.downloads.cli import downloads_cli
+    f = tmp_path / "AiSignX-Player.apk"
+    f.write_bytes(b"PK" + b"1" * 300)
+    runner = app.test_cli_runner()
+    r = runner.invoke(downloads_cli, ["add", str(f), "--kind", "android-player", "--version", "3.0.2"])
+    assert r.exit_code == 0, r.output
+    f.write_bytes(b"PK" + b"2" * 300)
+    r = runner.invoke(downloads_cli, ["add", str(f), "--kind", "android-player", "--version", "3.0.3"])
+    assert r.exit_code == 0, r.output
+    with app.app_context():
+        row, = Download.query.all()               # the older one was replaced
+        assert row.version == "3.0.3" and row.uploaded_by == "cli"
+    bad = tmp_path / "x.html"; bad.write_text("hi")
+    assert runner.invoke(downloads_cli, ["add", str(bad), "--kind", "other"]).exit_code != 0

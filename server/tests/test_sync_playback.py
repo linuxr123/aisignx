@@ -156,3 +156,32 @@ def test_youtube_loops_for_the_whole_slide_in_a_synced_group(tmp_path, monkeypat
     finally:
         with app.app_context():
             db.engine.dispose()
+
+
+def test_synced_youtube_clip_lasts_start_to_end_not_the_whole_duration(tmp_path, monkeypatch):
+    """A clip set to play from 0:10 to 0:40 must not loop for the item's 300 s in a synced group:
+    its slide lasts 30 s, so it plays once and the playlist moves on."""
+    from .plugin_fixtures import add_item, make_plugin_app, paired_with
+
+    app = make_plugin_app(tmp_path, monkeypatch)
+    make_user(app, "admin", "admin")
+    try:
+        media_id = add_item(app, "youtube", {"source": "videos", "videos": "dQw4w9WgXcQ 10 40",
+                                             "play_to_end": True}, duration=300)
+        token = paired_with(app, media_id)
+        client = app.test_client()
+        item, = client.get(f"{API}/manifest", headers=bearer(token)).get_json()["items"]
+        assert item["duration_ms"] == 300_000          # not synced: unchanged
+        with app.app_context():
+            display = Display.query.one()
+            group = DisplayGroup(name="Wall", sync_playback=True)
+            db.session.add(group)
+            display.group = group
+            db.session.commit()
+        m = client.get(f"{API}/manifest", headers=bearer(token)).get_json()
+        item, = m["items"]
+        assert item["plugin"]["embed"]["start"] == 10 and item["plugin"]["embed"]["end"] == 40
+        assert item["duration_ms"] == 30_000 and m["sync"]["cycle_ms"] == 30_000
+    finally:
+        with app.app_context():
+            db.engine.dispose()

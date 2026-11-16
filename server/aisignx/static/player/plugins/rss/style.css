@@ -149,14 +149,15 @@
 
 /* ---- list ---- */
 .rss-page {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: repeat(var(--rows, 3), minmax(0, 1fr));  /* equal rows: same on every screen */
   gap: 1.8vmin;
   padding: 0 4.5vmin;
   overflow: hidden;
 }
 .rss-row {
-  flex: none;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 2.6vmin;

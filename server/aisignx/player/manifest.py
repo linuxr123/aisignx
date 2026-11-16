@@ -101,6 +101,18 @@ def _video_facts(media) -> dict | None:
             "fps": info.get("fps") or 25, "bitrate": info.get("bitrate") or 0}
 
 
+def _clip_ms(plugin_block: dict) -> int | None:
+    """Length in ms of a single YouTube video set to play from a start time to an end time."""
+    embed = plugin_block.get("embed") or {}
+    ids = embed.get("video_ids")
+    start, end = embed.get("start") or 0, embed.get("end") or 0
+    if embed.get("list") or embed.get("live") or not isinstance(ids, list) or len(ids) != 1:
+        return None
+    if isinstance(start, (int, float)) and isinstance(end, (int, float)) and end > start >= 0:
+        return int(round((end - start) * 1000))
+    return None
+
+
 def _item_entry(item, fit: str | None = None, synced: bool = False) -> dict | None:
     """One manifest item. fit: the display's override for every item, if any. synced: the display's
     group plays in sync (slides run for their set duration; see build_manifest)."""
@@ -148,6 +160,11 @@ def _item_entry(item, fit: str | None = None, synced: bool = False) -> dict | No
     if plugin is not None:
         result["muted"] = plugin["muted"]
         result["plugin"] = plugin["plugin"]
+        clip_ms = _clip_ms(plugin["plugin"]) if synced else None
+        if clip_ms:
+            # Synced screens run every slide for its set duration. A YouTube clip with a start and an
+            # end time lasts exactly that long, so the slide does too (otherwise it would loop).
+            result["duration_ms"] = clip_ms
     return result
 
 

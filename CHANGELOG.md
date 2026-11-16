@@ -32,6 +32,16 @@ A quick overview. The detailed list of every change follows further down.
 5. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
 6. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
 
+## Unreleased: Sync fixes, test checklist
+
+### Fixed
+- **News (RSS) not identical across synced screens:** list pages now hold a fixed number of rows per orientation (3 landscape, 4 portrait) instead of being cut from each screen's own text measurements, which differed between screens. A changed feed is applied at the next shared page change, not at random moments.
+- **YouTube clip looping in a synced group:** a single video with a start and an end time now gets a slide exactly that long in synced groups, so it plays once and the playlist moves on. (With only a start time the slide still lasts the item's duration.)
+
+### Added
+- `flask --app wsgi downloads add FILE --kind ...` to publish installers to the Downloads page; [docs/downloads.md](docs/downloads.md).
+- [docs/testing-checklist.md](docs/testing-checklist.md): the manual tests, step by step.
+
 ## Unreleased: Update check
 
 ### Added

@@ -62,6 +62,7 @@
       <ul class="nav flex-column">
         {{ nav_link('alerts.index', 'bell', 'Alerts', ep.startswith('alerts.'), badge=open_alert_count|default(0)) }}
         {{ nav_link('pop.report', 'chart', 'Reports', ep.startswith('pop.')) }}
+        {{ nav_link('downloads.index', 'download', 'Downloads', ep.startswith('downloads.')) }}
       </ul>
       {% if current_user.is_admin %}
       <div class="nav-group">Administration</div>

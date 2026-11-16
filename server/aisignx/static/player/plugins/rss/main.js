@@ -55,27 +55,21 @@
     return out || format(ms, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   }
 
-  // Groups rows into pages: heights in px, gap between rows, avail = page height.
-  // Every page holds at least one row. Pages are balanced (8 rows that need 3 pages
-  // become 3 + 3 + 2, not 4 + 3 + 1) whenever that still takes no more pages.
-  function paginate(heights, gap, avail) {
-    var fill = function (most) {
-      var pages = [], page = [], used = 0;
-      for (var i = 0; i < heights.length; i++) {
-        var need = (page.length ? gap : 0) + heights[i];
-        if (page.length && (used + need > avail || page.length >= most)) {
-          pages.push(page); page = []; used = 0; need = heights[i];
-        }
-        page.push(i);
-        used += need;
-      }
-      if (page.length) pages.push(page);
-      return pages;
-    };
-    var greedy = fill(Infinity);
-    if (greedy.length < 2) return greedy;
-    var even = fill(Math.ceil(heights.length / greedy.length));
-    return even.length === greedy.length ? even : greedy;
+  // Rows per list page. This must NOT depend on how the text happens to wrap on one screen:
+  // every screen has to cut the feed into the same pages, or the shared clock puts them on
+  // different headlines. So it is fixed per orientation; the CSS gives each row an equal share
+  // of the page and clips overflow.
+  function rowsPerPage(portrait) { return portrait ? 4 : 3; }
+
+  function chunk(items, per) {
+    var pages = [];
+    for (var i = 0; i < items.length; i += per) pages.push(items.slice(i, i + per));
+    return pages;
+  }
+
+  // What matters for "has the feed changed": the headlines and their order.
+  function signature(list) {
+    return (list || []).map(function (it) { return [it.title, it.published_ms || 0, it.image || ""].join("|"); }).join("\n");
   }
 
   // Which page/card to start on, so successive showings move through the feed.
@@ -104,7 +98,7 @@
 
   var S = { ctx: null, cfg: null, data: null, shown: false, paused: false, timer: null,
             index: 0, slides: [], layer: null, stage: null, progress: null, count: null,
-            track: null, pendingBand: null, resizeTimer: null, column: false };
+            track: null, pendingBand: null, pendingData: null, resizeTimer: null, column: false };
 
   // A picture box whose <img> fills in when the asset arrives. Returns [node, promise].
   function picture(id, cls) {
@@ -196,26 +190,13 @@
     return r;
   }
 
-  // Measures every row in a hidden page and splits the items into pages that fit.
   function listSlides(items) {
-    var probe = el("div", "rss-layer rss-page");
-    probe.style.visibility = "hidden";
-    S.stage.appendChild(probe);
-    var rows = items.map(function (item) { return probe.appendChild(row(item, null, S.column)); });
-    var avail = probe.clientHeight;
-    var gap = parseFloat(window.getComputedStyle(probe).rowGap) || 0;
-    var heights = rows.map(function (r) { return r.offsetHeight; });
-    S.stage.removeChild(probe);
-    if (!avail || !heights[0]) {  // not laid out (hidden frame): a fixed count per page
-      var per = window.innerHeight > window.innerWidth ? 6 : 4, out = [];
-      for (var i = 0; i < items.length; i += per) out.push(items.slice(i, i + per));
-      return out;
-    }
-    return paginate(heights, gap, avail).map(function (idx) { return idx.map(function (i) { return items[i]; }); });
+    return chunk(items, rowsPerPage(window.innerHeight > window.innerWidth));
   }
 
   function buildPage(items, waits) {
     var page = el("div", "rss-layer rss-page");
+    page.style.setProperty("--rows", String(rowsPerPage(window.innerHeight > window.innerWidth)));
     items.forEach(function (item) { page.appendChild(row(item, waits, S.column)); });
     return page;
   }
@@ -282,7 +263,12 @@
     if (S.slides.length < 2 || !S.shown || S.paused) return;
     runProgress();
     // On the shared clock: every screen changes to the same headline at the same moment.
-    S.timer = S.ctx.aligned(function () { show(startIndex(S.ctx.now(), S.cfg.rotateMs, S.slides.length)); }, S.cfg.rotateMs);
+    S.timer = S.ctx.aligned(function () {
+      // A changed feed is applied here, on the shared boundary, so screens that fetched it at
+      // different moments still switch together.
+      if (S.pendingData) { S.data = S.pendingData; S.pendingData = null; draw(); return; }
+      show(startIndex(S.ctx.now(), S.cfg.rotateMs, S.slides.length));
+    }, S.cfg.rotateMs);
   }
 
   function stopRotation() {
@@ -426,6 +412,7 @@
       },
       data: function (ctx) {
         var had = !!S.data;
+        var old = S.data;
         S.data = ctx.data;
         if (had && S.cfg.mode === "ticker" && S.track && items().length) {
           S.pendingBand = bandItems(items());  // the band updates at its seam
@@ -433,6 +420,9 @@
           badge();
           return;
         }
+        var changed = signature(old && old.items) !== signature(ctx.data && ctx.data.items);
+        if (had && !changed) { S.pendingData = null; badge(); return; }
+        if (had && S.timer && S.slides.length > 1) { S.data = old; S.pendingData = ctx.data; return; }
         draw();
       },
       show: function () {
@@ -446,6 +436,6 @@
     });
   }
 
-  window.AiSignXRss = { settings: settings, feedTitle: feedTitle, initial: initial, when: when, paginate: paginate,
+  window.AiSignXRss = { settings: settings, feedTitle: feedTitle, initial: initial, when: when, chunk: chunk, rowsPerPage: rowsPerPage, signature: signature,
                         startIndex: startIndex, tickerSeconds: tickerSeconds };
 })();

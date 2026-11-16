@@ -51,11 +51,13 @@ def create_app(test_config: dict | None = None) -> Flask:
     _register_blueprints(app)
     from . import player, plugins, serve, system
     from .backup import cli as backup_cli
+    from .downloads import cli as downloads_cli
     plugins.init_app(app)  # before the player: a bad plugin.json fails start-up here
     player.init_app(app)
     system.register(app)
     serve.register(app)
     backup_cli.register(app)
+    downloads_cli.register(app)
     _register_setup_guard(app)
     _register_jobs_starter(app)
     _register_template_context(app)

@@ -47,16 +47,17 @@ assert.strictEqual(R.when(now, now - 3 * 3600000, "en", fmt), "3 hours ago");
 assert.strictEqual(R.when(now, now - 3 * 86400000, "en", fmt), "DATE");
 assert.strictEqual(R.when(now, now + 2 * 3600000, "en", fmt), "DATE");  // future: a date
 
-// paginate(): rows fill pages; an oversized row still gets a page of its own
-assert.deepStrictEqual(plain(R.paginate([100, 100, 100, 100], 10, 300)), [[0, 1], [2, 3]]);
-assert.deepStrictEqual(plain(R.paginate([100, 100, 100], 10, 300)), [[0, 1], [2]]);
-assert.deepStrictEqual(plain(R.paginate([100, 100, 100], 10, 320)), [[0, 1, 2]]);
-assert.deepStrictEqual(plain(R.paginate([500, 50], 10, 300)), [[0], [1]]);
-assert.deepStrictEqual(plain(R.paginate([], 10, 300)), []);
-// balanced: 4 + 4 + 1 becomes 3 + 3 + 3; uneven heights keep the greedy split when needed
-assert.deepStrictEqual(plain(R.paginate([100, 100, 100, 100, 100, 100, 100, 100, 100], 10, 430)), [[0, 1, 2], [3, 4, 5], [6, 7, 8]]);
-assert.deepStrictEqual(plain(R.paginate([100, 100, 100, 100, 100], 10, 430)), [[0, 1, 2], [3, 4]]);
-assert.deepStrictEqual(plain(R.paginate([50, 50, 50, 300, 300], 10, 320)), [[0, 1, 2], [3], [4]]);
+// Pages must not depend on how text wraps on one screen: fixed rows per orientation.
+assert.strictEqual(R.rowsPerPage(false), 3);
+assert.strictEqual(R.rowsPerPage(true), 4);
+assert.deepStrictEqual(plain(R.chunk([1, 2, 3, 4, 5, 6, 7], 3)), [[1, 2, 3], [4, 5, 6], [7]]);
+assert.deepStrictEqual(plain(R.chunk([], 3)), []);
+// signature(): the same headlines in the same order are "unchanged"
+const a = [{ title: "A", published_ms: 1 }, { title: "B", published_ms: 2, image: "i" }];
+assert.strictEqual(R.signature(a), R.signature(JSON.parse(JSON.stringify(a))));
+assert.notStrictEqual(R.signature(a), R.signature(a.slice().reverse()));
+assert.notStrictEqual(R.signature(a), R.signature(a.slice(0, 1)));
+assert.strictEqual(R.signature(null), "");
 
 // startIndex(): moves through the feed with wall time
 assert.strictEqual(R.startIndex(123456, 10000, 1), 0);
