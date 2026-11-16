@@ -59,7 +59,9 @@
   // display, then reporting the already-used code as invalid).
   document.addEventListener("submit", (event) => {
     const form = event.target;
-    const message = form.dataset?.confirm;
+    // A submit button can carry its own text (data-confirm-button="") or none (an empty string skips the form's).
+    const own = event.submitter && event.submitter.dataset ? event.submitter.dataset.confirmButton : undefined;
+    const message = own !== undefined ? own : form.dataset?.confirm;
     if (message && !window.confirm(message)) { event.preventDefault(); return; }
     if ((form.method || "").toLowerCase() !== "post") return;
     if (form.dataset.submitted) { event.preventDefault(); return; }

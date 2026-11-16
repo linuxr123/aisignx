@@ -10,7 +10,8 @@ from . import bp, service
 from .forms import RevokeForm, TokenForm
 
 SCOPE_HELP = {"media:read": "List and read media",
-              "media:write": "Upload and replace media (PowerPoint add-in)"}
+              "media:write": "Upload and replace media (PowerPoint add-in)",
+              "emergency:send": "Send and clear emergency messages (buttons, scripts, webhooks)"}
 
 
 def _token_form() -> TokenForm:

@@ -6,6 +6,7 @@ from .display import Display, PairingCode
 from .download import KINDS as DOWNLOAD_KINDS
 from .download import Download
 from .emergency import EmergencyMessage
+from .emergency_template import EmergencyTemplate
 from .group import DisplayGroup
 from .media import MEDIA_PLUGIN, MEDIA_TYPES, Media
 from .playlist import Playlist, PlaylistItem
@@ -15,7 +16,7 @@ from .setting import Setting
 from .token import SCOPE_MIN_ROLE, SCOPES, ApiToken
 from .user import ROLES, User
 
-__all__ = ["Alert", "ApiToken", "AuditLog", "DeviceCommand", "DOWNLOAD_KINDS", "Display", "Download", "DisplayGroup", "EmergencyMessage",
+__all__ = ["Alert", "ApiToken", "AuditLog", "DeviceCommand", "DOWNLOAD_KINDS", "Display", "Download", "DisplayGroup", "EmergencyMessage", "EmergencyTemplate",
            "MEDIA_PLUGIN", "MEDIA_TYPES", "Media", "PairingCode", "PlayDaily", "PlayEvent", "Playlist",
            "PlaylistItem", "ROLES", "SCOPES", "SCOPE_MIN_ROLE", "Schedule", "Setting",
            "User"]

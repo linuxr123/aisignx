@@ -48,6 +48,37 @@
 <p class="text-secondary mb-4">No emergency message is live. Screens show their normal content.</p>
 {% endif %}
 
+{% if templates %}
+<h2 class="h5 mb-3">Saved messages</h2>
+<div class="card mb-4"><div class="table-responsive">
+  <table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Name</th><th>Message</th><th>Level</th><th>Shown on</th><th></th></tr></thead>
+    <tbody>
+    {% for t in templates %}
+      <tr>
+        <td class="fw-semibold">{{ t.name }}<div class="small text-secondary text-nowrap">API id {{ t.id }}</div></td>
+        <td class="small">{{ t.title }}{% if t.message %}<div class="text-secondary">{{ t.message|truncate(80) }}</div>{% endif %}</td>
+        <td><span class="badge {{ level_badge.get(t.level, 'text-bg-secondary') }}">{{ t.level }}</span></td>
+        <td class="small">{{ t.target }}</td>
+        <td class="text-end text-nowrap">
+          {% if current_user.can_edit %}
+          <form method="post" action="{{ url_for('emergency.send_template', template_id=t.id) }}" class="d-inline"
+                data-confirm="Send {{ t.name }} now? It appears on the chosen screens immediately.">
+            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-danger" type="submit">Send now</button>
+          </form>
+          <form method="post" action="{{ url_for('emergency.delete_template', template_id=t.id) }}" class="d-inline"
+                data-confirm="Remove the saved message {{ t.name }}?">
+            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit">Remove</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endif %}
+
 {% if form %}
 <h2 class="h5 mb-3">Send a message</h2>
 <div class="card mb-4" style="max-width: 40rem"><div class="card-body">
@@ -64,6 +95,10 @@
     <p class="form-text mt-n2">A playlist plays instead of normal content. Without one the text fills the screen.</p>
     {{ field(form.show_text) }}
     <button class="btn btn-danger" type="submit">Send emergency message</button>
+    <div class="input-group mt-3">
+      <input class="form-control" type="text" name="template_name" maxlength="80" placeholder="Save as a template, name it (e.g. Fire drill)">
+      <button class="btn btn-outline-secondary" type="submit" formaction="{{ url_for('emergency.save_template') }}" data-confirm-button="">Save as template</button>
+    </div>
   </form>
 </div></div>
 {% endif %}

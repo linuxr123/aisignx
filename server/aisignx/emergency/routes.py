@@ -11,7 +11,7 @@ from .. import targets
 from ..audit import service as audit
 from ..auth.decorators import editor_required
 from ..extensions import db
-from ..models import EmergencyMessage
+from ..models import EmergencyMessage, EmergencyTemplate
 from . import bp, service
 from .forms import ActionForm, EmergencyForm
 
@@ -57,8 +57,9 @@ def _render(form: EmergencyForm | None, status: int = 200):
                         selectinload(EmergencyMessage.cleared_by))
                .order_by(EmergencyMessage.created_at.desc(), EmergencyMessage.id.desc())
                .limit(HISTORY_LIMIT).all())
+    templates = EmergencyTemplate.query.order_by(EmergencyTemplate.name).all()
     return render_template("emergency/index.html", live=service.live(), history=history,
-                           form=form, action_form=ActionForm()), status
+                           templates=templates, form=form, action_form=ActionForm()), status
 
 
 @bp.route("/")
@@ -132,4 +133,55 @@ def clear_all():
                                current_user.id)
     flash(f"Cleared {len(cleared)} emergency message{'' if len(cleared) == 1 else 's'}.",
           "success")
+    return redirect(url_for("emergency.index"))
+
+
+@bp.route("/templates", methods=["POST"])
+@editor_required
+def save_template():
+    """Save the send form as a template (nothing is sent)."""
+    form = EmergencyForm()
+    if not form.validate_on_submit():
+        flash("The template was not saved. Check the form below.", "danger")
+        return _render(form, 400)
+    try:
+        tpl = service.save_template(request.form.get("template_name", ""), form, current_user)
+    except service.TemplateError as exc:
+        flash(str(exc), "danger")
+        return _render(form, 400)
+    audit.record("emergency.template_save", ("emergency_template", tpl.id, tpl.name))
+    db.session.commit()
+    flash(f"Saved the template {tpl.name}.", "success")
+    return redirect(url_for("emergency.index"))
+
+
+@bp.route("/templates/<int:template_id>/send", methods=["POST"])
+@editor_required
+def send_template(template_id: int):
+    _require_action_form()
+    tpl = db.session.get(EmergencyTemplate, template_id) or abort(404)
+    try:
+        msg = service.send_template(tpl, current_user)
+    except service.TemplateError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("emergency.index"))
+    audit.record("emergency.send", _target(msg),
+                 detail={"template": tpl.name, "target": msg.target_label, "level": msg.level})
+    db.session.commit()
+    sent = service.push(msg)
+    current_app.logger.warning("emergency %s from template %r sent to %s by user %s", msg.id, tpl.name,
+                               _screens(sent), current_user.id)
+    flash(f"Sent {tpl.name} to {_screens(sent)}.", "success" if sent else "warning")
+    return redirect(url_for("emergency.index"))
+
+
+@bp.route("/templates/<int:template_id>/delete", methods=["POST"])
+@editor_required
+def delete_template(template_id: int):
+    _require_action_form()
+    tpl = db.session.get(EmergencyTemplate, template_id) or abort(404)
+    audit.record("emergency.template_delete", ("emergency_template", tpl.id, tpl.name))
+    db.session.delete(tpl)
+    db.session.commit()
+    flash("Template removed.", "info")
     return redirect(url_for("emergency.index"))

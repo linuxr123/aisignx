@@ -26,11 +26,17 @@ A quick overview. The detailed list of every change follows further down.
 2. **Update check and signed one-click update:** the server checks GitHub releases, shows admins "update available" with release notes, and a button downloads, verifies a signature (public key built into the server), backs up the database, upgrades and restarts. Works for servers set up by the installer scripts; other setups get the notice only.
 3. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
 4. **Emergency improvements:**
-   - saved emergency templates;
+   - ~~saved emergency templates~~ (done);
    - scheduled emergencies;
-   - triggering an emergency from another device (API, button or webhook).
+   - ~~triggering an emergency from another device~~ (done: API).
 5. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
 6. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+
+## Unreleased: Emergency templates and API
+
+### Added
+- **Saved emergency messages:** save the send form as a named template; send it in one click from the Emergency page. A template whose group or display was deleted refuses to send rather than widening to all screens. Migration 0016.
+- **Emergency API:** new token permission `emergency:send` (editors and admins). `POST /api/v1/emergency/templates/<id>/send`, `POST /api/v1/emergency/clear`, `GET /api/v1/emergency` and `/templates`, for buttons, scripts and webhooks. Prepared messages only, no duplicate stacking, audited. See [docs/emergency-api.md](docs/emergency-api.md).
 
 ## Unreleased: Sync fixes, test checklist
 

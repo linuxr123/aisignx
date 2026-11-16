@@ -4,9 +4,9 @@ from datetime import datetime
 from ..extensions import db
 from ..timeutil import as_utc, utcnow
 
-SCOPES = ("media:read", "media:write")
+SCOPES = ("media:read", "media:write", "emergency:send")
 # The lowest role that may hold (and use) each scope. Checked on every request.
-SCOPE_MIN_ROLE = {"media:read": "viewer", "media:write": "editor"}
+SCOPE_MIN_ROLE = {"media:read": "viewer", "media:write": "editor", "emergency:send": "editor"}
 
 
 class ApiToken(db.Model):

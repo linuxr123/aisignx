@@ -28,7 +28,8 @@ MIN_LEN, MAX_LEN = 20, 200
 LAST_USED_EVERY = timedelta(seconds=60)
 
 _ROLE_MESSAGES = {"media:write": "Your role can no longer upload media.",
-                  "media:read": "Your role can no longer read media."}
+                  "media:read": "Your role can no longer read media.",
+                  "emergency:send": "Your role can no longer send emergency messages."}
 
 
 def bearer_token() -> str | None:
