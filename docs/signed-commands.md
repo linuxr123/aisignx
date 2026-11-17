@@ -20,7 +20,10 @@ the key). That is a deliberate, stated limit.
   `command_key` (owner read/write only, never in a backup of uploads, included in database backups of the
   instance). Rotating means deleting the file and re-pairing the devices.
 - A device fetches the public key with `GET /api/player/v1/command-key` (display token) and **pins the first one
-  it sees** (trust on first use), together with the server address. It later accepts only commands signed by the
+  it sees** (trust on first use), together with the server address. A device set up by the Android QR code is
+  given the key inside the code (`command_key` in the extras bundle) and pins that, so there is no first-contact
+  window. Plain trust-on-first-use over plain http can be fooled by someone on the network at that moment; the
+  fingerprint on Admin > System lets you check. It later accepts only commands signed by the
   pinned key. If the server presents a different key the device keeps the old pin, refuses Tier B commands and
   reports `command_key_changed` in its diagnostics. Re-pairing the device (or "Forget server key" in its setup)
   clears the pin.
@@ -54,9 +57,14 @@ and, once per response, `"server_time_ms": <epoch ms>`. Tier A commands have no 
 2. parse the payload and check `v == 1`, `display_id` is its own, `request_id` and `action` equal the
    unsigned fields of the command (and ignore the unsigned `params`: **use only `payload.params`**);
 3. check `exp_ms` is later than the server's time (use `server_time_ms` from the same response, because device
-   clocks are often wrong);
+   clocks are often wrong). `server_time_ms` itself is not signed, so the device keeps the **highest
+   `server_time_ms` it has seen per server** and treats any response with a lower value as untrustworthy (a real
+   server clock does not go backwards). Use HTTPS where the network is not yours;
 4. check `seq` is greater than the highest `seq` it has accepted before, and store the new value **before**
-   acting (a command runs at most once even if the device crashes mid-way);
+   acting (a command runs at most once even if the device crashes mid-way). `seq` is **time-based** (the
+   server's clock in milliseconds, forced strictly increasing per display), so restoring or recreating the
+   server's database never makes new commands look old; a device that sees a command with a lower `seq` than
+   it has stored refuses it as `replayed`;
 5. check `action` is one it supports and the params match the typed schema below, and that the local setting that
    allows the action is on (`settings.agent.reboot` / `.startup` / `.update` in the manifest).
 

@@ -15,13 +15,15 @@ import zipfile
 from pathlib import Path
 
 from flask import current_app, url_for
+
+from ..displays import signing
 from itsdangerous import BadData, URLSafeTimedSerializer
 
 PACKAGES = ("com.aisignx.player", "com.aisignx.player.debug")
 RECEIVER = "com.aisignx.player.AisignxDeviceAdminReceiver"
 LINK_MAX_AGE_S = 3 * 86400
 _EXTRA = "android.app.extra.PROVISIONING_"
-_HOST_OK = re.compile(r"^https?://[A-Za-z0-9.\-\[\]:]+(/[A-Za-z0-9._~/-]*)?$")
+_HOST_OK = re.compile(r"^https?://[A-Za-z0-9.\-\[\]:]+$")  # no path: the apps reject one
 
 
 def detect_package(path: Path) -> str | None:
@@ -83,7 +85,9 @@ def build_payload(*, base_url: str, download, package: str, pairing_secret: str,
         f"{_EXTRA}DEVICE_ADMIN_PACKAGE_CHECKSUM": checksum_b64url(download.sha256),
         f"{_EXTRA}SKIP_ENCRYPTION": True,
         f"{_EXTRA}LEAVE_ALL_SYSTEM_APPS_ENABLED": True,
-        f"{_EXTRA}ADMIN_EXTRAS_BUNDLE": {"server_url": base_url, "pairing_secret": pairing_secret},
+        # command_key: the apps pin it now, so the first contact over plain http cannot be tampered with.
+        f"{_EXTRA}ADMIN_EXTRAS_BUNDLE": {"server_url": base_url, "pairing_secret": pairing_secret,
+                                         "command_key": signing.public_key_b64()},
     }
     if timezone:
         payload[f"{_EXTRA}TIME_ZONE"] = timezone

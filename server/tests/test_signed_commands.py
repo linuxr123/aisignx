@@ -211,3 +211,17 @@ def test_displays_list_asks_about_pushing_and_about_a_missing_installer(app, con
         assert rows and rows[0]["ahead"] == "3.2.0" and "Other" in rows[0]["outdated"]
     page = admin.get("/displays/").get_data(as_text=True)
     assert "newer than what the" in page and "3.2.0" in page
+
+
+def test_seq_is_time_based_and_strictly_increasing_even_if_ids_restart(app, configured, client, paired_display, admin):
+    did = _setup(app, paired_display)
+    _post(admin, did, "set_startup", autostart="on")
+    _post(admin, did, "reboot_device")
+    with app.app_context():
+        a, b = DeviceCommand.query.order_by(DeviceCommand.id).all()
+        assert a.seq > 1_700_000_000_000 and b.seq > a.seq            # milliseconds since 1970, not 1, 2, 3
+        # a restored database hands out low ids again: the seq must still be higher than before
+        a.seq, b.seq = 5_000_000_000_000, 5_000_000_000_001
+        db.session.commit()
+    items = client.get(f"{API}/commands", headers=bearer(DISPLAY_TOKEN)).get_json()["commands"]
+    assert sorted(_verify(client, i)["seq"] for i in items) == [5_000_000_000_000, 5_000_000_000_001]

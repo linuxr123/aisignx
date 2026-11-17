@@ -44,6 +44,9 @@ class DeviceCommand(db.Model):
     # 16 hex chars, unguessable: the device quotes it when it acknowledges or uploads.
     request_id = db.Column(db.String(32), nullable=False, unique=True)
     action = db.Column(db.String(32), nullable=False)
+    # Replay counter for signed commands: time-based (ms), strictly increasing per display, so a restored or
+    # recreated database cannot make the next command look "old" to a device (docs/signed-commands.md).
+    seq = db.Column(db.BigInteger, nullable=True)
     params = db.Column(db.JSON, nullable=True)
     state = db.Column(db.String(16), nullable=False, default=STATE_PENDING, index=True)
     result = db.Column(db.String(200), nullable=True)

@@ -79,7 +79,11 @@ def test_payload_has_what_android_needs(app):
     assert p[k + "DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION"].startswith("http://192.168.1.50:5000/provision/apk/")
     want = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("=")
     assert p[k + "DEVICE_ADMIN_PACKAGE_CHECKSUM"] == want and "=" not in want
-    assert p[k + "ADMIN_EXTRAS_BUNDLE"] == {"server_url": "http://192.168.1.50:5000", "pairing_secret": "SECRET"}
+    from aisignx.displays import signing
+    with app.app_context():
+        key = signing.public_key_b64()
+    assert p[k + "ADMIN_EXTRAS_BUNDLE"] == {"server_url": "http://192.168.1.50:5000", "pairing_secret": "SECRET",
+                                           "command_key": key}
     assert p[k + "WIFI_SSID"] == "Office" and p[k + "WIFI_PASSWORD"] == "pw" and p[k + "TIME_ZONE"] == "America/New_York"
     json.dumps(p)                                                   # must be JSON for the QR code
     assert "<svg" in service.qr_svg(p)
@@ -139,6 +143,8 @@ def test_a_bad_server_address_is_refused(app, configured, admin):
     r = admin.post("/provision/android", data={"csrf_token": _csrf(admin), "name": "T", "playlist": "0",
                                                "server_url": "javascript:alert(1)", "wifi_security": "WPA"})
     assert r.status_code == 400
+    assert service.clean_base_url("http://192.168.1.50:5000/signage") is None      # the apps reject a path
+    assert service.clean_base_url("https://signs.example.com") == "https://signs.example.com"
     with app.app_context():
         assert Display.query.count() == 0
 

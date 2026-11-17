@@ -18,6 +18,8 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from sqlalchemy import func
+
 from ..extensions import db
 from ..media import storage
 from ..models import DeviceCommand, Display
@@ -151,7 +153,9 @@ def create(display: Display, action: str, user, now: datetime | None = None, par
                                         DeviceCommand.created_at >= now - timedelta(hours=1)).count()
     if recent >= MAX_PER_HOUR:
         return None, "Too many commands for this screen in the last hour. Try again later."
-    cmd = DeviceCommand(display_id=display.id, request_id=secrets.token_hex(8), action=action,
+    last = db.session.query(func.max(DeviceCommand.seq)).filter(DeviceCommand.display_id == display.id).scalar() or 0
+    seq = max(int(now.timestamp() * 1000), int(last) + 1)
+    cmd = DeviceCommand(display_id=display.id, request_id=secrets.token_hex(8), action=action, seq=seq,
                         params=clean or None, state=STATE_PENDING, created_by_id=getattr(user, "id", None),
                         created_at=now, expires_at=now + timedelta(seconds=TTL_S[action]))
     db.session.add(cmd)

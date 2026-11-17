@@ -63,7 +63,7 @@ def payload_for(cmd) -> str:
     """The exact text that is signed (JSON, sorted keys, no spaces). The device verifies the signature over
     these bytes, then reads the fields from them."""
     body = {"v": 1, "display_id": cmd.display_id, "request_id": cmd.request_id, "action": cmd.action,
-            "params": cmd.params or {}, "seq": cmd.id,
+            "params": cmd.params or {}, "seq": cmd.seq or cmd.id,
             "exp_ms": int(as_utc(cmd.expires_at).timestamp() * 1000)}
     return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
