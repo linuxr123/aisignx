@@ -123,6 +123,36 @@ video, a YouTube clip.
 | H9 | `curl -X POST -H "Authorization: Bearer TOKEN" http://SERVER:5000/api/v1/emergency/clear` | Screens clear | |
 | H10 | A viewer-role user: try to create a token with emergency:send | Not offered | |
 
+## J. Galaxy tablet as a locked kiosk (QR provisioning) - see docs/android-kiosk.md
+
+Use a tablet that holds nothing you need. First upload the newest Android APK on Downloads.
+
+| # | Step | Expect | Result |
+|---|---|---|---|
+| J1 | Downloads > **Set up an Android tablet as a kiosk**; name it, tick lock and manage, add your Wi-Fi, **Make the QR code** | A QR code appears; the page names the app and version it will install | |
+| J2 | Factory reset the tablet. On the Welcome screen tap the same spot 6 times, scan the code | The tablet downloads the app from your server (no Google account needed), installs it, and shows "Setting up this screen" | |
+| J3 | Wait | The tablet appears in Displays already paired, and plays its playlist with no one touching it | |
+| J4 | With Lock player on: try Home, Back, Recents, pulling down the status bar, power menu | None leave the app; the screen stays on while charging | |
+| J5 | On the display page, press **Reboot the device** | It reboots, comes back, and goes straight back to the player | |
+| J6 | Upload a newer APK (higher version) to Downloads, open the display page, press **Push the update** | The tablet installs it silently and returns to the player | |
+| J7 | Edit the display, turn **Lock player** off | Within a minute the lock is released: status bar, Home and Settings work again | |
+| J8 | Settings > Factory data reset on the tablet (after J7) | It is allowed; after the reset you can provision it again from J2 | |
+| J9 | Try Reboot / Push the update with those switches off (Edit > Device agent) | Refused with a message | |
+
+## K. Windows: reboot, startup and updates (signed commands)
+
+Use a spare Windows PC with the installed app (not `npm start`). Edit the display > Device agent: switch on reboot, startup and update.
+
+| # | Step | Expect | Result |
+|---|---|---|---|
+| K1 | Display page > Device agent | Shows the agent version and the new abilities; the buttons are enabled | |
+| K2 | **Reboot the device** | The PC restarts about 30 seconds later; the display page shows the command done | |
+| K3 | Startup form: Start the player at sign-in = On | After the next sign-in the player starts by itself | |
+| K4 | Startup form: Run as = the Windows shell, then sign out and in | The player replaces the desktop; there is no taskbar. If the player is closed, the desktop appears again (fallback) | |
+| K5 | Startup form: Run as = An app | The normal desktop returns after the next sign-in | |
+| K6 | Upload a newer installer, **Push the update** | The app installs it and comes back; in shell mode the Explorer desktop does not appear | |
+| K7 | Press Reboot twice within 10 minutes | The second is refused | |
+
 ## I. Update notice
 
 | # | Step | Expect | Result |

@@ -20,6 +20,7 @@ const unlock = require('./unlock');
 const { createUnlockWindow } = require('./unlock-window');
 const { createLock, parseCommand } = require('./lock');
 const { createAgent } = require('./agent');
+const systemOps = require('./agent/system');
 
 function argValue(name) {
   const hit = process.argv.find((a) => a.startsWith('--' + name + '='));
@@ -138,6 +139,7 @@ async function wipeServerData() {
   }
   for (const d of ['page-cache', 'media']) fs.rmSync(path.join(DATA, d), { recursive: true, force: true });
   S.cookie = '';
+  if (S.agent) S.agent.forgetKeys(); // a new or forgotten server gets a fresh trust-on-first-use key
 }
 
 // ---- Setup callbacks.
@@ -285,6 +287,16 @@ function startAgent() {
     readLogs: () => log.readAll(),
     offlinePage: () => !!S.player && !S.player.win.isDestroyed() && S.player.win.webContents.getURL().startsWith('file:'),
     relaunch: () => { S.sessionEnd = true; app.relaunch(); app.exit(0); },
+    // Tier B (signed commands, docs/signed-commands.md).
+    launcherSource: path.join(app.isPackaged ? process.resourcesPath : path.join(__dirname, '..', 'resources'), 'shell-launcher.ps1'),
+    startup: {
+      get: () => app.getLoginItemSettings().openAtLogin,
+      set: (on) => { S.cfg = config.saveConfig(DATA, Object.assign({}, S.cfg, { autostart: on })); kiosk.applyAutostart(on); },
+    },
+    // The update quits WITHOUT the 'stopped' marker (the agent wrote 'updating' instead), so neither the
+    // watchdog nor the shell launcher takes it for a deliberate exit and Explorer does not take over.
+    quit: () => { S.sessionEnd = true; app.quit(); },
+    spawnInstaller: (file, args) => systemOps.spawnInstaller(file, args, 2000),
   });
   S.agent.start();
 }

@@ -1,5 +1,6 @@
 package com.aisignx.player.shell
 
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.os.Build
 import android.os.Handler
@@ -51,6 +52,7 @@ class Agent(
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var settings: AgentSettings = store.settings
     private var executor: ScheduledExecutorService? = null
+    private var lastKeyCheck = 0L
 
     // Watchdog state, main thread only (monotonic clock).
     private var resumed = false
@@ -91,13 +93,20 @@ class Agent(
 
     /** Worker thread: the manifest's switches. */
     fun onManifest(json: String) {
+        displayIdOf(json)?.let { store.displayId = it }
         val s = AgentSettings.parse(json) ?: return
         if (s != settings) {
-            FileLog.i(TAG, "agent switches: watchdog=${s.watchdog} restart=${s.restart} logs=${s.logs}")
+            FileLog.i(TAG, "agent switches: watchdog=${s.watchdog} restart=${s.restart} logs=${s.logs} " +
+                "reboot=${s.reboot} startup=${s.startup} update=${s.update}")
             settings = s
             store.settings = s
         }
     }
+
+    /** manifest.display.id: the signed commands name the display they are for. */
+    private fun displayIdOf(json: String): Long? = try {
+        SignedCommand.integer(JSONObject(json).optJSONObject("display")?.opt("id"))?.takeIf { it > 0 }
+    } catch (_: Exception) { null }
 
     private fun resetClock() { lastAlive = SystemClock.elapsedRealtime(); doneLevel = 0 }
 
@@ -138,13 +147,27 @@ class Agent(
             .put("tier", if (LockTask.isDeviceOwner(ctx)) "device_owner" else "plain")
             .put("can_restart", true)
             .put("can_collect_logs", true)
-            .put("can_reboot", false)
-            .put("can_update", false)
+            .put("can_reboot", caps().canReboot)
+            .put("can_update", caps().canUpdate)
+            .put("can_set_startup", caps().canSetStartup)
+            .put("startup", JSONObject().put("autostart", Installer.autostart(ctx)).put("mode", "app").put("shell_capable", false))
             .put("watchdog", settings.watchdog)
             .put("restarts_1h", AgentRates.recent(store.restartTimes(), wall))
             .put("gave_up", gaveUp)
             .put("last_restart_ms", store.lastRestartMs)
+            .also { r ->
+                TierRules.showUpdateError(store.updateError, BuildConfig.VERSION_NAME, wall)?.let { r.put("last_update_error", it) }
+                val origin = app.config.serverUrl
+                if (origin != null && store.keyChanged(origin)) r.put("command_key_changed", true)
+            }
     }
+
+    /** What this device can do for signed commands: reboot only as Device Owner; updates and autostart always. */
+    private fun caps() = SignedCommand.Caps(
+        canReboot = LockTask.isDeviceOwner(ctx),
+        canUpdate = true,
+        canSetStartup = true,
+    )
 
     // ---- command poll (agent thread) ------------------------------------------------
 
@@ -169,7 +192,24 @@ class Agent(
             }
             r.peekBody(MAX_BODY).string()
         }
+        // server_time_ms is unsigned: keep a per-server high-water mark and distrust a response that goes backwards.
+        val rawTime = AgentCommands.serverTimeMs(body)
+        val timeOk = rawTime == null || store.noteServerTime(origin, rawTime)
+        if (!timeOk) FileLog.w(TAG, "server_time_ms went backwards: signed commands are not trusted in this response")
+        val serverTime = if (timeOk) rawTime else null
+        // Pin the command key early (trust on first use) and look for a change now and then.
+        val tierB = settings.reboot || settings.startup || settings.update
+        val nowMs = SystemClock.elapsedRealtime()
+        if (tierB && (store.pinnedKey(origin) == null || nowMs - lastKeyCheck > KEY_CHECK_MS)) {
+            lastKeyCheck = nowMs
+            syncCommandKey(origin, base, token)
+        }
         for (c in AgentCommands.parseList(body)) {
+            if (SignedCommand.isTierB(c)) {
+                if (!timeOk) continue // not refused and not burned: it can be judged in a response with a sane clock
+                if (!handleSigned(origin, base, token, c, serverTime)) break
+                continue
+            }
             when (val v = AgentCommands.check(c, settings, store.handledSet())) {
                 is AgentCommands.Verdict.Ignore -> Unit
                 is AgentCommands.Verdict.Refuse -> {
@@ -183,6 +223,139 @@ class Agent(
                 }
             }
         }
+    }
+
+    // ---- signed (Tier B) commands (docs/signed-commands.md) -------------------------------
+
+    /** Returns false when the command ended the process (reboot, install): stop looking at the rest. */
+    private fun handleSigned(origin: String, base: String, token: String, c: Any?, serverTime: Long?): Boolean {
+        val o = c as? JSONObject ?: return true
+        val key = syncCommandKey(origin, base, token)
+        val env = SignedCommand.Env(
+            pinnedKey = key, keyChanged = store.keyChanged(origin),
+            displayId = store.displayId.takeIf { it > 0 }, serverTimeMs = serverTime,
+            lastSeq = store.lastSeq(origin), settings = settings, caps = caps(),
+        )
+        return when (val r = SignedCommand.verify(o, env, store.handledSet())) {
+            is SignedCommand.Result.Ignore -> true
+            is SignedCommand.Result.Reject -> {
+                store.markHandled(r.id)
+                FileLog.w(TAG, "signed command ${r.id} refused: ${r.reason}")
+                ack(base, token, r.id, "failed", r.reason)
+                true
+            }
+            is SignedCommand.Result.Accept -> {
+                store.saveSeq(origin, r.seq) // before acting: it runs at most once
+                store.markHandled(r.id)
+                FileLog.i(TAG, "signed command ${r.id}: ${o.opt("action")} accepted")
+                runSigned(base, token, r)
+            }
+        }
+    }
+
+    /**
+     * Pins the server's command key the first time (trust on first use) and notices a later change.
+     * Returns the pinned key. A failed fetch changes nothing.
+     */
+    private fun syncCommandKey(origin: String, base: String, token: String): ByteArray? {
+        val pinned = store.pinnedKey(origin)
+        val fetched = try {
+            val req = Request.Builder().url("$base/command-key").header("Authorization", "Bearer $token").build()
+            http().newCall(req).execute().use { r -> if (r.isSuccessful) KeyPin.parseKey(r.peekBody(MAX_BODY).string()) else null }
+        } catch (e: Exception) {
+            FileLog.w(TAG, "command key fetch failed: ${e.javaClass.simpleName}")
+            null
+        }
+        return when (val d = KeyPin.decide(pinned, fetched)) {
+            is KeyPin.Decision.Pin -> {
+                store.pinKey(origin, d.key)
+                store.setKeyChanged(origin, false)
+                FileLog.i(TAG, "pinned the server's command key ${KeyPin.fingerprint(d.key)}")
+                d.key
+            }
+            is KeyPin.Decision.Same -> { store.setKeyChanged(origin, false); pinned }
+            is KeyPin.Decision.Changed -> {
+                if (!store.keyChanged(origin)) FileLog.w(TAG, "the server's command key changed; signed commands are refused")
+                store.setKeyChanged(origin, true)
+                pinned
+            }
+            is KeyPin.Decision.Unusable -> pinned
+        }
+    }
+
+    /** True to go on with the next command, false when the process is about to end (reboot, install). */
+    private fun runSigned(base: String, token: String, r: SignedCommand.Result.Accept): Boolean =
+        when (val a = r.action) {
+            is SignedCommand.Action.Reboot -> { reboot(base, token, r.id); false }
+            is SignedCommand.Action.Startup -> { setStartup(base, token, r.id, a); true }
+            is SignedCommand.Action.Update -> !update(base, token, r.id, a)
+        }
+
+    private fun reboot(base: String, token: String, id: String) {
+        val now = System.currentTimeMillis()
+        if (!TierRules.rebootAllowed(store.lastRebootMs, now)) {
+            ack(base, token, id, "failed", SignedCommand.NOT_ALLOWED)
+            FileLog.w(TAG, "reboot refused: less than 10 minutes since the last one")
+            return
+        }
+        if (!ack(base, token, id, "done", "rebooting")) return // the server never heard: do not act on a command it still shows as open
+        store.lastRebootMs = now // after the ack, right before the reboot: a failed ack does not use up the cooldown
+        try {
+            Thread.sleep(1_500L) // let the ack and the log reach their destinations
+            val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            dpm.reboot(LockTask.admin(ctx))
+        } catch (e: Exception) {
+            FileLog.w(TAG, "reboot failed: ${e.javaClass.simpleName}")
+        }
+    }
+
+    private fun setStartup(base: String, token: String, id: String, a: SignedCommand.Action.Startup) {
+        try {
+            a.autostart?.let { Installer.setAutostart(ctx, it) }
+            ack(base, token, id, "done", "autostart ${if (Installer.autostart(ctx)) "on" else "off"}")
+        } catch (e: Exception) {
+            FileLog.w(TAG, "set_startup failed: ${e.javaClass.simpleName}")
+            ack(base, token, id, "failed", "failed")
+        }
+    }
+
+    /** Returns true when the install was started (the process may be replaced any moment). */
+    private fun update(base: String, token: String, id: String, a: SignedCommand.Action.Update): Boolean {
+        if (TierRules.alreadyInstalled(BuildConfig.VERSION_NAME, a.version)) {
+            ack(base, token, id, "done", "already ${a.version}")
+            return false
+        }
+        val file = Installer.updateFile(ctx)
+        if (!TierRules.enoughSpace(try { ctx.filesDir.usableSpace } catch (_: Exception) { 0L }, a.size)) {
+            ack(base, token, id, "failed", "not enough space")
+            return false
+        }
+        val client = http().newBuilder().readTimeout(60, TimeUnit.SECONDS).build()
+        when (val d = PackageDownload.fetch(client, "$base/commands/$id/package", token, file, a.size, a.sha256)) {
+            is PackageDownload.Outcome.Failed -> {
+                FileLog.w(TAG, "update download: ${d.why}")
+                ack(base, token, id, "failed", d.why)
+                Installer.cleanUp(ctx)
+                return false
+            }
+            PackageDownload.Outcome.Ok -> Unit
+        }
+        store.updatePendingMs = System.currentTimeMillis()
+        store.updateVersion = a.version
+        if (!ack(base, token, id, "done", "installing ${a.version}")) { // ack BEFORE the install
+            store.updatePendingMs = 0L
+            Installer.cleanUp(ctx)
+            return false
+        }
+        val why = Installer.install(ctx, file)
+        if (why != null) {
+            // The ack said "installing": the only place left to tell the admin is the next heartbeat.
+            store.updateError = TierRules.storeUpdateError(a.version, why, System.currentTimeMillis())
+            store.updatePendingMs = 0L
+            Installer.cleanUp(ctx)
+            return false
+        }
+        return true
     }
 
     private fun run(base: String, token: String, v: AgentCommands.Verdict.Run) {
@@ -255,6 +428,7 @@ class Agent(
         private const val TAG = "Agent"
         private const val TICK_MS = 5_000L
         private const val POLL_S = 20L
+        private const val KEY_CHECK_MS = 10 * 60_000L
         private const val FIRST_POLL_S = 10L
         private const val MAX_BODY = 64L * 1024
         private const val MAX_LOG_READ = 2 * 1024 * 1024

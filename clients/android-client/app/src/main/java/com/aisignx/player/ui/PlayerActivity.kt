@@ -36,6 +36,8 @@ import com.aisignx.player.shell.ShellInfo
 import com.aisignx.player.shell.ShellPort
 import com.aisignx.player.shell.Unlock
 import com.aisignx.player.shell.UnlockHash
+import com.aisignx.player.provision.ProvisionActivity
+import com.aisignx.player.provision.Provisioning
 import java.util.concurrent.Executors
 
 /**
@@ -84,7 +86,6 @@ class PlayerActivity : AppCompatActivity() {
     @Volatile private var lockOwner = false
     @Volatile private var lockFailed = false
     private var lockState = ""
-    private var ownerReleased = false
     private var resumed = false
     private val relockRunnable = Runnable { updateLock() }
     private val lockWatchdog = object : Runnable {
@@ -98,6 +99,11 @@ class PlayerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = AiSignXApp.from(this)
+        if (Provisioning.pending(this)) { // QR set-up not finished: it claims the pairing first
+            startActivity(Intent(this, ProvisionActivity::class.java))
+            finish()
+            return
+        }
         if (app.services() == null) {
             openSetup()
             return
@@ -182,6 +188,7 @@ class PlayerActivity : AppCompatActivity() {
     /** Worker thread (ShellPort). Settings first, then the media prefetch. */
     private fun onManifest(json: String) {
         val app = AiSignXApp.from(this)
+        LockdownApplier.onManifestFetched(this) // healthy: a tripped crash-loop breaker is lifted before the settings apply
         try {
             DisplaySettings.parse(json)?.let { s ->
                 app.config.saveDisplaySettings(s)
@@ -221,17 +228,13 @@ class PlayerActivity : AppCompatActivity() {
         if (!::b.isInitialized || isFinishing || isDestroyed) return
         val owner = LockTask.isDeviceOwner(this)
         lockOwner = owner
-        if (owner && !lock.kioskLock && !ownerReleased) {
-            LockTask.releaseOwner(this, AiSignXApp.from(this).config.homeMode)
-            ownerReleased = true
-        }
+        // Device Owner: the lockdown follows the web page's Lock player switch (and is lifted by a
+        // remote unlock or the PIN exit). Idempotent; a no-op when nothing changed.
+        val lockdown = Lockdown.decide(owner, lock.kioskLock, lock.remoteUnlocked())
+        LockdownApplier.sync(this, lockdown, AiSignXApp.from(this).config.homeMode)
         val active = LockTask.inLockTask(this)
         when (lock.step(active, owner, canStart = resumed)) {
             LockPolicy.Step.START -> {
-                if (owner) {
-                    LockTask.prepareOwner(this)
-                    ownerReleased = false
-                }
                 lockFailed = try {
                     startLockTask()
                     false
@@ -527,6 +530,8 @@ class PlayerActivity : AppCompatActivity() {
     /** Leaves lock task first; the player locks again on its next start. */
     private fun leaveToSetup() {
         main.removeCallbacks(lockWatchdog)
+        // Device Owner: give the admin the tablet back (status bar, Settings, factory reset).
+        if (lockOwner) LockdownApplier.releaseNow(this, AiSignXApp.from(this).config.homeMode)
         if (LockTask.inLockTask(this)) {
             try { stopLockTask() } catch (e: Exception) { FileLog.w(TAG, "stopLockTask failed: ${e.message}") }
         }

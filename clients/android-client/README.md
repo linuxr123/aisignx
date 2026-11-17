@@ -64,6 +64,20 @@ Changing the server address (also its IP or port) means pairing the screen again
 the credential belongs to the server's origin. Give the server a DHCP reservation or a DNS
 name.
 
+## Kiosk tablet from a QR code (factory reset to locked down)
+
+A factory-reset tablet can be set up with no cable: **Admin > Downloads > Set up an Android
+tablet** makes a QR code; on the tablet's Welcome screen tap 6 times and scan it. The app
+installs, becomes Device Owner, pairs itself and shows the playlist. The display's **Lock player**
+switch then applies or removes the full lockdown (status bar, keyguard, Home, safe boot, factory
+reset button, ...) so the web page can always give the tablet back. Everything about it, the
+Samsung notes and a test checklist: [docs/android-kiosk.md](../../docs/android-kiosk.md).
+
+Code map: `provision/` (QR set-up and pairing claim), `ui/Lockdown.kt` (what the lockdown does,
+unit tested) and `ui/LockdownApplier.kt` (the DevicePolicyManager calls), `shell/SignedCommand.kt`
+and `shell/Ed25519.kt` (signed commands; the pure-Java `net.i2p.crypto:eddsa` library, because
+the JDK has Ed25519 only from API 33), `shell/Installer.kt` (PackageInstaller).
+
 ## Home-app mode and starting at boot
 
 For dedicated signage boxes tick **Use as Home app** in setup, then press Home once and
@@ -74,7 +88,9 @@ Without Home mode the app relies on a `BOOT_COMPLETED` receiver. Android 10 and 
 activity starts from the background, so on many devices that start is refused; Home mode is
 the reliable option.
 
-Automatic app updates are not part of this version.
+Updates: the admin can send **Update app** from the display page (signed command, see
+[docs/signed-commands.md](../../docs/signed-commands.md)). As Device Owner the install is silent;
+otherwise Android asks someone to confirm it.
 
 ## Player controls
 

@@ -3,8 +3,9 @@
 // file and Scheduled Task. Design: docs/device-agent-design.md. No Electron imports here, so
 // it can be tested; main.js passes in what it needs.
 //
-// Commands come from the app's own pinned connection (never through the page), only two verbs
-// exist, each runs at most once (the id is saved before acting) and only while the admin's
+// Commands come from the app's own pinned connection (never through the page). Tier A (restart,
+// logs) is plain; Tier B (reboot, startup, update) must carry a signature, see agent/tierb.js.
+// Each command runs at most once (the id is saved before acting) and only while the admin's
 // switch for it is on. The display token is read from the session cookie by main.js, kept in
 // memory only and never logged.
 const fs = require('fs');
@@ -12,6 +13,8 @@ const path = require('path');
 const { Readable } = require('stream');
 const L = require('./agent/logic');
 const task = require('./agent/task');
+const V = require('./agent/verify');
+const { createTierB } = require('./agent/tierb');
 
 const POLL_MS = 20000;
 const HEARTBEAT_MIN_MS = 8000;
@@ -20,17 +23,20 @@ const API = '/api/player/v1';
 
 // o: {dataDir, version, getUpstream: () => upstream|null (upstream.request), getToken: () => string,
 //     getConfig: () => cfg, readLogs: () => string, relaunch: () => void, log, isPackaged, exe,
-//     exeArgs, scriptSource, offlinePage: () => bool, agentDir, taskName, now, pollMs}
+//     exeArgs, scriptSource, offlinePage: () => bool, agentDir, taskName, now, pollMs,
+//     Tier B: launcherSource, startup: {get, set}, quit, spawnInstaller, platform, system}
 function createAgent(o) {
   const log = o.log || { info() {}, warn() {}, error() {} };
   const now = o.now || Date.now;
   const dir = o.agentDir || task.agentDir();
   const ledgerFile = path.join(o.dataDir, 'agent-handled.json');
-  const settings = { watchdog: false, restart: false, logs: false };
+  const settings = { watchdog: false, restart: false, logs: false, reboot: false, startup: false, update: false };
+  let displayId = null;
   let ledger = L.ledgerSanitize(task.readJson(ledgerFile) && task.readJson(ledgerFile).ids);
   let timer = null, hbTimer = null, busy = false, lastBeat = 0, lastState = 'unknown';
   let registered = null; // null: not tried; true / false: result of the last attempt
   let wanted = null;     // last watchdog switch acted on
+  let tierB = null;      // set below, once call() exists
   let pollWarned = false;
 
   function ensureDir() { try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* reported by the writer */ } }
@@ -54,11 +60,15 @@ function createAgent(o) {
 
   // ---- Manifest switches.
   function onManifest(json) {
-    let a;
-    try { a = JSON.parse(json).settings; a = a && a.agent; } catch (e) { return; }
+    let a, m;
+    try { m = JSON.parse(json); a = m.settings; a = a && a.agent; } catch (e) { return; }
+    if (m && m.display && Number.isSafeInteger(m.display.id)) displayId = m.display.id;
     if (!a || typeof a !== 'object') return;
     settings.restart = a.restart === true;
     settings.logs = a.logs === true;
+    settings.reboot = a.reboot === true;
+    settings.startup = a.startup === true;
+    settings.update = a.update === true;
     const wd = a.watchdog === true;
     if (wd !== wanted) { wanted = wd; syncWatchdog(); }
   }
@@ -79,6 +89,10 @@ function createAgent(o) {
   const stoppedFile = () => path.join(dir, 'stopped');
   function markStopped() { try { ensureDir(); fs.writeFileSync(stoppedFile(), String(now())); } catch (e) { /* ignore */ } }
   function clearStopped() { try { fs.rmSync(stoppedFile(), { force: true }); } catch (e) { /* ignore */ } }
+  // An update is quitting the app on purpose, but the player comes back: the shell launcher waits for it.
+  const updatingFile = () => path.join(dir, 'updating');
+  function markUpdating() { ensureDir(); fs.writeFileSync(updatingFile(), String(now())); }
+  function clearUpdating() { try { fs.rmSync(updatingFile(), { force: true }); } catch (e) { /* ignore */ } }
 
   // ---- HTTP through the app's trusted upstream.
   async function call(method, urlPath, opts) {
@@ -116,6 +130,12 @@ function createAgent(o) {
     }
   }
 
+  tierB = createTierB({
+    dataDir: o.dataDir, agentDir: dir, now, log, platform: o.platform, isPackaged: o.isPackaged, exe: o.exe,
+    exeArgs: o.exeArgs, launcherSource: o.launcherSource, getUpstream: o.getUpstream, getToken: o.getToken,
+    call: (m, p) => call(m, p), startup: o.startup, quit: o.quit, system: o.system, markUpdating, downloadDeadlineMs: o.downloadDeadlineMs, spawnInstaller: o.spawnInstaller,
+  });
+
   // ---- Commands.
   function saveLedger(id) {
     ledger = L.ledgerAdd(ledger, id);
@@ -129,7 +149,26 @@ function createAgent(o) {
     return L.redact(head + o.readLogs(), L.secretsFrom(cfg, o.getToken()));
   }
 
-  async function runCommand(c) {
+  // Tier B: only with a valid id; the verdict (and the signature work) is tierb.js's.
+  async function runTierB(c, serverTimeMs) {
+    if (typeof c.id !== 'string' || !L.ID_RE.test(c.id) || ledger.includes(c.id)) return;
+    if (!Number.isSafeInteger(displayId)) return;   // no manifest yet: leave the command open, do not burn its id
+    try { saveLedger(c.id); } catch (e) { log.error('agent: cannot save the ledger, command skipped'); return; }
+    let out = null;
+    try {
+      out = await tierB.run(c, { serverTimeMs, displayId,
+        settings: { reboot: settings.reboot, startup: settings.startup, update: settings.update } });
+    } catch (e) {
+      log.error('agent: command failed', e.message);
+      out = { state: 'failed', result: 'failed' };
+    }
+    if (!out) return;
+    await ack(c.id, out.state, out.result);
+    if (out.after) { try { await out.after(); } catch (e) { log.error('agent: follow-up failed', e.message); } }
+  }
+
+  async function runCommand(c, serverTimeMs) {
+    if (c && typeof c === 'object' && V.ACTIONS.has(c.action)) return runTierB(c, serverTimeMs);
     const v = L.validateCommand(c);
     if (!v.ok) {
       if (v.id && !ledger.includes(v.id)) {
@@ -169,7 +208,7 @@ function createAgent(o) {
 
   // One poll. -> number of commands seen.
   async function pollOnce() {
-    if (busy || !(settings.restart || settings.logs)) return 0;
+    if (busy || !(settings.restart || settings.logs || settings.reboot || settings.startup || settings.update)) return 0;
     busy = true;
     try {
       const r = await call('GET', '/commands');
@@ -180,7 +219,10 @@ function createAgent(o) {
       }
       pollWarned = false;
       const list = r.data.commands.slice(0, 10);
-      for (const c of list) await runCommand(c);
+      const serverTime = r.data.server_time_ms;
+      if (!list.length && (settings.reboot || settings.startup || settings.update)) await tierB.checkKey();
+      tierB.observeTime(serverTime);   // after a possible first pin, so the mark starts at once
+      for (const c of list) await runCommand(c, serverTime);
       return list.length;
     } catch (e) {
       if (!pollWarned) { log.warn('agent: command poll failed', e.code || e.message); pollWarned = true; }
@@ -196,11 +238,14 @@ function createAgent(o) {
     return Object.assign({
       version: o.version, tier: 'plain', can_restart: true, can_collect_logs: true,
       can_reboot: false, can_update: false, watchdog: settings.watchdog && registered === true,
-    }, st);
+    }, st, tierB.report());
   }
 
   function start() {
     clearStopped();
+    clearUpdating();
+    tierB.cleanup();
+    tierB.refreshStartup().catch(() => {});
     timer = setInterval(() => { pollOnce(); }, o.pollMs || POLL_MS);
     // The offline page has no page script: main vouches for it while it is shown.
     hbTimer = setInterval(() => {
@@ -211,7 +256,7 @@ function createAgent(o) {
   function stop() { clearInterval(timer); clearInterval(hbTimer); }
 
   return { start, stop, onAlive, onManifest, pollOnce, stats, markStopped, clearStopped, disableWatchdog,
-    settings, dir, get ledger() { return ledger.slice(); } };
+    forgetKeys: () => tierB.forgetKeys(), settings, dir, get ledger() { return ledger.slice(); } };
 }
 
 module.exports = { createAgent, POLL_MS };

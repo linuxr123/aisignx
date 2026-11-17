@@ -5,10 +5,7 @@ import android.app.ActivityManager
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.os.Build
 import com.aisignx.player.AisignxDeviceAdminReceiver
 import com.aisignx.player.FileLog
 
@@ -40,37 +37,12 @@ object LockTask {
         false
     }
 
-    /** Device Owner only: allow-list this app, keep the power menu, become the persistent Home. */
-    fun prepareOwner(activity: Activity) {
-        val dpm = dpm(activity) ?: return
-        val admin = admin(activity)
-        try {
-            dpm.setLockTaskPackages(admin, arrayOf(activity.packageName))
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS)
-            }
-            setHomeAlias(activity, true)
-            dpm.addPersistentPreferredActivity(admin, homeFilter(), ComponentName(activity.packageName, HOME_ALIAS))
-        } catch (e: Exception) {
-            FileLog.w(TAG, "device owner setup failed: ${e.message}")
-        }
-    }
-
     /**
-     * Device Owner only, when Lock player is off: drop the allow-list (PlayerActivity's
-     * lockTaskMode="if_whitelisted" would otherwise lock it on every start) and the
-     * persistent Home. The Home alias goes back to the setup screen's "Use as Home app".
+     * Device Owner only, when Lock player is off, remotely unlocked or left by PIN: undo everything
+     * the lockdown set, so the admin can use and factory reset the tablet. Ignores every back-off.
      */
-    fun releaseOwner(activity: Activity, homeMode: Boolean) {
-        val dpm = dpm(activity) ?: return
-        val admin = admin(activity)
-        try {
-            dpm.setLockTaskPackages(admin, emptyArray())
-            dpm.clearPackagePersistentPreferredActivities(admin, activity.packageName)
-            setHomeAlias(activity, homeMode)
-        } catch (e: Exception) {
-            FileLog.w(TAG, "device owner release failed: ${e.message}")
-        }
+    fun releaseOwner(ctx: Context, homeMode: Boolean) {
+        if (isDeviceOwner(ctx)) LockdownApplier.releaseNow(ctx, homeMode)
     }
 
     /** Setup screen: give up Device Owner. Returns false when Android refused. */
@@ -78,7 +50,7 @@ object LockTask {
     fun removeOwner(activity: Activity, homeMode: Boolean): Boolean {
         val dpm = dpm(activity) ?: return false
         try { activity.stopLockTask() } catch (_: Exception) { }
-        releaseOwner(activity, homeMode)
+        LockdownApplier.releaseNow(activity, homeMode, full = true) // directly: never skipped by a back-off
         return try {
             dpm.clearDeviceOwnerApp(activity.packageName)
             FileLog.i(TAG, "device owner removed")
@@ -89,20 +61,21 @@ object LockTask {
         }
     }
 
+    /** Enables or disables the Home alias. Throws when the change did not take effect (never swallowed). */
     fun setHomeAlias(ctx: Context, enabled: Boolean) {
         val state = if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
         else PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-        try {
-            ctx.packageManager.setComponentEnabledSetting(
-                ComponentName(ctx.packageName, HOME_ALIAS), state, PackageManager.DONT_KILL_APP,
-            )
-        } catch (e: Exception) {
-            FileLog.w(TAG, "home alias toggle failed: ${e.message}")
-        }
+        val name = ComponentName(ctx.packageName, HOME_ALIAS)
+        ctx.packageManager.setComponentEnabledSetting(name, state, PackageManager.DONT_KILL_APP)
+        check(ctx.packageManager.getComponentEnabledSetting(name) == state) { "home alias not ${if (enabled) "enabled" else "disabled"}" }
     }
 
-    private fun homeFilter() = IntentFilter(Intent.ACTION_MAIN).apply {
-        addCategory(Intent.CATEGORY_HOME)
-        addCategory(Intent.CATEGORY_DEFAULT)
+    /** For screens that only want to try: logs a failure instead of throwing. */
+    fun trySetHomeAlias(ctx: Context, enabled: Boolean): Boolean = try {
+        setHomeAlias(ctx, enabled)
+        true
+    } catch (e: Exception) {
+        FileLog.w(TAG, "home alias toggle failed: ${e.message}")
+        false
     }
 }

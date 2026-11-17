@@ -12,3 +12,6 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.conscrypt.**
 -dontwarn org.openjsse.**
+
+# net.i2p.crypto:eddsa: optional references to JDK internals it does not need on Android.
+-dontwarn sun.security.x509.**

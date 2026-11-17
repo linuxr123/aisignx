@@ -10,9 +10,19 @@ import java.util.zip.GZIPOutputStream
  * from the server: the verb list is closed.
  */
 
-/** The admin's switches from manifest.settings.agent. Everything is off by default. */
-data class AgentSettings(val watchdog: Boolean, val restart: Boolean, val logs: Boolean) {
-    val polls: Boolean get() = restart || logs
+/**
+ * The admin's switches from manifest.settings.agent. Everything is off by default.
+ * [reboot], [startup] and [update] allow the signed (Tier B) commands.
+ */
+data class AgentSettings(
+    val watchdog: Boolean,
+    val restart: Boolean,
+    val logs: Boolean,
+    val reboot: Boolean = false,
+    val startup: Boolean = false,
+    val update: Boolean = false,
+) {
+    val polls: Boolean get() = restart || logs || reboot || startup || update
 
     companion object {
         val OFF = AgentSettings(false, false, false)
@@ -25,7 +35,10 @@ data class AgentSettings(val watchdog: Boolean, val restart: Boolean, val logs: 
             val root = try { JSONObject(manifestJson) } catch (_: Exception) { return null }
             val s = root.optJSONObject("settings") ?: return null
             val a = s.optJSONObject("agent") ?: return OFF
-            return AgentSettings(a.opt("watchdog") == true, a.opt("restart") == true, a.opt("logs") == true)
+            return AgentSettings(
+                a.opt("watchdog") == true, a.opt("restart") == true, a.opt("logs") == true,
+                a.opt("reboot") == true, a.opt("startup") == true, a.opt("update") == true,
+            )
         }
     }
 }
@@ -60,6 +73,11 @@ object AgentCommands {
             else -> Verdict.Refuse(id, "unsupported")
         }
     }
+
+    /** The server's clock from the same response as the commands, or null. */
+    fun serverTimeMs(body: String): Long? = try {
+        SignedCommand.integer(JSONObject(body).opt("server_time_ms"))
+    } catch (_: Exception) { null }
 
     /** Parses {"commands":[...]}; at most [MAX_PER_POLL] entries, anything else is empty. */
     fun parseList(body: String): List<Any?> {

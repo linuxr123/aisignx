@@ -79,6 +79,9 @@ dependencies {
     implementation("androidx.webkit:webkit:1.10.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+    // Ed25519 for signed device commands: the JDK has it only from API 33, the app supports API 26.
+    // Small (about 90 KB), pure Java, no native code, widely used (I2P, Signal-adjacent tools).
+    implementation("net.i2p.crypto:eddsa:0.3.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

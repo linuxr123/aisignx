@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- update_app on a device that is not Device Owner: the system install prompt. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Runs on phones, tablets and Android TV boxes. -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -61,9 +63,56 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".boot.PackageReplacedReceiver"
+            android:exported="true">
+            <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- The answer of PackageInstaller to update_app (only this app's own PendingIntent). -->
+        <receiver
+            android:name=".shell.InstallResultReceiver"
+            android:exported="false" />
+
+        <!-- Retries a failed lockdown release (AlarmManager, this app only). -->
+        <receiver
+            android:name=".ui.LockdownRetryReceiver"
+            android:exported="false" />
+
+        <!-- QR provisioning of a fully managed device (docs/android-kiosk.md). Android requires both. -->
+        <activity
+            android:name=".provision.GetProvisioningModeActivity"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.app.action.GET_PROVISIONING_MODE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".provision.PolicyComplianceActivity"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.app.action.ADMIN_POLICY_COMPLIANCE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- "Setting up this screen": claims the pairing the QR code pre-approved. Started by the app only. -->
+        <activity
+            android:name=".provision.ProvisionActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode" />
 
         <!-- Device Owner for Lock player (docs/kiosk-lockdown.md). Same name as v2. -->
         <receiver

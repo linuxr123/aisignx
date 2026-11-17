@@ -30,6 +30,8 @@ try {
     $flag = Read-Json 'flag.json'
     if (-not $flag -or $flag.enabled -ne $true -or -not $flag.exe) { exit 0 }
     if (Test-Path -LiteralPath (Join-Path $Dir 'stopped')) { exit 0 }
+    $upd = Join-Path $Dir 'updating'   # an update is replacing the app: stay out of the way for 10 minutes
+    if ((Test-Path -LiteralPath $upd) -and (((Get-Date) - (Get-Item -LiteralPath $upd).LastWriteTime).TotalSeconds -lt 600)) { exit 0 }
     if (-not (Test-Path -LiteralPath $flag.exe)) { exit 0 }   # uninstalled
 
     $now = Now-Ms

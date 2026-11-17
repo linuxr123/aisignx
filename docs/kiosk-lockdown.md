@@ -67,6 +67,9 @@ With Lock player on, the app starts Android's lock task mode. Without Device Own
 
 ### Device Owner: real lockdown
 
+The easy way to get Device Owner on a tablet is a QR code on the factory-reset Welcome screen,
+with no adb: see [android-kiosk.md](android-kiosk.md). The manual adb method follows.
+
 As **Device Owner**, the app pins itself without asking and cannot be unpinned:
 
 - no Home, Recents or status bar; the power menu still works;

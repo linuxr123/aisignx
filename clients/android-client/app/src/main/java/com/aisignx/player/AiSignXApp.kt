@@ -9,6 +9,7 @@ import com.aisignx.player.cache.MediaDownloader
 import com.aisignx.player.cache.PageCache
 import com.aisignx.player.net.Http
 import com.aisignx.player.shell.AgentRestart
+import com.aisignx.player.shell.AgentStore
 import java.io.File
 
 class AiSignXApp : Application() {
@@ -32,6 +33,11 @@ class AiSignXApp : Application() {
         config = Config(this)
         FileLog.init(this, BuildConfig.VERSION_NAME)
         config.ensureClientId()
+        try {
+            com.aisignx.player.ui.LockdownApplier.onProcessStart(this) // crash-loop breaker, pending release
+        } catch (e: Throwable) {
+            FileLog.w(TAG, "lockdown start check failed: ${e.message}")
+        }
         AgentRestart.installCrashHandler(this)
         AgentRestart.logExitReasons(this)
         if (!config.v2Cleaned) cleanUpV2()
@@ -70,6 +76,7 @@ class AiSignXApp : Application() {
         }
         pageDir(this).deleteRecursively()
         mediaDir(this).deleteRecursively()
+        AgentStore(this).forgetKeyPins() // another server (or a re-pair) starts with a new command key
         FileLog.i(TAG, "server data cleared")
     }
 

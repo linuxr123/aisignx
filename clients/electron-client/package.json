@@ -30,6 +30,14 @@
       {
         "from": "resources/watchdog.ps1",
         "to": "watchdog.ps1"
+      },
+      {
+        "from": "resources/shell-launcher.ps1",
+        "to": "shell-launcher.ps1"
+      },
+      {
+        "from": "resources/setup-kiosk.ps1",
+        "to": "setup-kiosk.ps1"
       }
     ],
     "win": {

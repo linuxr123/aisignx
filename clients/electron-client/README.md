@@ -155,7 +155,7 @@ Honest limits:
 - A scheduled task restarts the player within about a minute, not instantly.
 - It protects against crashes and hangs, not against a local user who kills the task, edits it or
   deletes the agent folder.
-- No reboot and no updates (not included in this release).
+- Reboot, startup changes and updates are a separate, signed kind of command: see the next section.
 - After a Windows restart the player only returns if Windows logs the user in again (auto-logon,
   see the checklist below). The task runs only while that user is logged on.
 - Only an installed app registers the task, not `npm start`.
@@ -173,6 +173,108 @@ Manual test checklist (a real PC; nothing here has run on hardware yet):
 9. With Restart off, a restart command is refused ("switched off"). Pull the network during a log upload: the command ends failed, never twice.
 10. Stop the server for a few minutes: the player shows the offline page and is not restarted by the watchdog.
 11. Reboot with auto-logon: the player comes back (login item) and the task keeps running.
+
+## Remote reboot, startup and updates
+
+Three more commands, **off by default** (switches `reboot`, `startup`, `update` per display, Edit > Device agent).
+They can take a screen out of service or run new code, so each one is **signed by the server's command key** and
+the app obeys only the signed copy. Protocol: [docs/signed-commands.md](../../docs/signed-commands.md).
+
+- **Trust on first use.** The app fetches the server's public key (`/command-key`) and pins the first one it sees
+  for that server, in `agent-state.json` in the data folder. A different key later is refused, and the display's
+  diagnostics show `command_key_changed`. Compare the fingerprint on the server (Admin > System) with the device
+  when you pair it. Forgetting the server or changing the server address clears the pin.
+- **Every command is checked:** signature, version, this display's id, request id and action, expiry (against the
+  server's clock, not the PC's), a sequence number higher than any accepted before (saved before acting, so a
+  command runs once even if the PC crashes), typed parameters, and the local switch. A failure is acknowledged
+  `failed` with the reason and nothing runs.
+- **Reboot.** The app runs `shutdown.exe /r /t 30` (30 s warning, fixed text) and acknowledges "rebooting" only when
+  it accepted the request (an already pending shutdown is reported as failed); the 30 s delay lets the acknowledgement
+  out. At most once per 10 minutes, counted only when the restart was really scheduled. After the reboot the player only returns if Windows signs the user in (auto-login below).
+- **Startup.** `autostart` turns the per-user start at sign-in on or off (the same login item as the setup checkbox).
+  `mode: shell` makes the player the Windows shell **for the signed-in user only** (`HKCU\...\Winlogon\Shell`);
+  `mode: app` removes it again. The app removes only a shell value it wrote itself. Both succeed only when reading the
+  registry back shows the new state; a launcher path containing a double quote is refused.
+- **Update.** The app downloads the installer from the server (with the display's credential) into a fresh random
+  folder under `updates\` in the data folder (exclusive open, 15-minute overall deadline), hashing while it streams,
+  and keeps it only when the size and SHA-256 equal the **signed** values. It acknowledges "installing <version>",
+  hashes the file again right before it runs, starts the installer silently (`/S`) as a detached program, and quits
+  only after the installer really started (a start failure keeps the player running and shows in the diagnostics as
+  `last_update_error`). The quit writes an `updating` marker instead of `stopped`, so the shell launcher and the
+  watchdog wait up to 10 minutes for the new version rather than starting Explorer. At most one update per
+  10 minutes, counted when the installer starts. Leftover installers are deleted at the next start.
+- **Replay and clock.** The app stores the highest `seq` accepted and the highest `server_time_ms` seen per server;
+  a response whose server time is lower is refused (`bad_time`), so an old signed command cannot be revived by
+  rewinding the unsigned clock. "Forget server" clears the pin, `seq` and the time mark together. The pinned key's
+  fingerprint is in the diagnostics (`command_key_fingerprint`); compare it with Admin > System.
+- Nothing the server sends is ever put into a command line. Every program and argument is fixed (`shutdown.exe`,
+  `powershell.exe` with constant scripts, the installer with `/S`); parameters are booleans, an enum, a version
+  string, a hash and a size.
+- Only an installed app on Windows reports `can_reboot`, `can_set_startup` and `can_update`;
+  `startup.shell_capable` also needs `shell-launcher.ps1` next to the app.
+
+### Make a locked-down kiosk PC or tablet-style device
+
+1. Use a dedicated, low-privilege Windows user (for example `kiosk`). Sign in once so its profile exists.
+2. Install AiSignX Player as that user and pair it (admin enters the code at `<server>/displays/pair`).
+3. In the web admin, edit the display: turn on **Reboot**, **Startup** and **Update** (and Restart, Logs, Watchdog).
+4. **Auto-login** (local only, below). Then in the web admin set the startup to **start at sign-in**, and for a
+   true kiosk **Player as the Windows shell**. From the next sign-in the user sees only the player.
+5. Power plan: display and sleep Never. Windows Update: active hours or managed restarts.
+
+### Shell mode: fallback and undo
+
+In shell mode Windows starts `shell-launcher.ps1` instead of Explorer. It keeps the player running and **starts
+Explorer instead** (and stays alive while Explorer runs, tolerating a restart of about a minute) when the player was quit on purpose (PIN exit, Ctrl+Alt+Q), when the player exits within 30 s
+three times in a row (crash loop), when the player is not installed any more, or when the launcher itself fails.
+So the user is not left with a blank desktop. Details are in `%LOCALAPPDATA%\AiSignX\agent\shell-launcher.log`.
+
+Undo, any of:
+
+- web admin: set the startup mode to **Normal app** (signed command; needs the display online and the Startup switch);
+- on the device, elevated: `setup-kiosk.ps1 -Do Shell -Undo`;
+- last resort, from another administrator account or recovery: delete the value `Shell` under
+  `HKEY_USERS\<user's SID>\Software\Microsoft\Windows NT\CurrentVersion\Winlogon` (or load `NTUSER.DAT` of the user).
+
+### Auto-login is local only (`resources\setup-kiosk.ps1`)
+
+Auto-login needs **administrator rights** (it writes under `HKLM`) and the user's **password**. The app runs as a
+normal user and must stay that way, and a password must not travel through the server, so this step is a helper you
+run on the device in an **elevated** PowerShell (it ships as `setup-kiosk.ps1` in the app's `resources` folder):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\AiSignX Player\resources\setup-kiosk.ps1" -Do AutoLogin
+# also set the shell for that user from the device:     -Do Both
+# undo (turns auto-login off and deletes the password):  -Do AutoLogin -Undo
+```
+
+It asks for the user and the password (typed locally, not shown, never in the command line or a log) and says plainly:
+**Windows stores the password in the registry in plain text** (`Winlogon\DefaultPassword`). Use a dedicated account
+with no other use and a password used nowhere else. For better protection use Sysinternals Autologon (stores it as an
+LSA secret). `-Do Shell` writes the same shell value as the web admin, for any chosen user.
+
+### Honest limits (nothing here has run on real hardware yet)
+
+- The installer is **not code-signed**: Windows SmartScreen may warn on a manual install. A silent install started by
+  the app is not interactive, but a managed PC with an application-control policy can still block it.
+- A silent update closes the old app and starts the installer. In shell mode the launcher waits up to 10 minutes for the
+  new version (it does not start Explorer). The NSIS flags (`/S --updated --force-run`) have not been tested against
+  a real installer run. If the installer never relaunches the app, the launcher gives up after 10 minutes and starts
+  the player again, then Explorer if that fails too.
+- Shell mode needs `powershell.exe` to be allowed (AppLocker or constrained policies can block it; setting the shell
+  checks that PowerShell runs, but the launcher itself is only tested by hand). If the screen ever stays black: press
+  Ctrl+Alt+Del, Task Manager, Run new task, `explorer.exe`, then undo the shell (see above).
+- The installer download is hashed again just before it runs, but another process of the same Windows user could
+  still swap the file in that instant; do not share the kiosk account.
+- Shell mode is **per user**. It does not stop a person with a keyboard who can reach a key combination Windows
+  keeps (Ctrl+Alt+Del and its screen, for example); this is a kiosk helper, not a security boundary.
+- **First contact is trust on first use.** The command key is fetched from the server the first time the player
+  talks to it and pinned from then on. Someone who can intercept that first exchange (plain http on a network you do
+  not control) can pin their own key and later send signed reboot, startup and update commands. Use **HTTPS** with a
+  certificate Windows trusts, and compare `command_key_fingerprint` in the diagnostics with Admin > System after
+  pairing. (The Android QR code carries the key; Windows has no QR step, so it cannot.)
+  Someone with full control of the server holds the key and can sign any command (stated limit of the protocol).
+- A Galaxy Tab (Android) is a separate client with its own mechanisms; this section is Windows only.
 
 ## Kiosk PC checklist (Windows)
 
@@ -221,7 +323,10 @@ src/config.js          config.json, client_id, server URL rules
 src/trust.js           CA list, pinning agent, certificate capture
 src/health.js          setup's /healthz test
 src/agent.js           device agent: commands, heartbeat file, watchdog task
-src/agent/             logic (pure rules), task (schtasks)
+src/agent/             logic (pure rules), task (schtasks), verify (signed commands), store (key pin, seq),
+                       system (shutdown, shell registry), package (update download), tierb (Tier B commands)
+resources/shell-launcher.ps1  shell mode launcher with Explorer fallback
+resources/setup-kiosk.ps1     elevated local helper: auto-login, shell for a user
 resources/watchdog.ps1 the watchdog script (shipped with the installer)
 src/proxy/             loopback proxy: server, upstream, page-cache, media-cache, range
 src/window.js          player window and watchdogs

@@ -18,6 +18,8 @@ import com.aisignx.player.ServerUrl
 import com.aisignx.player.databinding.ActivitySetupBinding
 import com.aisignx.player.net.Http
 import com.aisignx.player.net.Tls
+import com.aisignx.player.provision.ProvisionActivity
+import com.aisignx.player.provision.Provisioning
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
@@ -45,6 +47,11 @@ class SetupActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         config = AiSignXApp.from(this).config
         val reconfigure = intent.getBooleanExtra(EXTRA_RECONFIGURE, false)
+        if (Provisioning.pending(this)) { // QR set-up not finished: it claims the pairing first
+            startActivity(Intent(this, ProvisionActivity::class.java))
+            finish()
+            return
+        }
         if (config.isConfigured && !reconfigure) {
             startPlayer()
             return
@@ -190,7 +197,7 @@ class SetupActivity : AppCompatActivity() {
         config.homeMode = enabled
         // As Device Owner with Lock player on, the alias stays enabled as the persistent
         // Home; the player sets it again on its next start.
-        LockTask.setHomeAlias(this, enabled)
+        LockTask.trySetHomeAlias(this, enabled)
     }
 
     /** Reached only through the PIN-gated exit, so a viewer cannot do this. */
