@@ -21,13 +21,16 @@ from pathlib import Path
 from ..extensions import db
 from ..media import storage
 from ..models import DeviceCommand, Display
-from ..models.device_command import (ACTION_COLLECT_LOGS, ACTION_RESTART_PLAYER, ACTIONS,
-                                     OPEN_STATES, STATE_DELIVERED, STATE_DONE, STATE_EXPIRED,
+from ..models.device_command import (ACTION_COLLECT_LOGS, ACTION_REBOOT, ACTION_RESTART_PLAYER,
+                                     ACTION_SET_STARTUP, ACTION_UPDATE_APP, ACTIONS, OPEN_STATES,
+                                     SIGNED_ACTIONS, STATE_DELIVERED, STATE_DONE, STATE_EXPIRED,
                                      STATE_FAILED, STATE_PENDING)
 from ..timeutil import as_utc, utcnow
 
 # How long a command may wait for its device (server time).
-TTL_S = {ACTION_RESTART_PLAYER: 120, ACTION_COLLECT_LOGS: 300}
+TTL_S = {ACTION_RESTART_PLAYER: 120, ACTION_COLLECT_LOGS: 300, ACTION_REBOOT: 120,
+         ACTION_SET_STARTUP: 300, ACTION_UPDATE_APP: 900}
+REBOOT_GAP_MIN = 10        # a reboot loop (or a mistake) cannot keep a screen down
 MAX_PER_HOUR = 10          # commands per display: a loop or a mistake cannot hammer a device
 KEEP_DAYS = 30             # finished commands are deleted after this long
 MAX_RESULT = 200
@@ -37,10 +40,16 @@ LOGS_PER_DISPLAY = 5       # the newest few are kept
 LOG_KEEP_DAYS = 7
 _REQUEST_ID = re.compile(r"^[0-9a-f]{16}$")
 
-LABELS = {ACTION_RESTART_PLAYER: "Restart the player", ACTION_COLLECT_LOGS: "Collect logs"}
+LABELS = {ACTION_RESTART_PLAYER: "Restart the player", ACTION_COLLECT_LOGS: "Collect logs",
+          ACTION_REBOOT: "Reboot the device", ACTION_SET_STARTUP: "Change the startup settings",
+          ACTION_UPDATE_APP: "Update the app"}
 # display column that must be on, device capability key that must be true.
-_SETTING = {ACTION_RESTART_PLAYER: "agent_allow_restart", ACTION_COLLECT_LOGS: "agent_allow_logs"}
-_CAP = {ACTION_RESTART_PLAYER: "can_restart", ACTION_COLLECT_LOGS: "can_collect_logs"}
+_SETTING = {ACTION_RESTART_PLAYER: "agent_allow_restart", ACTION_COLLECT_LOGS: "agent_allow_logs",
+            ACTION_REBOOT: "agent_allow_reboot", ACTION_SET_STARTUP: "agent_allow_startup",
+            ACTION_UPDATE_APP: "agent_allow_update"}
+_CAP = {ACTION_RESTART_PLAYER: "can_restart", ACTION_COLLECT_LOGS: "can_collect_logs",
+        ACTION_REBOOT: "can_reboot", ACTION_SET_STARTUP: "can_set_startup", ACTION_UPDATE_APP: "can_update"}
+MODES = ("app", "shell")
 
 
 def capabilities(display: Display) -> dict:
@@ -78,13 +87,64 @@ def open_command(display_id: int, action: str, now: datetime | None = None) -> D
             .order_by(DeviceCommand.id.desc()).first())
 
 
-def create(display: Display, action: str, user, now: datetime | None = None
+def validate_params(display: Display, action: str, params) -> tuple[dict | None, str | None]:
+    """(clean params, None) or (None, reason). Typed and closed: nothing but what is listed is accepted."""
+    params = params if isinstance(params, dict) else {}
+    if action == ACTION_SET_STARTUP:
+        clean = {}
+        if "autostart" in params:
+            if not isinstance(params["autostart"], bool):
+                return None, "autostart must be on or off."
+            clean["autostart"] = params["autostart"]
+        if "mode" in params:
+            if params["mode"] not in MODES:
+                return None, "mode must be app or shell."
+            if params["mode"] == "shell" and not (capabilities(display).get("startup") or {}).get("shell_capable"):
+                return None, "This screen cannot run as the shell (Windows only, and it must be able to undo it)."
+            clean["mode"] = params["mode"]
+        if not clean:
+            return None, "Choose what to change."
+        return clean, None
+    if action == ACTION_UPDATE_APP:
+        version, sha, size = str(params.get("version") or ""), str(params.get("sha256") or ""), params.get("size")
+        if not version or not re.fullmatch(r"[0-9a-f]{64}", sha) or not isinstance(size, int) or size <= 0:
+            return None, "No installer to push."
+        return {"version": version[:32], "sha256": sha, "size": size}, None
+    return {}, None  # reboot_device and the Tier A actions take no parameters
+
+
+def update_package(display: Display):
+    """The Download this display would be updated with: the newest installer of its app's kind, or None."""
+    from ..downloads.service import SHELL_KINDS, latest_download
+
+    try:
+        shell = json.loads(display.diagnostics or "{}").get("shell") or {}
+    except (TypeError, ValueError, AttributeError):
+        shell = {}
+    kind = SHELL_KINDS.get(str(shell.get("name") or ""))
+    return latest_download(kind) if kind else None
+
+
+def create(display: Display, action: str, user, now: datetime | None = None, params: dict | None = None
            ) -> tuple[DeviceCommand | None, str | None]:
     """(command, None) or (None, reason). One open command per display and action."""
     now = now or utcnow()
     reason = _why_not(display, action)
     if reason:
         return None, reason
+    if action == ACTION_UPDATE_APP:
+        package = update_package(display)
+        if package is None:
+            return None, "There is no installer for this screen's app on the Downloads page."
+        params = {"version": package.version, "sha256": package.sha256, "size": package.size}
+    clean, reason = validate_params(display, action, params)
+    if reason:
+        return None, reason
+    if action == ACTION_REBOOT:
+        gap = now - timedelta(minutes=REBOOT_GAP_MIN)
+        if DeviceCommand.query.filter(DeviceCommand.display_id == display.id, DeviceCommand.action == ACTION_REBOOT,
+                                      DeviceCommand.created_at >= gap).count():
+            return None, f"This screen was asked to reboot in the last {REBOOT_GAP_MIN} minutes."
     if open_command(display.id, action, now) is not None:
         return None, f"{LABELS[action]} is already waiting for this screen."
     recent = DeviceCommand.query.filter(DeviceCommand.display_id == display.id,
@@ -92,7 +152,7 @@ def create(display: Display, action: str, user, now: datetime | None = None
     if recent >= MAX_PER_HOUR:
         return None, "Too many commands for this screen in the last hour. Try again later."
     cmd = DeviceCommand(display_id=display.id, request_id=secrets.token_hex(8), action=action,
-                        params=None, state=STATE_PENDING, created_by_id=getattr(user, "id", None),
+                        params=clean or None, state=STATE_PENDING, created_by_id=getattr(user, "id", None),
                         created_at=now, expires_at=now + timedelta(seconds=TTL_S[action]))
     db.session.add(cmd)
     db.session.flush()
@@ -225,3 +285,28 @@ def job() -> str | None:
     pruned = prune_all()
     return (f"expired {expired}, removed {removed}, logs pruned {pruned}"
             if expired or removed or pruned else None)
+
+
+# --- the installer for an open update_app command ---------------------------------------------------
+# The device may fetch the package only while its own update_app command is open (delivered, not expired).
+# The server picks the file (the Download whose size and sha256 are in the signed command); the device
+# checks both again before installing.
+
+def package_for(display: Display, request_id: str, now: datetime | None = None):
+    """(download row, path) for this display's open update_app command, else (None, reason)."""
+    from ..downloads.routes import downloads_dir
+    from ..models import Download
+
+    now = now or utcnow()
+    cmd = DeviceCommand.query.filter_by(display_id=display.id, request_id=str(request_id)[:32],
+                                        action=ACTION_UPDATE_APP).first()
+    if cmd is None:
+        return None, "unknown command"
+    if cmd.state != STATE_DELIVERED or as_utc(cmd.expires_at) <= now:
+        return None, "not open"
+    want = cmd.params or {}
+    row = Download.query.filter_by(sha256=str(want.get("sha256") or ""), size=int(want.get("size") or 0)).first()
+    path = downloads_dir() / row.stored_name if row else None
+    if row is None or not path.is_file():
+        return None, "the installer is gone"
+    return row, path

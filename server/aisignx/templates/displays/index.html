@@ -7,6 +7,20 @@
   <h1 class="h3 mb-0">Displays</h1>
   {% if current_user.can_edit %}<a class="btn btn-primary" href="{{ url_for('displays.pair') }}">Pair a display</a>{% endif %}
 </div>
+{% for u in fleet_updates %}
+<div class="alert alert-warning py-2" role="status">
+  {% if u.outdated %}
+  <strong>{{ u.outdated|length }} screen{{ "" if u.outdated|length == 1 else "s" }}</strong> run an older {{ u.label }} than the installer on the Downloads page ({{ u.latest }}):
+  {{ u.outdated[:6]|join(", ") }}{% if u.outdated|length > 6 %} and {{ u.outdated|length - 6 }} more{% endif %}.
+  Open a screen and press <em>Push the update</em> (it needs the update switch on that screen).
+  {% endif %}
+  {% if u.ahead %}
+  A screen already runs {{ u.label }} <strong>{{ u.ahead }}</strong>, newer than what the
+  <a href="{{ url_for('downloads.index') }}">Downloads page</a> has{% if u.latest %} ({{ u.latest }}){% endif %}.
+  Upload the {{ u.ahead }} installer there, and the others can be updated to it.
+  {% endif %}
+</div>
+{% endfor %}
 {% if displays %}
 <div class="card"><div class="table-responsive">
   <table class="table table-hover align-middle mb-0">

@@ -13,7 +13,13 @@ from ..extensions import db
 # never a command line, a path or a URL.
 ACTION_RESTART_PLAYER = "restart_player"
 ACTION_COLLECT_LOGS = "collect_logs"
-ACTIONS = (ACTION_RESTART_PLAYER, ACTION_COLLECT_LOGS)
+# Tier B: can take a screen out of service or run new code, so each is signed by the server's command key
+# and checked on the device (docs/signed-commands.md).
+ACTION_REBOOT = "reboot_device"
+ACTION_SET_STARTUP = "set_startup"
+ACTION_UPDATE_APP = "update_app"
+SIGNED_ACTIONS = (ACTION_REBOOT, ACTION_SET_STARTUP, ACTION_UPDATE_APP)
+ACTIONS = (ACTION_RESTART_PLAYER, ACTION_COLLECT_LOGS) + SIGNED_ACTIONS
 
 STATE_PENDING = "pending"        # created, not yet fetched by the device
 STATE_DELIVERED = "delivered"    # the device fetched it

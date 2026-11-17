@@ -7,16 +7,17 @@ errors mean keep playing and back off. See docs/player-api.md.
 import re
 import time
 
-from flask import Response, current_app, g, jsonify, request, send_from_directory
+from flask import Response, current_app, g, jsonify, request, send_file, send_from_directory
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import HTTPException, NotFound
 
-from ..displays import agent, pairing, screenshots
+from ..displays import agent, pairing, screenshots, signing
 from ..audit import service as audit
 from ..extensions import db
 from ..media import storage
 from ..models import Display, Media
+from ..models.device_command import SIGNED_ACTIONS
 from ..models.media import MEDIA_IMAGE, MEDIA_VIDEO, MEDIA_WEB
 from ..setup.service import setup_required
 from ..timeutil import as_utc, utcnow
@@ -258,9 +259,36 @@ def heartbeat():
 def commands():
     cmds = agent.deliver(g.display)
     db.session.commit()
-    return jsonify(commands=[{"id": c.request_id, "action": c.action, "params": c.params or {},
-                              "expires_in_s": max(0, int((as_utc(c.expires_at) - utcnow()).total_seconds()))}
-                             for c in cmds])
+    out = []
+    for c in cmds:
+        item = {"id": c.request_id, "action": c.action, "params": c.params or {},
+                "expires_in_s": max(0, int((as_utc(c.expires_at) - utcnow()).total_seconds()))}
+        if c.action in SIGNED_ACTIONS:  # the device acts on the signed copy only (docs/signed-commands.md)
+            item["signed"] = signing.sign(c)
+        out.append(item)
+    return jsonify(commands=out, server_time_ms=int(utcnow().timestamp() * 1000))
+
+
+@api_bp.get("/command-key")
+@display_required
+def command_key():
+    """The server's public command key. A device pins the first one it sees (trust on first use)."""
+    return jsonify(public_key=signing.public_key_b64(), fingerprint=signing.fingerprint())
+
+
+@api_bp.get("/commands/<request_id>/package")
+@display_required
+def command_package(request_id: str):
+    """The installer for this display's open update_app command (and nothing else)."""
+    row, found = agent.package_for(g.display, request_id)
+    if row is None:
+        status = 404 if found in ("unknown command", "the installer is gone") else 409
+        return api_error(status, "package_" + found.replace(" ", "_"), found)
+    audit.record_now("display.agent_result", g.display, detail={"command": "update_app", "download": row.filename})
+    resp = send_file(found, mimetype="application/octet-stream", as_attachment=True, download_name=row.filename,
+                     max_age=0)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 
 @api_bp.post("/commands/<request_id>/logs")

@@ -399,6 +399,17 @@ def memory_bytes() -> int | None:
     return total
 
 
+def _command_key_fingerprint() -> str:
+    """The fingerprint of the key that signs device commands. Reading it does not create the key."""
+    from pathlib import Path
+
+    if not (Path(current_app.instance_path) / "command_key").exists():
+        return "not created yet (made when a screen first asks for it)"
+    from ..displays import signing
+
+    return signing.fingerprint() + " (a device pins this the first time it sees it)"
+
+
 def runtime_info() -> list[tuple[str, str]]:
     """(label, value) facts about this installation. Needs an app context."""
     from .. import __version__, dbinfo
@@ -414,6 +425,7 @@ def runtime_info() -> list[tuple[str, str]]:
         ("Uploads folder", str(config.get("UPLOAD_FOLDER"))),
         ("Backups folder", str(config.get("BACKUP_DIR"))),
         ("Logs folder", str(config.get("LOG_DIR"))),
+        ("Command key", _command_key_fingerprint()),
         ("CPUs", str(cpu_count() or "unknown")),
         ("Memory", f"{mem / GB:.1f} GB" if mem else "unknown"),
     ]

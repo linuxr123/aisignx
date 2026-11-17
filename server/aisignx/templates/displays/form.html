@@ -59,6 +59,10 @@
         <p class="form-text mt-n2">A small helper in the Windows and Android apps that restarts the player if it stops responding. Off by default.</p>
         {{ field(form.agent_allow_restart) }}
         {{ field(form.agent_allow_logs) }}
+        <p class="form-text mt-n2">The next three are <strong>signed</strong> commands: the app checks the server's signature before it acts, and each has its own switch because each is more serious.</p>
+        {{ field(form.agent_allow_reboot) }}
+        {{ field(form.agent_allow_startup) }}
+        {{ field(form.agent_allow_update) }}
         <p class="form-text mt-n2 mb-0">These let an admin press the buttons on the display page. The app must also support them (the display page shows what each screen reports). Everything is recorded in the audit log.</p>
       </div></div>
       {% endif %}

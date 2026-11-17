@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Set up an Android tablet{% endblock %}
+{% block content %}
+<h1 class="h3 mb-2">Set up an Android tablet as a kiosk</h1>
+<p class="text-secondary">For a tablet or phone that has been <strong>factory reset</strong> and is on its first welcome screen. It downloads the AiSignX app from this server, becomes a managed device (Device Owner), pairs itself, and can then be locked down and controlled from the web page. Everything on the device is replaced, so use a device that holds nothing you need.</p>
+
+{% if problem %}
+<div class="alert alert-warning">{{ problem }} <a href="{{ url_for('downloads.index') }}">Downloads</a></div>
+{% endif %}
+
+{% if result %}
+<div class="card mb-4"><div class="card-body">
+  <h2 class="h5">Scan this on the tablet</h2>
+  <div class="d-flex flex-wrap gap-4 align-items-start">
+    <div class="bg-white p-2 rounded border" style="max-width: 24rem">{{ result.svg|safe }}</div>
+    <ol class="mb-0">
+      <li>Factory reset the tablet (Settings &gt; General management &gt; Reset &gt; Factory data reset), or take it out of the box.</li>
+      <li>On the <strong>Welcome</strong> screen, tap the same spot <strong>6 times</strong> until a QR scanner opens. Connect to Wi-Fi if it asks.</li>
+      <li>Scan this code. The tablet downloads the app from <code>{{ result.base }}</code>, installs it and finishes setup by itself.</li>
+      <li>The screen <strong>{{ result.display.name }}</strong> then appears under <a href="{{ url_for('displays.detail', display_id=result.display.id) }}">Displays</a>, already paired.</li>
+    </ol>
+  </div>
+  <div class="alert alert-secondary mt-3 mb-0 small">
+    This code works for 24 hours and for <strong>one</strong> device. It contains the pairing secret{% if form.wifi_password.data %} and the Wi-Fi password{% endif %}: do not share a screenshot of it.
+    {% if result.http %}The address is plain http (the usual setup on a LAN). Setup downloads the app over it, and the device checks it against a checksum in this code.{% endif %}
+  </div>
+</div></div>
+{% endif %}
+
+{% if not problem %}
+<div class="card" style="max-width: 44rem"><div class="card-body">
+  <h2 class="h5 mb-3">{{ "Make another code" if result else "New tablet" }}</h2>
+  <p class="small text-secondary">App to install: <strong>{{ download.filename }}</strong>{% if download.version %} {{ download.version }}{% endif %} ({{ package }}), the newest Android app on the Downloads page.</p>
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {{ field(form.name) }}
+    {{ field(form.playlist) }}
+    {{ field(form.server_url) }}
+    {{ field(form.lock) }}
+    {{ field(form.manage) }}
+    <h3 class="h6 mt-3">Wi-Fi (optional)</h3>
+    <p class="small text-secondary">If the tablet is not already on a network, put it on yours so it can download the app.</p>
+    <div class="row g-3">
+      <div class="col-md-5">{{ field(form.wifi_ssid) }}</div>
+      <div class="col-md-3">{{ field(form.wifi_security) }}</div>
+      <div class="col-md-4">{{ field(form.wifi_password) }}</div>
+    </div>
+    <button class="btn btn-primary" type="submit">Make the QR code</button>
+  </form>
+</div></div>
+{% endif %}
+{% endblock %}

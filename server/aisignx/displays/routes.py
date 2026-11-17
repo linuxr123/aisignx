@@ -15,7 +15,7 @@ from ..player.broker import get_broker
 from ..player.manifest import build_manifest
 from ..pop import service as pop_service
 from ..schedules.resolve import load_context, resolve, split_by_day, week_segments
-from ..downloads.service import app_update
+from ..downloads.service import app_update, fleet_updates
 from . import agent, bp, options, pairing, screenshots, service
 from .forms import ActionForm, DisplayForm, PairForm, UnlockForm
 
@@ -55,6 +55,7 @@ def index():
     displays = Display.query.order_by(Display.name).all()
     ctx = load_context()
     return render_template("displays/index.html", displays=displays,
+                           fleet_updates=fleet_updates(displays) if current_user.is_admin else [],
                            states=service.states(displays), labels=service.STATE_LABELS,
                            live={d.id: service.is_live(d.id) for d in displays},
                            now_playing_map={d.id: resolve(d, ctx.now, ctx) for d in displays},
@@ -162,6 +163,9 @@ def edit(display_id: int):
             display.agent_watchdog = bool(form.agent_watchdog.data)
             display.agent_allow_restart = bool(form.agent_allow_restart.data)
             display.agent_allow_logs = bool(form.agent_allow_logs.data)
+            display.agent_allow_reboot = bool(form.agent_allow_reboot.data)
+            display.agent_allow_startup = bool(form.agent_allow_startup.data)
+            display.agent_allow_update = bool(form.agent_allow_update.data)
             if form.resume_after_min.data is not None:
                 display.resume_after_s = form.resume_after_min.data * 60
             if form.clear_pin.data:
@@ -188,7 +192,8 @@ def edit(display_id: int):
 _AUDITED_FIELDS = ("name", "playlist_id", "group_id", "location", "description", "orientation",
                    "fit_override", "volume", "show_offline_banner", "allow_input",
                    "kiosk_lock", "resume_after_s", "agent_watchdog", "agent_allow_restart",
-                   "agent_allow_logs")
+                   "agent_allow_logs",
+                   "agent_allow_reboot", "agent_allow_startup", "agent_allow_update")
 
 
 def _snapshot(display: Display) -> dict:
@@ -211,6 +216,9 @@ def _prefill(form: DisplayForm, display: Display) -> None:
         form.agent_watchdog.data = display.agent_watchdog
         form.agent_allow_restart.data = display.agent_allow_restart
         form.agent_allow_logs.data = display.agent_allow_logs
+        form.agent_allow_reboot.data = display.agent_allow_reboot
+        form.agent_allow_startup.data = display.agent_allow_startup
+        form.agent_allow_update.data = display.agent_allow_update
         form.resume_after_min.data = max(1, (display.resume_after_s or 300) // 60)
 
 
@@ -242,11 +250,19 @@ def agent_command(display_id: int, action: str):
     told to look. Never a free-form command: `action` must be one of a closed list."""
     _require_action_form()
     display = _get_display_or_404(display_id)
-    cmd, reason = agent.create(display, action, current_user)
+    params = None
+    if action == "set_startup":  # the only command that takes choices from the admin
+        params = {}
+        if request.form.get("autostart") in ("on", "off"):
+            params["autostart"] = request.form["autostart"] == "on"
+        if request.form.get("mode") in ("app", "shell"):
+            params["mode"] = request.form["mode"]
+    cmd, reason = agent.create(display, action, current_user, params=params)
     if cmd is None:
         flash(reason, "warning")
         return _back(display)
-    audit.record("display.agent_command", display, detail={"command": action, "request_id": cmd.request_id})
+    audit.record("display.agent_command", display,
+                 detail={"command": action, "request_id": cmd.request_id, **({"params": cmd.params} if cmd.params else {})})
     db.session.commit()
     delivered = _publish(display, {"action": "commands"}, force=True)  # only a wake-up
     flash(f"{agent.LABELS[action]}: sent to the screen." if delivered else

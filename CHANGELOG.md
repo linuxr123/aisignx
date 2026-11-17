@@ -33,6 +33,16 @@ A quick overview. The detailed list of every change follows further down.
 5. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
 6. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
 
+## Unreleased: Signed device commands (server side)
+
+### Added
+- **Reboot, startup settings and app updates for screens** as **signed** commands ([docs/signed-commands.md](docs/signed-commands.md)): the server signs each with its own Ed25519 command key; the apps pin the key on first contact and verify every command (display, expiry on server time, replay counter, typed parameters) before acting. Per-display switches under Edit > Device agent. Reboot is limited to once per 10 minutes. Migration 0018.
+- **Display page:** Reboot button, a "Start the player at sign-in" / "Run as an app or the Windows shell" form, and **Push the update** when the installer on the Downloads page is newer than the screen's app. The installer is chosen by the server (not by the request) and is served only while that screen's own update command is open.
+- **Displays list:** tells admins when screens run an older app than the Downloads page, and when a screen already runs a newer version than the page has ("upload that installer to update the others").
+- Admin > System shows the command key fingerprint.
+- **Android tablet provisioning (server side):** Downloads > "Set up an Android tablet as a kiosk" makes a QR code for a factory-reset device: it downloads the app from this server (time-limited link, checked against a checksum in the code), is made Device Owner, and pairs itself with a one-time secret. The kiosk lockdown is then controlled by the display's Lock player switch. Wi-Fi details can be included.
+- The Windows and Android apps do not carry out these commands yet (next); until they report the new abilities the buttons stay disabled.
+
 ## Unreleased: Sync polish
 
 ### Fixed

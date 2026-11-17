@@ -93,9 +93,9 @@
 {% endif %}
 {% endmacro %}
 
-{% macro agent_card(display, caps, cmds, is_admin, action_form) %}
+{% macro agent_card(display, caps, cmds, is_admin, action_form, app_update=none) %}
 {# The device agent: what this screen's app reports, buttons for admins, the last commands. #}
-{% if display.is_paired and (display.agent_watchdog or display.agent_allow_restart or display.agent_allow_logs or caps) %}
+{% if display.is_paired and (display.agent_watchdog or display.agent_allow_restart or display.agent_allow_logs or display.agent_allow_reboot or display.agent_allow_startup or display.agent_allow_update or caps) %}
 <div class="card mb-4"><div class="card-body">
   <h2 class="h5">Device agent</h2>
   {% if caps %}
@@ -108,19 +108,51 @@
   {% endif %}
   {% if is_admin %}
   <div class="d-flex flex-wrap gap-2 mb-2">
-    {% for act, label, setting, cap in [("restart_player", "Restart the player", display.agent_allow_restart, caps.can_restart), ("collect_logs", "Collect logs", display.agent_allow_logs, caps.can_collect_logs)] %}
-    <form method="post" action="{{ url_for('displays.agent_command', display_id=display.id, action=act) }}">
+    {% for act, label, setting, cap, ask in [("restart_player", "Restart the player", display.agent_allow_restart, caps.can_restart, ""), ("collect_logs", "Collect logs", display.agent_allow_logs, caps.can_collect_logs, ""), ("reboot_device", "Reboot the device", display.agent_allow_reboot, caps.can_reboot, "Reboot this device now? The screen goes dark for a minute or two.")] %}
+    <form method="post" action="{{ url_for('displays.agent_command', display_id=display.id, action=act) }}"{% if ask %} data-confirm="{{ ask }}"{% endif %}>
       {{ action_form.hidden_tag() }}
       <button class="btn btn-outline-secondary" type="submit" {% if not (setting and cap) %}disabled{% endif %}
               title="{% if not setting %}Switched off for this display (Edit > Device agent){% elif not cap %}This screen's app cannot do this{% else %}{{ label }}{% endif %}">{{ label }}</button>
     </form>
     {% endfor %}
   </div>
+  {% if display.agent_allow_startup or caps.can_set_startup %}
+  {% set su = caps.startup if caps.startup is mapping else {} %}
+  <form method="post" action="{{ url_for('displays.agent_command', display_id=display.id, action='set_startup') }}"
+        class="row g-2 align-items-end mb-3" data-confirm="Change this device's startup settings?">
+    {{ action_form.hidden_tag() }}
+    <div class="col-auto"><label class="form-label small mb-0">Start the player at sign-in</label>
+      <select class="form-select form-select-sm" name="autostart">
+        <option value="">Leave as is{% if su.autostart is not none %} ({{ "on" if su.autostart else "off" }}){% endif %}</option>
+        <option value="on">On</option><option value="off">Off</option></select></div>
+    <div class="col-auto"><label class="form-label small mb-0">Run as</label>
+      <select class="form-select form-select-sm" name="mode">
+        <option value="">Leave as is{% if su.mode %} ({{ "the shell" if su.mode == "shell" else "an app" }}){% endif %}</option>
+        <option value="app">An app</option>
+        <option value="shell" {% if not su.shell_capable %}disabled{% endif %}>The Windows shell (replaces the desktop){% if not su.shell_capable %} - not available{% endif %}</option></select></div>
+    <div class="col-auto"><button class="btn btn-sm btn-outline-secondary" type="submit"
+        {% if not (display.agent_allow_startup and caps.can_set_startup) %}disabled title="{% if not display.agent_allow_startup %}Switched off for this display (Edit > Device agent){% else %}This screen's app cannot do this{% endif %}"{% endif %}>Apply</button></div>
+  </form>
+  {% endif %}
+  {% if app_update or display.agent_allow_update %}
+  <div class="mb-3">
+    {% if app_update %}
+    <form method="post" action="{{ url_for('displays.agent_command', display_id=display.id, action='update_app') }}" class="d-flex flex-wrap align-items-center gap-2"
+          data-confirm="Install version {{ app_update.latest }} on this screen? The app restarts.">
+      {{ action_form.hidden_tag() }}
+      <span class="badge text-bg-warning">Update available: {{ app_update.latest }}</span>
+      <span class="small text-body-secondary">(running {{ app_update.current }})</span>
+      <button class="btn btn-sm btn-primary" type="submit"
+        {% if not (display.agent_allow_update and caps.can_update) %}disabled title="{% if not display.agent_allow_update %}Switched off for this display (Edit > Device agent){% else %}This screen's app cannot update itself{% endif %}"{% endif %}>Push the update</button>
+    </form>
+    {% else %}<span class="small text-body-secondary">App is up to date with the installers on the Downloads page.</span>{% endif %}
+  </div>
+  {% endif %}
   {% endif %}
   {% if cmds %}
   <ul class="list-unstyled small mb-0">
     {% for c in cmds %}
-    <li class="text-break"><span class="text-body-secondary">{{ c.created_at|localtime }}</span> {{ {"restart_player": "Restart the player", "collect_logs": "Collect logs"}.get(c.action, c.action) }}
+    <li class="text-break"><span class="text-body-secondary">{{ c.created_at|localtime }}</span> {{ {"restart_player": "Restart the player", "collect_logs": "Collect logs", "reboot_device": "Reboot the device", "set_startup": "Startup settings", "update_app": "Update the app"}.get(c.action, c.action) }}
       &mdash; <span class="{{ 'text-success' if c.state == 'done' else 'text-danger' if c.state in ('failed', 'expired') else 'text-body-secondary' }}">{{ c.state }}</span>{% if c.result %} ({{ c.result }}){% endif %}{% if c.action == "collect_logs" and c.state == "done" and is_admin %} &middot; <a href="{{ url_for('displays.agent_logs', display_id=display.id, request_id=c.request_id) }}">Download</a>{% endif %}</li>
     {% endfor %}
   </ul>

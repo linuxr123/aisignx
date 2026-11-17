@@ -56,7 +56,8 @@ def test_agent_settings_reach_the_manifest_and_only_admins_change_them(app, conf
         "agent_watchdog": "y", "agent_allow_restart": "y"})
     assert r.status_code in (302, 303)
     m = client.get(f"{API}/manifest", headers=bearer(DISPLAY_TOKEN)).get_json()
-    assert m["settings"]["agent"] == {"watchdog": True, "restart": True, "logs": False}
+    assert m["settings"]["agent"] == {"watchdog": True, "restart": True, "logs": False, "reboot": False,
+                                         "startup": False, "update": False}
     make_user(app, "ed", "editor")
     ed = app.test_client()
     login(ed, "ed")

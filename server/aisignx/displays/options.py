@@ -97,7 +97,10 @@ def settings_payload(display: Display) -> dict:
         # The device agent reads these in the native apps (docs/device-agent-design.md).
         "agent": {"watchdog": bool(display.agent_watchdog),
                   "restart": bool(display.agent_allow_restart),
-                  "logs": bool(display.agent_allow_logs)},
+                  "logs": bool(display.agent_allow_logs),
+                  "reboot": bool(display.agent_allow_reboot),
+                  "startup": bool(display.agent_allow_startup),
+                  "update": bool(display.agent_allow_update)},
     }
 
 

@@ -106,10 +106,13 @@ class DisplayForm(FlaskForm):
     agent_watchdog = BooleanField("Watchdog: restart the player when it crashes or hangs")
     agent_allow_restart = BooleanField("Allow \"Restart the player\" from this page")
     agent_allow_logs = BooleanField("Allow \"Collect logs\" from this page")
+    agent_allow_reboot = BooleanField("Allow \"Reboot the device\" from this page (signed command)")
+    agent_allow_startup = BooleanField("Allow changing the startup settings from this page (signed command)")
+    agent_allow_update = BooleanField("Allow pushing app updates from this page (signed command)")
 
     KIOSK_FIELDS = ("allow_input", "unlock_pin", "clear_pin", "kiosk_lock",
                     "resume_after_min", "agent_watchdog", "agent_allow_restart",
-                    "agent_allow_logs")
+                    "agent_allow_logs", "agent_allow_reboot", "agent_allow_startup", "agent_allow_update")
 
     def __init__(self, *args, admin: bool = False, has_pin: bool = False, **kwargs):
         super().__init__(*args, **kwargs)

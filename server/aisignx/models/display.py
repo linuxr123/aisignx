@@ -82,6 +82,10 @@ class Display(db.Model):
                                     server_default=sa.false())
     agent_allow_logs = db.Column(db.Boolean, nullable=False, default=False,
                                  server_default=sa.false())
+    # Tier B (signed) commands; each is separate because each is more dangerous (docs/signed-commands.md).
+    agent_allow_reboot = db.Column(db.Boolean, nullable=False, default=False, server_default=sa.false())
+    agent_allow_startup = db.Column(db.Boolean, nullable=False, default=False, server_default=sa.false())
+    agent_allow_update = db.Column(db.Boolean, nullable=False, default=False, server_default=sa.false())
 
     # Device-reported data and screenshot requests. These are written only with Core
     # UPDATE; an ORM write broadcasts a manifest hint to every screen.

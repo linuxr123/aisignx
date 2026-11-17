@@ -23,7 +23,8 @@ VECTORS = [
 ]
 DEFAULTS = {"orientation": 0, "volume": 100, "show_offline_banner": True,
             "allow_input": False, "kiosk_lock": False, "resume_after_s": 300, "unlock": None,
-            "agent": {"watchdog": False, "restart": False, "logs": False}}
+            "agent": {"watchdog": False, "restart": False, "logs": False,
+                      "reboot": False, "startup": False, "update": False}}
 
 
 def _form(**overrides) -> dict:

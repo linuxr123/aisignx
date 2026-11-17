@@ -93,6 +93,9 @@ def _agent(value) -> dict | None:
     return _obj(value, {
         "version": lambda x: _str(x, 20), "tier": lambda x: x if x in ("plain", "device_owner", "admin") else None,
         "can_restart": _bool, "can_collect_logs": _bool, "can_reboot": _bool, "can_update": _bool,
+        "can_set_startup": _bool, "command_key_changed": _bool,
+        "startup": lambda x: _obj(x, {"autostart": _bool, "mode": lambda m: m if m in ("app", "shell") else None,
+                                      "shell_capable": _bool}),
         "watchdog": _bool, "restarts_1h": _int, "gave_up": _bool, "last_restart_ms": _int,
     })
 

@@ -140,6 +140,24 @@ def approve(code: str | None, name: str | None, playlist_id: int | None,
     return display
 
 
+def preapprove(name: str, playlist_id: int | None, ttl_s: int) -> tuple[Display, str]:
+    """A display that is already approved, with the one-time secret that claims it: for provisioning, where
+    the admin sets the screen up before the device exists (the secret travels in the QR code). The device
+    claims it with POST /pair/status like any other. The caller commits."""
+    display = Display(name=(name or "").strip()[:100] or "Display", playlist_id=playlist_id)
+    db.session.add(display)
+    db.session.flush()
+    secret = secrets.token_urlsafe(32)
+    for _ in range(_CODE_TRIES):
+        code = _new_code()
+        if PairingCode.query.filter_by(code=code).first() is None:
+            break
+    db.session.add(PairingCode(code=code, secret_hash=hash_secret(secret), display_id=display.id,
+                               device_info="provisioned",
+                               expires_at=utcnow() + timedelta(seconds=ttl_s)))
+    return display, secret
+
+
 def recently_approved(code: str | None) -> Display | None:
     """The display a code was just approved for (still in its claim window), if any.
 
