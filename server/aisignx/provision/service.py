@@ -44,8 +44,11 @@ def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(current_app.config["SECRET_KEY"], salt="provision-apk")
 
 
-def apk_token(download_id: int, sha256: str) -> str:
-    return _serializer().dumps({"d": int(download_id), "h": sha256})
+def apk_token(download_id: int, sha256: str | None = None) -> str:
+    """A short, signed, time-limited link token. It names the download by id only (a new upload gets a new id);
+    the device checks the file against the checksum carried in the QR code itself. Short matters: every
+    character makes the QR code denser and harder for a tablet camera to read."""
+    return _serializer().dumps({"d": int(download_id)})
 
 
 def read_token(token: str):
@@ -107,5 +110,14 @@ def qr_svg(payload: dict) -> str:
     from io import BytesIO
 
     buf = BytesIO()
-    code.save(buf, kind="svg", scale=5, border=3, xmldecl=False, svgns=True, nl=False)
-    return buf.getvalue().decode("utf-8")
+    # Solid white background and black modules, whatever the page theme is (a transparent code on a dark page
+    # cannot be scanned), a 4-module quiet zone, and a viewBox so CSS can scale it to fit its box.
+    code.save(buf, kind="svg", scale=4, border=4, dark="#000000", light="#ffffff", xmldecl=False, svgns=True,
+              nl=False)
+    svg = buf.getvalue().decode("utf-8")
+    m = re.search(r'<svg[^>]*?width="(\d+)" height="(\d+)"', svg)
+    if m:
+        w, h = m.groups()
+        svg = re.sub(r' width="\d+" height="\d+"', "", svg, count=1)
+        svg = svg.replace("<svg ", f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="Provisioning QR code" ', 1)
+    return svg

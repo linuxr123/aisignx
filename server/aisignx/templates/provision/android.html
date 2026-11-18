@@ -2,6 +2,12 @@
 {% from "_form.html" import field %}
 {% block title %}Set up an Android tablet{% endblock %}
 {% block content %}
+<style>
+  /* The code is always drawn black on white and fits its box; it must never depend on the page theme. */
+  .qr-box { background: #fff; padding: .5rem; border: 1px solid var(--bs-border-color); border-radius: .5rem;
+            width: min(100%, 26rem); flex: 0 0 auto; }
+  .qr-box svg { display: block; width: 100%; height: auto; }
+</style>
 <h1 class="h3 mb-2">Set up an Android tablet as a kiosk</h1>
 <p class="text-secondary">For a tablet or phone that has been <strong>factory reset</strong> and is on its first welcome screen. It downloads the AiSignX app from this server, becomes a managed device (Device Owner), pairs itself, and can then be locked down and controlled from the web page. Everything on the device is replaced, so use a device that holds nothing you need.</p>
 
@@ -13,7 +19,7 @@
 <div class="card mb-4"><div class="card-body">
   <h2 class="h5">Scan this on the tablet</h2>
   <div class="d-flex flex-wrap gap-4 align-items-start">
-    <div class="bg-white p-2 rounded border" style="max-width: 24rem">{{ result.svg|safe }}</div>
+    <div class="qr-box">{{ result.svg|safe }}</div>
     <ol class="mb-0">
       <li>Factory reset the tablet (Settings &gt; General management &gt; Reset &gt; Factory data reset), or take it out of the box.</li>
       <li>On the <strong>Welcome</strong> screen, tap the same spot <strong>6 times</strong> until a QR scanner opens. Connect to Wi-Fi if it asks.</li>

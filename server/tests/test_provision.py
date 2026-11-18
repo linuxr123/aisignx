@@ -86,7 +86,10 @@ def test_payload_has_what_android_needs(app):
                                            "command_key": key}
     assert p[k + "WIFI_SSID"] == "Office" and p[k + "WIFI_PASSWORD"] == "pw" and p[k + "TIME_ZONE"] == "America/New_York"
     json.dumps(p)                                                   # must be JSON for the QR code
-    assert "<svg" in service.qr_svg(p)
+    svg = service.qr_svg(p)
+    assert "<svg" in svg and 'viewBox="0 0 ' in svg                      # scales to fit its box
+    assert " width=" not in svg.split(">")[0] and 'fill="#fff"' in svg        # solid white background, no fixed size
+    assert len(p[k + "DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION"]) < 110    # a short link keeps the code easy to scan
 
 
 def test_open_wifi_sends_no_password(app):
@@ -109,8 +112,8 @@ def test_apk_link_serves_only_the_signed_file_and_expires(app, client, configure
     assert client.get("/provision/apk/not-a-token").status_code == 404
     assert client.get(f"/provision/apk/{token[:-3]}abc").status_code == 404           # tampered
     with app.app_context():
-        stale = service.apk_token(did, "0" * 64)                                         # file changed since
-    assert client.get(f"/provision/apk/{stale}").status_code == 404
+        gone = service.apk_token(999999)                                                 # no such download
+    assert client.get(f"/provision/apk/{gone}").status_code == 404
     service.LINK_MAX_AGE_S, saved = -1, service.LINK_MAX_AGE_S
     try:
         assert client.get(f"/provision/apk/{token}").status_code == 404                  # expired

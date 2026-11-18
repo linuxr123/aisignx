@@ -94,7 +94,7 @@ def apk(token: str):
         abort(404)
     row = db.session.get(Download, data["d"])
     path = downloads_dir() / row.stored_name if row else None
-    if row is None or row.sha256 != data.get("h") or not path.is_file():
+    if row is None or not path.is_file():
         abort(404)
     resp = send_file(path, mimetype="application/vnd.android.package-archive", as_attachment=True,
                      download_name="aisignx.apk", max_age=0)
