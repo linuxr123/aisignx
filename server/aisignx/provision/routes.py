@@ -14,7 +14,7 @@ from ..downloads.service import latest_download
 from ..extensions import db
 from ..models import Download, Playlist
 from ..timeutil import org_tz
-from . import bp, service
+from . import bp, get_bp, service
 
 SECRET_TTL_S = 24 * 3600
 
@@ -63,7 +63,7 @@ def android():
         if base is None:
             flash("Enter the server address like http://192.168.1.50:5000", "danger")
             return render_template("provision/android.html", form=form, download=download, package=package,
-                                   problem=problem, result=None), 400
+                                   problem=problem, result=None, link=install_link_info(), link_form=FlaskForm()), 400
         display, secret = pairing.preapprove(form.name.data, form.playlist.data or None, SECRET_TTL_S)
         display.kiosk_lock = bool(form.lock.data)
         if form.manage.data:
@@ -80,9 +80,9 @@ def android():
                   "http": base.startswith("http://")}
         current_app.logger.info("provisioning QR made for display %s by user %s", display.id, current_user.id)
         return render_template("provision/android.html", form=form, download=download, package=package,
-                               problem=None, result=result)
+                               problem=None, result=result, link=install_link_info(), link_form=FlaskForm())
     return render_template("provision/android.html", form=form, download=download, package=package,
-                           problem=problem, result=None)
+                           problem=problem, result=None, link=install_link_info(), link_form=FlaskForm())
 
 
 @bp.route("/apk/<token>")
@@ -100,3 +100,48 @@ def apk(token: str):
                      download_name="aisignx.apk", max_age=0)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
+
+@bp.route("/install-link", methods=["POST"])
+@admin_required
+def install_link():
+    """Make (or replace) the install link for phones that are already set up and for Android TV boxes."""
+    if not FlaskForm().validate_on_submit():
+        abort(400)
+    service.make_install_link()
+    audit.record("provision.install_link")
+    db.session.commit()
+    return redirect(url_for("provision.android") + "#install-link")
+
+
+def install_link_info():
+    """The current link for the admin page: {"url", "code", "svg"} or None."""
+    from ..models import Setting
+    from ..timeutil import utcnow
+
+    code = Setting.get("install_link.code") or ""
+    expires = Setting.get_datetime("install_link.expires")
+    if not code or expires is None or expires <= utcnow():
+        return None
+    base = request.host_url.rstrip("/")
+    if request.host.split(":")[0] in ("localhost", "127.0.0.1", "::1", "[::1]"):
+        base = service.lan_address(request.host.rsplit(":", 1)[-1] if ":" in request.host else 80)
+    url = f"{base}/get/{code}"
+    return {"url": url, "short": url.split("://", 1)[-1], "code": code, "svg": service.qr_svg_text(url),
+            "expires": expires, "base": base}
+
+
+@get_bp.route("/<code>")
+def get(code: str):
+    """The public install page. The code is the only thing that opens it."""
+    if not service.install_link_valid(code):
+        abort(404)
+    download = _installer()
+    package = service.detect_package(downloads_dir() / download.stored_name) if download else None
+    link = None
+    if download is not None and package is not None:
+        link = url_for("provision.apk", token=service.apk_token(download.id))
+    from ..models import Setting
+
+    return render_template("provision/get.html", download=download, link=link,
+                           base=request.host_url.rstrip("/"), org=Setting.get("org_name"))

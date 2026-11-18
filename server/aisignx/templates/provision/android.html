@@ -34,6 +34,23 @@
 </div></div>
 {% endif %}
 
+<div class="card mb-4" id="install-link" style="max-width: 44rem"><div class="card-body">
+  <h2 class="h5">Phones that are already set up, and Android TV boxes</h2>
+  <p class="small text-secondary">The QR code above needs a factory reset, which suits a tablet. A phone you already use, or a TV box such as an NVIDIA Shield, installs the app the normal way and pairs with a short code. Make an install link, then open it on that device (scan it with the phone's camera, or type the short address with the TV remote).</p>
+  <form method="post" action="{{ url_for('provision.install_link') }}">{{ link_form.hidden_tag() }}
+    <button class="btn btn-outline-primary" type="submit">{{ "Make a new install link" if link else "Make an install link" }}</button></form>
+  {% if link %}
+  <div class="d-flex flex-wrap gap-4 align-items-start mt-3">
+    <div class="qr-box" style="width: min(100%, 13rem)">{{ link.svg|safe }}</div>
+    <div>
+      <p class="mb-1">Open this on the device:</p>
+      <p class="fs-5 mb-2"><code>{{ link.short }}</code></p>
+      <p class="small text-secondary mb-0">Valid until {{ link.expires|localtime }}. Making a new link replaces this one. It only gives the app and this server's address; it cannot pair anything by itself.</p>
+    </div>
+  </div>
+  {% endif %}
+</div></div>
+
 {% if not problem %}
 <div class="card" style="max-width: 44rem"><div class="card-body">
   <h2 class="h5 mb-3">{{ "Make another code" if result else "New tablet" }}</h2>

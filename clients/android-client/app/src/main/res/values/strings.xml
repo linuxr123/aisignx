@@ -38,6 +38,10 @@
     <string name="owner_title">Device Owner</string>
     <string name="owner_info">This app is the Device Owner: Lock player keeps the screen in lock task with no Home, Recents or status bar.</string>
     <string name="btn_remove_owner">Remove Device Owner</string>
+    <string name="btn_android_settings">Android settings</string>
+    <string name="settings_blocked">Android settings are still blocked. If Lock player is on for this screen, turn it off on the web page and wait a minute.</string>
+    <string name="btn_wifi_settings">Wi-Fi settings</string>
+    <string name="home_hint">To use this device normally again: untick "Use as Home app", press Save, then press the Home button. To start over, use Remove Device Owner below (then factory reset).</string>
     <string name="owner_removed">Device Owner removed. Lock player now uses screen pinning.</string>
     <string name="owner_remove_failed">Android refused to remove Device Owner. See the log.</string>
     <string name="reason_offline">Can\'t reach the server</string>

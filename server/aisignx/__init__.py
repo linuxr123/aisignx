@@ -79,6 +79,7 @@ def _register_blueprints(app: Flask) -> None:
     from .media import bp as media_bp
     from .player import api_bp as player_api_bp
     from .provision import bp as provision_bp
+    from .provision import get_bp as install_link_bp
     from .player import page_bp as player_bp
     from .playlists import bp as playlists_bp
     from .plugins import bp as plugins_bp
@@ -98,7 +99,7 @@ def _register_blueprints(app: Flask) -> None:
     csrf.exempt(api_bp)
     for bp in (alerts_bp, api_bp, audit_bp, auth_bp, backup_bp, displays_bp, downloads_bp, emergency_bp,
                groups_bp, main_bp, media_bp, player_bp, player_api_bp, playlists_bp, plugins_bp,
-               pop_bp, provision_bp, schedules_bp, settings_bp, setup_bp, system_bp, tokens_bp, updates_bp, users_bp):
+               pop_bp, provision_bp, install_link_bp, schedules_bp, settings_bp, setup_bp, system_bp, tokens_bp, updates_bp, users_bp):
         app.register_blueprint(bp)
 
 

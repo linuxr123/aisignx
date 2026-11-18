@@ -163,6 +163,44 @@
             android:text="@string/home_mode"
             android:textColor="@color/setup_text" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/home_hint"
+            android:textColor="@color/setup_muted"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/settingsButton"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/field_bg"
+                android:minHeight="48dp"
+                android:paddingHorizontal="20dp"
+                android:text="@string/btn_android_settings"
+                android:textColor="@color/accent" />
+
+            <Button
+                android:id="@+id/wifiButton"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/field_bg"
+                android:minHeight="48dp"
+                android:paddingHorizontal="20dp"
+                android:text="@string/btn_wifi_settings"
+                android:textColor="@color/accent" />
+        </LinearLayout>
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

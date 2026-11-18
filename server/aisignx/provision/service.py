@@ -102,10 +102,52 @@ def build_payload(*, base_url: str, download, package: str, pairing_secret: str,
     return payload
 
 
+# --- The install link: for phones that are already set up and for Android TV boxes -------------------------
+# They cannot be provisioned by QR (that needs a factory reset), so they install the app like any other and
+# pair with a short code. The link opens a small public page with the download button and the server address.
+# It carries no secret (the app is public code) and works for a limited time; making a new one replaces it.
+LINK_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+LINK_LENGTH = 8
+LINK_TTL_S = 7 * 86400
+
+
+def make_install_link() -> str:
+    import secrets as _secrets
+    from datetime import timedelta
+
+    from ..extensions import db
+    from ..models import Setting
+    from ..timeutil import utcnow
+
+    code = "".join(_secrets.choice(LINK_ALPHABET) for _ in range(LINK_LENGTH))
+    Setting.set("install_link.code", code)
+    Setting.set_datetime("install_link.expires", utcnow() + timedelta(seconds=LINK_TTL_S))
+    db.session.commit()
+    return code
+
+
+def install_link_valid(code: str) -> bool:
+    import hmac
+
+    from ..models import Setting
+    from ..timeutil import utcnow
+
+    stored = Setting.get("install_link.code") or ""
+    expires = Setting.get_datetime("install_link.expires")
+    return bool(stored) and hmac.compare_digest(stored, str(code or "").upper()) and expires is not None and expires > utcnow()
+
+
+def qr_svg_text(text: str) -> str:
+    return _svg(text)
+
+
 def qr_svg(payload: dict) -> str:
+    return _svg(json.dumps(payload, separators=(",", ":")))
+
+
+def _svg(text: str) -> str:
     import segno
 
-    text = json.dumps(payload, separators=(",", ":"))
     code = segno.make(text, error="l", micro=False)
     from io import BytesIO
 

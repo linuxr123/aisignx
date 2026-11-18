@@ -162,3 +162,40 @@ def test_preapproved_secret_pairs_through_the_normal_api(app, configured, client
     assert r.status_code == 200 and r.get_json()["status"] == "paired" and r.get_json()["display"]["id"] == did
     again = client.post("/api/player/v1/pair/status", json={"pairing_secret": secret})
     assert again.get_json().get("status") != "paired"                         # single use
+
+
+def test_install_link_is_public_short_expires_and_admin_made(app, configured, admin, client):
+    _download(app)
+    page = admin.get("/provision/android").get_data(as_text=True)
+    assert "Make an install link" in page and "/get/" not in page
+    assert client.post("/provision/install-link").status_code in (302, 400, 401)       # not without a login
+    token = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', page).group(1)
+    assert admin.post("/provision/install-link", data={"csrf_token": token}).status_code == 302
+    page = admin.get("/provision/android").get_data(as_text=True)
+    code = re.search(r"/get/([A-Z0-9]{8})", page).group(1)
+    got = client.get(f"/get/{code}")                                                    # no login needed
+    assert got.status_code == 200 and b"Download the app" in got.data and b"/provision/apk/" in got.data
+    assert b"pairing_secret" not in got.data and b"command_key" not in got.data
+    assert client.get("/get/AAAAAAAA").status_code == 404 and client.get(f"/get/{code[:-1]}X").status_code == 404
+    assert client.get(f"/get/{code.lower()}").status_code == 200                       # typing on a remote: case does not matter
+    href = re.search(r'href="(/provision/apk/[^"]+)"', got.get_data(as_text=True)).group(1)
+    assert client.get(href).status_code == 200                                         # and the download itself works
+    # a new link replaces the old one
+    admin.post("/provision/install-link", data={"csrf_token": token})
+    assert client.get(f"/get/{code}").status_code == 404
+    # expiry
+    from aisignx.models import Setting
+    from aisignx.timeutil import utcnow
+    from datetime import timedelta
+    with app.app_context():
+        newcode = Setting.get("install_link.code")
+        Setting.set_datetime("install_link.expires", utcnow() - timedelta(seconds=1))
+        db.session.commit()
+    assert client.get(f"/get/{newcode}").status_code == 404
+
+
+def test_install_page_without_an_app_says_so(app, configured, client):
+    from aisignx.provision import service
+    with app.app_context():
+        code = service.make_install_link()
+    assert b"no android app" in client.get(f"/get/{code}").data.lower()

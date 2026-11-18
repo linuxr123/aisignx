@@ -80,6 +80,8 @@ class SetupActivity : AppCompatActivity() {
         b.saveButton.setOnClickListener { save() }
         b.forgetButton.setOnClickListener { forget() }
         b.removeOwnerButton.setOnClickListener { removeOwner() }
+        b.settingsButton.setOnClickListener { openSystemSettings(android.provider.Settings.ACTION_SETTINGS) }
+        b.wifiButton.setOnClickListener { openSystemSettings(android.provider.Settings.ACTION_WIFI_SETTINGS) }
         b.ownerCard.visibility = if (LockTask.isDeviceOwner(this)) View.VISIBLE else View.GONE
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -191,6 +193,16 @@ class SetupActivity : AppCompatActivity() {
         b.serverInput.setText("")
         showResult(getString(R.string.forgotten), R.color.warn)
         FileLog.i(TAG, "server forgotten")
+    }
+
+    /** The setup screen is only reachable after the unlock, so Android's own settings are fair game here. */
+    private fun openSystemSettings(action: String) {
+        try {
+            startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            FileLog.w(TAG, "could not open $action: ${e.message}")
+            showResult(getString(R.string.settings_blocked), R.color.warn)
+        }
     }
 
     private fun applyHomeMode(enabled: Boolean) {

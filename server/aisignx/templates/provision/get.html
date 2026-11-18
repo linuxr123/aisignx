@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install AiSignX</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}">
+</head>
+<body class="bg-body-tertiary">
+<main class="container py-4" style="max-width: 36rem">
+  <h1 class="h3">Install AiSignX on this device</h1>
+  <p class="text-secondary">This turns the device into a signage screen for {{ org or "your organization" }}.</p>
+  {% if link %}
+  <div class="card mb-3"><div class="card-body">
+    <h2 class="h6">1. Download and install the app</h2>
+    <a class="btn btn-primary btn-lg w-100" href="{{ link }}">Download the app ({{ download.version or "latest" }})</a>
+    <p class="small text-secondary mt-2 mb-0">Android asks once to allow installs from this browser: allow it, open the file, press Install.</p>
+  </div></div>
+  <div class="card mb-3"><div class="card-body">
+    <h2 class="h6">2. Open the app and enter the server address</h2>
+    <p class="mb-1"><code class="fs-5">{{ base }}</code></p>
+    <p class="small text-secondary mb-0">Press Test, then Save. The app shows a short pairing code.</p>
+  </div></div>
+  <div class="card mb-3"><div class="card-body">
+    <h2 class="h6">3. Pair it</h2>
+    <p class="mb-0">On a computer, sign in to the admin, open <strong>Displays &rarr; Pair a display</strong> and type the code. The screen then starts playing.</p>
+  </div></div>
+  <p class="small text-secondary">A phone or TV box set up this way is a normal screen: no full lock-down. For a locked kiosk tablet use the QR set-up in the admin (it needs a factory reset).</p>
+  {% else %}
+  <div class="alert alert-warning">There is no Android app on this server yet. Ask the administrator to add one on the Downloads page.</div>
+  {% endif %}
+</main>
+</body>
+</html>
