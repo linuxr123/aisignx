@@ -109,6 +109,13 @@ class LockdownTest {
         val d = Fake().also { Lockdown.engage(it) }
         Lockdown.release(d, homeMode = true)
         assertTrue(d.aliasOn)
+        assertTrue("with Use-as-Home on the tablet still boots into the player after the lockdown is lifted", d.homePinned)
+    }
+
+    @Test fun releaseWithHomeModeOffGivesTheTabletsOwnLauncherBack() {
+        val d = Fake().also { Lockdown.engage(it) }
+        Lockdown.release(d, homeMode = false)
+        assertFalse(d.aliasOn)
         assertFalse(d.homePinned)
     }
 

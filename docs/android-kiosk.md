@@ -208,3 +208,15 @@ Run on a spare tablet; tick each.
 16. [ ] Crash loop: install a build that crashes at start (or force-stop the app 5 times in 10 minutes while offline): the lockdown is released by itself; fetch a manifest and it locks again.
 17. [ ] If a release ever fails on a real device, the log shows "lockdown release: failed steps" and a retry a minute later (cannot be forced; read the log after a test).
 18. [ ] Factory reset the locked tablet using the steps above, then repeat from step 1.
+
+## Boot behaviour (what the first tablet showed)
+
+- A **reboot ends the on-device unlock window**: the tablet always comes back locked (if Lock player is on) and goes
+  straight to the player. In 3.0.2 the window survived a reboot, and the tablet booted unlocked to the Samsung home
+  screen before the player started.
+- With **Use as Home app** ticked (the default for a provisioned tablet) the player stays the Home app even after the
+  lockdown is lifted, so the tablet always boots into AiSignX. Untick it on the Setup screen to get the tablet's own
+  launcher back.
+- Android finishes its own first-time setup (`user_setup_complete`) only at the first reboot after QR provisioning. Until
+  then Samsung's main Settings page closes itself (the log showed `user_setup_complete=0`, then `1` after the reboot).
+  Reboot the tablet once after provisioning and the main Settings page works.

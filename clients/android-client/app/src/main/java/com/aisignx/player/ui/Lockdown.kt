@@ -104,15 +104,19 @@ object Lockdown {
     fun release(ops: Ops, homeMode: Boolean): List<String> {
         val failed = mutableListOf<String>()
         for (r in RESTRICTIONS) steps(failed, "restriction:$r" to { ops.clearRestriction(r) })
+        // The alias first, so "boot into the player" can stay: the user's Use-as-Home choice decides whether this app
+        // remains the default Home app after the lockdown is lifted (a signage tablet should still boot into the
+        // player; only the locks, restrictions and hidden system bars are given back). Turning Home mode off in
+        // Setup gives the tablet's own launcher back.
+        steps(failed, "home_alias" to { ops.setHomeAlias(homeMode) })
         steps(
             failed,
-            "persistent_home" to { ops.setPersistentHome(false) },
+            "persistent_home" to { ops.setPersistentHome(homeMode && "home_alias" !in failed) },
             "uninstall_blocked" to { ops.setUninstallBlocked(false) },
             "status_bar" to { ops.setStatusBarDisabled(false) },
             "keyguard" to { ops.setKeyguardDisabled(false) },
             "stay_on" to { ops.stayOnBackup?.let { ops.setStayOn(it); ops.stayOnBackup = null } },
             "lock_task_packages" to { ops.setLockTaskPackages(emptyList()) },
-            "home_alias" to { ops.setHomeAlias(homeMode) },
         )
         return failed
     }

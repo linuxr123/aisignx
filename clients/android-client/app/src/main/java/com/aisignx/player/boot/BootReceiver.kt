@@ -25,6 +25,9 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         val app = AiSignXApp.from(context)
+        // A reboot ends the on-device unlock window: the tablet always comes back locked (if Lock player is on) and
+        // goes straight to the player, however long was left on the window.
+        com.aisignx.player.ui.LocalUnlockWindow.end(context)
         // Device Owner: the lockdown from the last manifest is back before the player is.
         LockdownApplier.syncStored(context)
         if (!TierRules.startAtBoot(app.config.isConfigured, autostart = true)) return

@@ -37,7 +37,8 @@ class LockdownRunnerTest {
         override fun setUninstallBlocked(blocked: Boolean) = call("uninstall_blocked")
         override fun setPersistentHome(on: Boolean) { call("persistent_home"); homePinned = on }
         override fun setHomeAlias(enabled: Boolean) { call("home_alias"); aliasOn = enabled }
-        fun clean() = !keyguardOff && !statusBarOff && !homePinned && restrictions.isEmpty()
+        /** Everything the lockdown set is gone. [keepHome]: Use-as-Home is on, so the tablet still boots into the player. */
+        fun clean(keepHome: Boolean = false) = !keyguardOff && !statusBarOff && (keepHome || !homePinned) && restrictions.isEmpty()
     }
 
     private var clock = 1_000_000L
@@ -91,7 +92,7 @@ class LockdownRunnerTest {
         r.sync(d, Mode.ENGAGE, false) // failed engage, in back-off
         d.failing.clear()
         assertEquals(emptyList<String>(), r.releaseNow(d, true, full = false))
-        assertTrue(d.clean())
+        assertTrue(d.clean(keepHome = true))
         assertTrue(d.aliasOn)
         // and again right away: runs again, not cached (the PIN exit twice in a row)
         d.aliasOn = false
