@@ -131,4 +131,11 @@ class ProvisionRulesTest {
         val c = ProvisionRules.TapCounter()
         for (i in 0 until 30) assertFalse(c.tap(i * 3_000L))
     }
+
+    // The server sets the display cookie for the path /api/player (server player/auth.py). Reading it back at the
+    // site root never returns it, which made the first real tablet retry the pairing forever.
+    @Test fun theDisplayCookieIsSetAndReadAtItsOwnPath() {
+        assertEquals("http://192.168.1.19:5000/api/player/", ProvisionRules.cookieUrl("http://192.168.1.19:5000"))
+        assertEquals("https://signs.example.com/api/player/", ProvisionRules.cookieUrl("https://signs.example.com/"))
+    }
 }

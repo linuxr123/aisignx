@@ -122,10 +122,13 @@ object Provisioning {
         val origin = AiSignXApp.from(ctx).config.serverUrl ?: return false
         val cm = CookieManager.getInstance()
         cm.setAcceptCookie(true)
-        for (c in cookies) cm.setCookie("$origin/", c)
+        // The server scopes this cookie to /api/player, so it is set, and read back, at that address. Reading it at
+        // the site root never returns it (a cookie is only sent to its own path) and the read-back failed forever.
+        val url = ProvisionRules.cookieUrl(origin)
+        for (c in cookies) cm.setCookie(url, c)
         cm.flush()
         // HttpOnly cookies are not visible to page script, but getCookie (native) returns them.
-        return cm.getCookie("$origin/").orEmpty().contains("aisignx_display=")
+        return cm.getCookie(url).orEmpty().contains("aisignx_display=")
     }
 
     /** Done (paired, or given up): forget the secret and the kept credential. */

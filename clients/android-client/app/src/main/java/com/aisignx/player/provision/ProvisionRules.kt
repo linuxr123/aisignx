@@ -107,6 +107,9 @@ object ProvisionRules {
         else -> 30_000L
     }
 
+    /** Where the display cookie lives: the server sets it for the path /api/player (player/auth.py COOKIE path). */
+    fun cookieUrl(origin: String): String = origin.trimEnd('/') + "/api/player/"
+
     /** Only the display credential cookie is taken from the answer; anything else is ignored. */
     fun displayCookies(setCookieHeaders: List<String>): List<String> =
         setCookieHeaders.filter { it.startsWith("aisignx_display=") }
