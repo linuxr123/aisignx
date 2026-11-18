@@ -46,11 +46,14 @@ reads it for the `${...}` values). Never commit that file.
 | `AISIGNX_SECURE_COOKIES` | `0` | `1` once the admin is only reached over `https://`. |
 | `AISIGNX_MAX_UPLOAD_MB` | `2048` | Largest upload. |
 | `AISIGNX_SMTP_PASSWORD` | empty | Password for alert e-mail; the other SMTP settings are in the admin. |
-| `AISIGNX_INSTANCE_DIR`, `AISIGNX_UPLOAD_DIR`, `AISIGNX_BACKUP_DIR`, `AISIGNX_LOG_DIR` | under `/data` | Leave as they are. |
+| `AISIGNX_INSTANCE_DIR`, `AISIGNX_UPLOAD_DIR`, `AISIGNX_BACKUP_DIR`, `AISIGNX_LOG_DIR` | under `/data` | Leave as they are. `downloads` and `plugin-cache` follow from them and also land in `/data`. |
 | `AISIGNX_BROWSER`, `AISIGNX_BROWSER_NO_SANDBOX` | `/usr/bin/chromium`, `1` | See [Web page previews](#web-page-previews). |
 
-The other variables in `server/aisignx/config.py` work too, for example `AISIGNX_MAX_STREAMS`
-for more than 50 screens or `AISIGNX_LOG_LEVEL`.
+The other variables work too, for example `AISIGNX_MAX_STREAMS` for more than 50 screens,
+`AISIGNX_LOG_LEVEL`, `AISIGNX_UPDATE_CHECK=0` to switch off the daily release check, or
+`AISIGNX_UPDATE_REPO`; the full list is in [deployment.md](deployment.md#settings-and-data-folders).
+Add the ones the compose file does not pass through under `environment:`. The container cannot update
+itself: upgrading is `git pull` and `docker compose up -d --build`.
 
 ## Data and volumes
 
@@ -58,10 +61,15 @@ The `/data` volume holds:
 
 | Folder | Contents |
 |---|---|
-| `/data/instance` | SQLite database `aisignx.db` and `secret_key` |
-| `/data/uploads` | media files, thumbnails, screen screenshots |
+| `/data/instance` | SQLite database `aisignx.db`, `secret_key` and `command_key` (the key that signs reboot, startup and update commands to screens; screens pin it, so it must survive a rebuild) |
+| `/data/uploads` | media files, thumbnails, screen screenshots, logs collected from screens |
+| `/data/downloads` | the installers on the **Downloads** page (made on first use; pushed to screens from here) |
 | `/data/backups` | backup archives |
 | `/data/logs` | `aisignx.log`, rotated at 5 MB x 5 files |
+| `/data/plugin-cache` | fetched plugin data (can be lost; fetched again) |
+
+All of it must persist, so keep the whole `/data` volume. `command_key` and `downloads` are **not** inside
+backup archives ([backup.md](backup.md)): deleting the volume loses them even if you restore an archive.
 
 Keep the volume on a local disk. SQLite does not work reliably on a network share (NFS, SMB).
 
@@ -74,8 +82,7 @@ sudo chown -R 1000:1000 /srv/aisignx
 ```
 
 and mount it with `- /srv/aisignx:/data`. If the folder is not writable, the container stops at
-once with a message naming the folder. On Docker Desktop for Windows or macOS, a named volume is
-faster than a bind mount.
+once with a message naming the folder. On Docker Desktop, a named volume is faster than a bind mount.
 
 ## Upgrade
 
@@ -91,7 +98,8 @@ to an older version after a migration is not supported; restore the backup inste
 
 Scheduled daily backups run inside the container, as configured in **Admin > Backups**, and are
 written to `/data/backups`. That folder is on the same volume as the data, so copy archives
-somewhere else as well. See [backup.md](backup.md) for what an archive contains.
+somewhere else as well. See [backup.md](backup.md) for what an archive contains and what it leaves out
+(`instance/command_key`, the `downloads` folder). To copy the key out: `docker compose cp aisignx:/data/instance/command_key ./`.
 
 Run the backup commands inside the running container:
 

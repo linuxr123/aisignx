@@ -6,7 +6,9 @@ schedules; players just follow the manifest (see [player-api.md](player-api.md))
 ## What a screen plays
 
 For each screen, the server checks these in order and uses the first that has at least one
-**playable** item (a media file that exists, or a web page with an `http(s)` URL):
+**playable** item (a media file that exists, a web page with an `http(s)` URL or, for a page that cannot be
+embedded, its screenshot, or a plugin item whose plugin is on and has what it needs, for example the
+stocks plugin needs its API key):
 
 1. **Emergency** with its own playlist, if one is live for this screen.
 2. **Schedules** that are enabled, apply to this screen and are active now, best first (see
@@ -86,10 +88,11 @@ emergency has a title, an optional message, a level (info, warning or critical),
 screens, a group or a display) and an optional playlist.
 
 - **No playlist:** the text covers the whole screen and video is muted.
-- **With a playlist:** the playlist plays instead of the schedules. With **Show text** on, the
-  text appears in a band at the bottom; with it off, only the playlist plays.
+- **With a playlist:** the playlist plays instead of the schedules. With **Show the title and message**
+  on, the text appears in a band at the bottom; with it off, only the playlist plays.
 - If the chosen playlist has nothing playable, the text covers the screen, as without one.
-- Emergencies stay until someone clears them. They never expire.
+- A message stays until someone clears it, with one exception: a **scheduled** message (see below) that was
+  given a duration is cleared by the server when that time is up.
 - If several are live, each screen shows one: the highest level, then the newest.
 - While any emergency is live, every admin page shows a red banner with a link to manage it.
 - **Send again** on a past message fills the form with its content.
@@ -98,6 +101,15 @@ screens, a group or a display) and an optional playlist.
 
 Deleting the target display or group clears its emergencies; they stay in the history with the
 reason "target deleted".
+
+**Saved messages and scheduled messages.** A message can be saved as a template, sent again with one click,
+raised from a button or script through the API, or planned for a start time (once, with an optional duration).
+Recurring plans are not built. See [emergency-api.md](emergency-api.md).
+
+## Synchronized playback
+
+Screens of a group can step through the same slide at the same moment. This is set per group and does not
+change which playlist a screen plays; see [synced-playback.md](synced-playback.md).
 
 ## How updates reach screens
 
@@ -124,7 +136,7 @@ Use a browser player at `/player/` and the admin side by side.
    (A reload while the server is unreachable shows the browser's own error page, because
    the page itself isn't cached offline. Keep the browser open; don't reload it while offline.)
 4. **Reconnect and clear** the emergency: the overlay disappears.
-5. Send one **with a playlist and Show text on:** the playlist plays with a band at the bottom.
+5. Send one **with a playlist and "Show the title and message" on:** the playlist plays with a band at the bottom.
 6. Create a schedule that **starts in two minutes:** the screen switches within about a second
    of the start, and back at the end.
 7. Send two emergencies to the same screen, then clear the newer one: the older one stays on

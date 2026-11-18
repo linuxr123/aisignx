@@ -2,10 +2,20 @@
 
 AiSignX has two player apps for screens that should run unattended:
 
-- **AiSignX Player for Windows** (Electron, `clients/electron-client`). Linux builds exist but
-  are not tested yet.
-- **AiSignX Player for Android** (`clients/android-client`): phones, tablets and Android TV
-  boxes, Android 8.0 or newer.
+- **AiSignX Player for Windows** (Electron, `clients/electron-client`, version 3.1.0). Windows
+  10 and 11 are the supported platform. A Linux build target exists (AppImage and deb) but has
+  never been run; Linux is best effort. macOS is not supported and has no build.
+- **AiSignX Player for Android** (`clients/android-client`, version 3.0.3): phones, tablets and
+  Android TV boxes, Android 8.0 or newer.
+
+A third kind of screen needs no app: any browser on `/player/` (see
+[deployment.md](deployment.md#kiosk-browser-on-the-screen)). It cannot be locked, restarted or
+updated from the admin.
+
+Nothing in the apps has been run on more hardware than the owner's Samsung Galaxy tablet
+(Android) and an NVIDIA Shield (Android TV). The Windows app, the Windows agent and the Linux
+build have not been tested on other machines. Where this page says what an app does, that is
+what the code does; it is not a promise that a device accepts it.
 
 Both apps are kiosk shells around the same browser player that runs at `/player/`. Pairing,
 playback, schedules, emergency messages and live updates all happen in that page, so a screen
@@ -19,7 +29,7 @@ behaves the same in a browser and in an app. The apps add what a browser can't d
 | Full screen, blocked keys, keep-awake | yes | yes (immersive mode, remote keys blocked) |
 | Starts by itself | Windows login item, XDG autostart for the Linux AppImage | Home-app mode, or a boot receiver |
 | Restarts after a crash | renderer crash and hang watchdogs | WebView renderer crash handler |
-| Reported to the admin as | `electron-3.0.0` and the PC name | `android-3.0.0` and the device model |
+| Reported to the admin as | `electron-3.1.0` and the PC name | `android-3.0.3` and the device model |
 | Unlock PIN to leave the player | all Ctrl+Alt shortcuts | the hidden exit gesture |
 | Screen rotation | page (CSS) | the device itself; page (CSS) on TV boxes |
 | Screenshot of the real screen | yes | yes |
@@ -30,13 +40,34 @@ self-signed certificate.
 
 ## Install
 
-**Windows:** run `AiSignX Player Setup 3.0.0.exe` (see [Build](#build)). It installs for the
-current user and starts at once. The installer is not code-signed yet, so Windows SmartScreen
-asks for confirmation (**More info > Run anyway**).
+**Where the installers come from.** Build them (see [Build](#build)) and upload them on the
+**Downloads** page (kinds **Windows player app** and **Android player app (APK)**; the page detects the kind and
+version of a file). The page then lists them for download and shows **Update available** on
+displays that run an older version. See [downloads.md](downloads.md).
 
-**Android:** install the APK, for example with `adb install -r app-release.apk`, or copy it to
-the device and allow installs from that source. A signed release build is needed for normal
-use; debug builds install next to it as `com.aisignx.player.debug`.
+**Windows:** run `AiSignX Player Setup 3.1.0.exe`. It is an assisted installer (not one-click)
+and installs for the current user by default; it starts the app at the end. The installer is
+code-signed only when you build it with your own certificate (`AISIGNX_SIGN_THUMBPRINT`, see
+[windows-agent.md](windows-agent.md#build-on-the-build-pc)). An unsigned or self-signed installer
+makes Windows SmartScreen ask for confirmation (**More info > Run anyway**).
+
+**Android phone or TV box that is already set up:** on **Downloads**, press **Set up an Android
+tablet as a kiosk (QR code)**. The bottom card, **Phones that are already set up, and Android TV
+boxes**, makes an install link. Press **Make an install link**. You get a short address such as
+`192.168.1.19:5000/get/K7M2Q9XD` and a QR code. The code is 8 characters, not case sensitive, and
+the link works for 7 days; making a new link replaces the old one. The page at `/get/<code>`
+needs no login. It offers the newest Android app on the Downloads page, shows the server
+address and tells the person to pair the screen in the admin. It cannot pair anything itself.
+A phone scans the code with the camera; on a TV box type the address, see
+[android-tv.md](android-tv.md).
+
+**Android tablet you can wipe:** the factory-reset QR route installs the app, makes it Device
+Owner and pairs it without typing anything: [android-kiosk.md](android-kiosk.md). The QR code
+carries the pairing secret, the app checksum and the server's command key.
+
+**Android by hand:** install the APK, for example with `adb install -r app-release.apk`, or copy
+it to the device and allow installs from that source. A signed release build is needed for
+normal use; debug builds install next to it as `com.aisignx.player.debug`.
 
 Both apps use the application ID `com.aisignx.player`, the same as v2. Installing v3 replaces
 the v2 app. v3 does not reuse v2's settings, so each screen is set up and paired again.
@@ -82,7 +113,7 @@ Pairing is the same as in a browser:
    a default playlist.
 
 The screen starts playing within a few seconds. The admin shows the player version
-(`electron-3.0.0` or `android-3.0.0`) and the device name. The credential is an HttpOnly cookie;
+(`electron-3.1.0` or `android-3.0.3`) and the device name. The credential is an HttpOnly cookie;
 the apps write it to disk right after pairing, so a power cut does not lose it.
 
 A screen asks for a new code only when the server rejects its credential (the display was
@@ -216,8 +247,40 @@ Data lives in `%APPDATA%\AiSignX Player\v3`: `config.json`, `client_id.txt`, the
 - The log is in `Android/data/com.aisignx.player/files/logs/` (1 MB, one rotation, never contains
   cookies).
 
-Device Owner lock task mode is described in [kiosk-lockdown.md](kiosk-lockdown.md).
-Automatic app updates are planned for a later version.
+Device Owner lock task mode is described in [kiosk-lockdown.md](kiosk-lockdown.md). On the
+Samsung Galaxy tablet the owner tested, Power + Volume Down opens the power menu even in the
+lockdown, and shutting the tablet down from there works. There is no remote shutdown: the
+admin can reboot a Device Owner tablet but cannot power it off.
+
+## Managing a screen from the admin
+
+On the display page the **Device agent** card and the display's **Edit** form (**Device agent**
+section) control what an app may do. Every switch is off by default, an admin sets them, and
+every command is audited. The app reports what it can do; the page disables the rest.
+
+| Command | Windows app | Android app |
+|---|---|---|
+| Restart the player, Collect logs | yes | yes |
+| Watchdog (restart a crashed or hung player) | scheduled task, about a minute | escalation inside the app |
+| Reboot the device | yes (`shutdown /r /t 30`) | Device Owner only |
+| Startup (autostart, run as the Windows shell) | yes; shell mode Windows only | autostart on or off; shell mode is refused |
+| Update the app | silent installer | silent as Device Owner, otherwise Android asks a person |
+
+Reboot, startup and update are signed commands that the app checks against the server's
+command key (pinned the first time the app sees it): [signed-commands.md](signed-commands.md).
+Restart and logs are not signed. The design and its limits:
+[device-agent-design.md](device-agent-design.md).
+
+**Windows privileged agent.** For a PC that must reboot, change startup, update the player and
+sign in automatically without anyone logged in as administrator, install the optional SYSTEM
+agent. It is separate from the player, installed with an elevated script, and once enrolled it
+takes over reboot, startup, update and automatic sign-in: the player's own handling stands
+down. It needs a code-signing certificate you make or buy. See
+[windows-agent.md](windows-agent.md). Not verified on real hardware yet.
+
+**Android Device Owner.** A tablet set up by QR code, or a device where you ran
+`dpm set-device-owner`, can be locked down and wiped from the app: [android-kiosk.md](android-kiosk.md),
+[kiosk-lockdown.md](kiosk-lockdown.md).
 
 ## Display options
 
@@ -276,7 +339,8 @@ npm ci                 # exact versions from package-lock.json
 npm test               # unit tests, plain Node
 npm start              # run the app (opens setup on first run)
 npm run smoke          # with a server on http://127.0.0.1:5000: checks the player reaches pairing
-npm run dist:win       # dist-build\AiSignX Player Setup 3.0.0.exe
+npm run dist:win       # dist-build\AiSignX Player Setup 3.1.0.exe (signed when AISIGNX_SIGN_THUMBPRINT is set)
+npm run agent:win      # optional: dist-build\agent\ install kit for the Windows privileged agent
 npm run dist:linux     # AppImage and deb (run on Linux; not tested yet)
 ```
 

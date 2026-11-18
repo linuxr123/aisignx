@@ -14,6 +14,9 @@ README is for people who build and change the add-in.
 built with the AiSignX icon), `setup.exe`, the certificate and `INSTALL.txt`. The icons are drawn
 by `tools\make_icons.py` into `AiSignXPowerPoint\Resources`.
 
+Add-in version 3.0.2 (ClickOnce `ApplicationVersion` 3.0.2.0). Admins can upload the built zip on the **Downloads** page
+(kind **PowerPoint add-in**) so users can fetch it from the admin.
+
 ## Requirements
 
 - Windows 10 or 11 with desktop PowerPoint 2016 or newer (Microsoft 365 included), 32 or 64 bit.
@@ -79,12 +82,12 @@ the 401, 403, 404 and 415 error handling. Use a test server, not production.
 
 ## First run
 
-1. In AiSignX open your user menu > **API tokens** and create a token with the **media:write**
+1. In AiSignX open your user menu > **My API tokens** and create a token with the **media:write**
    scope (and **media:read** if you want the **Choose** list and checks before the export).
    Copy it; it is shown only once.
 2. In PowerPoint click **AiSignX > Export and upload**.
 3. Enter the **Server URL**, the base address only, for example `http://192.168.1.10:5000` or
-   `https://signage.example.com`, and paste the token. Click **Test** to check the connection.
+   `https://signage.example.com`, and paste the token. Click **Test connection** to check it.
    The token is stored encrypted for your Windows account (DPAPI), per server.
 
 ## Use

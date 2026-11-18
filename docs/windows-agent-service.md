@@ -499,3 +499,56 @@ once built:
 * **Self-check of the install script:** when the script was built with a thumbprint it must itself be `Valid` for that thumbprint (trust the certificate for your own account on the admin PC first) or the admin passes `-SkipSelfCheck` after checking the files; the bundle's SHA-256 inside the script is checked in every case.
 * The health check also treats a player that reports the new version but whose heartbeat is older than 90 seconds as unhealthy.
 * The owner's certificate from `New-DevCert.ps1` was checked on the build PC: code-signing purpose only, sha256RSA, no CA flag (a leaf).
+
+### More deviations (read from `src\agent-svc`, `resources\Install-Agent.ps1` and `scripts\Build-Agent.ps1`)
+
+* **Names and layout.** The binary is `aisignx-agent.exe` (a copy of `AiSignX Player.exe`). The program folder holds
+  `src\agent-svc\main.js` and `src\agent\` (not an `app\` folder), `package.json`, `ps\*.ps1` and `Run-Agent.cmd`.
+  The helper scripts are `Check-Folder.ps1`, `Get-FileVersion.ps1`, `Import-Cert.ps1`, `Set-Autologon.ps1`,
+  `Set-Startup.ps1`, `Verify-Signature.ps1`, plus `shell-launcher.ps1` copied from the player's resources.
+* **The install script does not elevate itself.** It stops with an error when it is not run as administrator (only
+  `-DryRun` works unelevated), instead of asking Windows for elevation. It is also **not** shipped inside the bundle:
+  `Install-Agent.ps1` and `AiSignX-Agent-<version>.zip` sit side by side in `dist-build\agent\` and are copied together.
+* **More parameters than designed:** `-PlayerExe`, `-Bundle`, `-BundleSha256`, `-AllowAdminKiosk`,
+  `-AllowCaCertificate`, `-AllowInsecureHttp`, `-Force`, `-SkipSelfCheck`, `-Yes`, `-DryRun`. Plain http to anything but
+  a loopback address is refused unless `-AllowInsecureHttp` is given. `-AllowStartup` and `-AllowAutologin` require
+  `-KioskUser`. The default player path is `%ProgramFiles%\AiSignX Player\AiSignX Player.exe`. `-Uninstall -Force`
+  deletes the folders even when `agent.json` cannot be read (the startup, auto-login and certificate changes are then
+  not undone).
+* **Tasks.** Besides `AiSignX Agent` (SYSTEM, at boot, repeated every 5 minutes, restart on failure up to 999 times)
+  the script registers `AiSignX Player Launch`, a task without trigger that runs as the kiosk user (interactive token,
+  least privilege). The agent runs it after an update or a failed install so the player appears in the kiosk
+  session. Without `-KioskUser` that task is not created and the player is not relaunched by the agent.
+* **Polling.** The agent polls every 20 seconds. The agent loop exits with code 1 after 10 consecutive internal errors
+  so Task Scheduler starts a clean copy. A `tmp\` folder inside the protected data folder is used as TEMP for
+  everything the agent starts.
+* **Enrollment code strikes.** The design says a code dies after 5 wrong tries. The server no longer counts wrong
+  tries (`MAX_FAILS` is left in `displays/enroll.py` for old rows): an 80-bit code and a limit of 10 enroll attempts
+  per minute per address are the defence.
+* **"Not seen" threshold.** The display page shows the agent as not seen after 10 minutes without a poll. The in-app
+  code stands down while `public\status.json` says `running` and is younger than 15 minutes; an agent that reports
+  `unsafe_acl` does not count.
+* **No `allow downgrade` checkbox.** The server offers only the newest installer of the Windows player kind that is on
+  the Downloads page, and the display page offers **Push the update** only when that is newer than the running
+  version. Only the agent enforces the floor (`minVersion`).
+* **Page names.** The enrollment button is on the **Privileged agent** card of the display page (admin only), not in
+  **Device agent**. It opens a page that shows the code once and the command line. The command line carries
+  `-KioskUser <the Windows account that shows the screen>` and `-AllowUpdate` only; the other switches are added by
+  hand.
+* **Rollback states** reported in `diag.last_update.state`: `ok`, `rolled_back`, `failed`, `failed_no_rollback`,
+  `installer_failed`.
+* **Tests.** The pure modules are covered by `test\agent-*.test.js`, `authenticode`, `autologin`, `ecies`, `tierb`,
+  `update`, `updater` and `verify` tests. There is no `task-xml.test.js` or `windows-agent-test.md`; the Windows
+  checklist is section L of [testing-checklist.md](testing-checklist.md).
+* **Review fixes after the first build** (commit `05335e0`): unpairing a display revokes its agent, startup field
+  handling, ACL grant order (owner, cut inheritance, grant, only then reset children), a downgrade floor, and
+  SID-based folder checks.
+
+### Not verified on real hardware
+
+Nothing here has run on a real Windows PC. The open questions, all listed in
+[testing-checklist.md](testing-checklist.md) section L: whether SYSTEM can import the certificate into its own stores
+without a prompt (fallback `-TrustScope Machine`), whether the assisted NSIS installer honours `/S /allusers` and
+migrates a per-user install, whether the Electron binary has the `runAsNode` fuse on, the LSA secret write and the
+Windows 11 passwordless setting, and how Defender and SmartScreen react to self-signed code and to the PowerShell
+`Add-Type` helper.

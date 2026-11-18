@@ -5,7 +5,7 @@ AiSignX writes backups as single ZIP archives. You can make them from the web ad
 `server` folder:
 
 ```powershell
-.venv\Scripts\flask --app wsgi backup --help     # Linux/macOS: .venv/bin/flask --app wsgi backup --help
+.venv\Scripts\flask --app wsgi backup --help     # Linux: .venv/bin/flask --app wsgi backup --help
 ```
 
 ## What a backup contains
@@ -17,13 +17,24 @@ AiSignX writes backups as single ZIP archives. You can make them from the web ad
 | `uploads/media/*`, `uploads/thumbs/*` | Uploaded media and their previews, if "include uploads" is on. Screenshots and temporary files are left out. |
 | `manifest.json` | Format, AiSignX version, database revision, creation time, and the size and SHA-256 of every file. |
 
-**Backups contain secrets:** password hashes, API token hashes, the secret key and the SMTP
-user name. Treat every archive like a password file. Store copies only where untrusted people
+**Backups contain secrets:** password hashes, API token hashes, the secret key, plugin API keys (encrypted
+with that same secret key, so an archive holds the means to read them), the SMTP user name, and the screens'
+unlock PIN hashes. Treat every archive like a password file. Store copies only where untrusted people
 cannot read them.
 
-Not included: `server/.env` (environment settings such as `AISIGNX_SECRET_KEY` and
-`AISIGNX_SMTP_PASSWORD`), log files and screenshots. Keep a private copy of your `.env`
-yourself.
+**Not included**, so keep your own copy of what you need:
+
+| Not in a backup | Why it matters |
+|---|---|
+| `server/.env` (settings such as `AISIGNX_SECRET_KEY` and `AISIGNX_SMTP_PASSWORD`) | Needed to start the same way on a new machine. |
+| `instance/command_key` | The key that signs reboot, startup and app-update commands. Screens pin its public key the first time they see it. A server without this file makes a **new** key, and screens that pinned the old one refuse those commands until they are paired again (or their saved server key is cleared). Android devices set up by the provisioning QR code pinned it too. Copy this file whenever you move or rebuild the server. It is a secret: treat the copy like the archives. |
+| The **downloads** folder (the installers and add-in files on the Downloads page) | The database keeps the list, so after a restore onto a machine without the folder the entries are still shown but cannot be downloaded, provisioned from, or pushed to screens. Upload the files again. |
+| `uploads/agent-logs` (logs collected from screens), `uploads/screenshots`, `uploads/tmp` | Short-lived. Collect them again if you need them. |
+| The plugin cache (`plugin-cache/`) | Fetched again on demand. |
+| Log files | Kept only on the machine they were written on. |
+
+Everything else the server knows, including the privileged Windows agent's enrolment, paired screens, users, tokens
+and settings, is in the database and comes back with it.
 
 Archives are named `aisignx-<UTC date>-<time>-<source>-<random>.zip`. The source is one of
 `manual` (web), `cli`, `scheduled` (daily), `pre-restore` (safety copy taken before a restore)
@@ -139,14 +150,19 @@ web restore, including the safety backup. Start the server again afterwards.
 ## Moving to a new machine
 
 1. On the old machine, run `flask --app wsgi backup create` (or download a backup from the
-   web admin), and copy `server/.env` too.
+   web admin), and copy `server/.env`, `instance/command_key` and the `downloads` folder too
+   (see [what a backup does not contain](#what-a-backup-contains)).
 2. Install AiSignX on the new machine (same or newer version). Copy `.env` into `server/`, and
-   change paths in it if needed.
+   change paths in it if needed. Put `command_key` into the new instance folder and the
+   installers into the new `downloads` folder.
 3. Run `flask --app wsgi db upgrade` to create an empty database. Don't go through the setup
    wizard; the restore replaces the admin account anyway.
 4. Copy the archive into `server/backups` and run `flask --app wsgi backup restore <name>`.
 5. Start the server and sign in with your old account. Paired screens keep working if they
-   reach the new machine at the same address (change DNS or the screen's server URL).
+   reach the new machine at the same address (change DNS or the screen's server URL). Check
+   the key fingerprint on **Admin > System**: it should match the old server's. If it does not,
+   screens will report a changed server key and refuse reboot, startup and update commands
+   until they are paired again.
 
 ## When the server won't start
 
@@ -163,10 +179,12 @@ AiSignX from starting:
 As a last resort, an archive is an ordinary ZIP file. Extract `db/aisignx.db` to
 `server/instance/aisignx.db`, `instance/secret_key` to `server/instance/secret_key` and
 `uploads/` to `server/uploads/`, with the server stopped, then run `flask --app wsgi db upgrade`.
+(Folders differ with the installers and Docker; see [deployment.md](deployment.md#settings-and-data-folders).)
 
 ## PostgreSQL
 
-With a database URL other than SQLite, archives contain only the secret key and the uploads.
+With a database URL other than SQLite, archives contain only the secret key and the uploads. This path
+is covered by automated tests against SQLite only; it has not been run against a real PostgreSQL server.
 The manifest records `"db_included": false`, and the web page says "no database". Back up the
 database with PostgreSQL's own tools, alongside the uploads-only archive:
 

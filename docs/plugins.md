@@ -108,7 +108,17 @@ in between.
 
 ### RSS / Atom
 - **Options:** feed URL, title, mode (list, single headline, ticker), 1-30 items, seconds per
-  headline, images, dates, source, QR codes, theme, refresh (at least 2 minutes).
+  headline or page (5-60), images, dates, source, QR codes, theme, refresh (at least 2 minutes).
+- **Pages.** In list mode the headlines are cut into pages of **fixed size**: 3 rows on a landscape
+  screen, 4 on a portrait one, however long the titles are. Rows that do not fit are clipped, never
+  moved to the next page. This is on purpose: every screen must cut the feed the same way, or screens in
+  a synchronized group would show different headlines. A feed with 8 items therefore has 3 pages
+  on a landscape screen.
+- **Which page shows.** Outside synchronized playback the page is chosen from the shared server clock, so
+  screens that show the same slide at the same time agree. In a synchronized group the slide starts on
+  **page 1** and the pages count from the start of the slide (the plugin gets `ctx.slideStart`, see
+  [below](#synchronized-playback-in-plugins)). The ticker scrolls on the shared clock in both cases.
+  When a feed update arrives while pages rotate, it is applied at the next page change.
 - The feed URL is a **private** field: it stays on the server and never reaches a screen.
 - The server fetches and parses the feed (feedparser), strips all HTML to plain text, and
   re-encodes up to 10 images per feed to WebP (no SVG). QR codes are made for http(s) links
@@ -141,6 +151,11 @@ in between.
   For several videos, start and end times apply to the first video only. `live_stream?channel=`
   (a channel's current live stream) is unreliable on YouTube's side; prefer a video ID.
 - **Realities:**
+  - **Start and end times.** A video line may be `URL [start] [end]` (seconds or m:ss). With "End the slide
+    when the video ends" off, or on synchronized screens, the plugin keeps a single video inside its clip
+    and starts it over at the end time. On synchronized screens a single video with an end time also sets
+    the slide's length to the clip length (the server does this in the manifest). See
+    [synced-playback.md](synced-playback.md).
   - **Mute and volume** are set per item in the playlist (Mute is on by default, Volume 0-100%
     of the display's volume), not in the plugin form.
   - Unmuted autoplay works in the Windows and Android apps. A plain browser only autoplays
@@ -329,6 +344,30 @@ def auto_duration(config: dict) -> int | None: ...     # default item duration i
 | `ctx.cache(subkey, ttl, fn)` | A value shared by every item of the plugin (one quote per symbol). Returns the stored value while fresh, else `fn()`; if `fn()` raises, an older value is returned. |
 | `ctx.deadline` | `time.monotonic()` deadline from `fetch_budget_s` |
 | `ctx.file_entry(media)` | Manifest file fields of an image or video (for `manifest_extra`) |
+
+### Synchronized playback in plugins
+
+When a group has [synchronized playback](synced-playback.md), the player tells a frame plugin when its slide
+began, on the shared server clock:
+
+- `ctx.slideStart`: the server time in ms at which this slide began, or `null`. It is `null` for screens that
+  are not in a synchronized group, and until the first `slideclock` message has arrived.
+- `slideclock` hook: called with the message `{t: "slideclock", start: <ms>}` once per showing of the slide
+  (the host sends it as soon as the frame is up and `slideStart` is then set). It is never called outside
+  synchronized playback. Register it next to `init`, `data`, `show` and the others:
+  `AiSignXPlugin.register({init: ..., slideclock: function (ctx, m) { ... }})`.
+- `ctx.now()` and `ctx.aligned(fn, ms)` keep working as before and are the shared server time; use
+  `ctx.slideStart` only to count from the start of the slide. The RSS plugin is the model: with a
+  `slideStart` it shows page 1, then moves on every rotation interval counted from `slideStart`; without
+  one it uses `ctx.now()`.
+- A plugin must behave sensibly with `slideStart === null`, and must not depend on the hook arriving.
+- Native plugins (YouTube) do not get `slideStart`; their run context has `syncElapsed()`, the milliseconds
+  into the slide on the shared clock, or `null`.
+- Anything a plugin draws that depends on content (how many rows fit, how a line wraps) must not decide
+  which item is shown, or screens of different sizes will disagree.
+
+The player's own plugin README ([`server/aisignx/static/player/plugins/README.md`](../server/aisignx/static/player/plugins/README.md))
+describes the runner page and message protocol; it does not list `slideStart` or `slideclock` yet.
 
 ### Rules for player code
 - Frame plugins start from the runner page in the player README, unchanged except for the

@@ -1,7 +1,9 @@
 # Media API (v1)
 
 The media API lets scripts and the PowerPoint add-in list, upload and replace media without
-the web admin. It is JSON over HTTP and authenticated with personal API tokens.
+the web admin. It is JSON over HTTP and authenticated with personal API tokens. The same tokens
+also open the emergency endpoints (raise or clear a prepared emergency message from a button or
+script); those are described in [emergency-api.md](emergency-api.md).
 
 All paths below are relative to the server's address, for example
 `http://192.168.1.10:5000/api/v1/media`. The screens use a different API (`/api/player/v1`,
@@ -9,7 +11,7 @@ see [player-api.md](player-api.md)).
 
 ## API tokens
 
-Each user creates their own tokens under **your user menu > API tokens** (`/tokens/`):
+Each user creates their own tokens under the user menu, **My API tokens** (`/tokens/`):
 
 1. Give the token a name that says what uses it, for example "PowerPoint, meeting room".
 2. Choose its permissions (scopes) and when it expires (never, 30 days, 90 days or 1 year).
@@ -24,14 +26,19 @@ as you, within its scopes.
 |---|---|---|
 | `media:read` | List media and read one item | Viewer |
 | `media:write` | Upload new media and replace a file | Editor |
+| `emergency:send` | Send a saved emergency message, list what is live, clear (see [emergency-api.md](emergency-api.md)) | Editor |
+
+The token form only offers the scopes your role may hold.
 
 A token can never do more than its owner's role allows. The role is checked again on every
-request: if an editor becomes a viewer, their `media:write` tokens stop working at once (403),
+request: if an editor becomes a viewer, their `media:write` and `emergency:send` tokens stop
+working at once (403),
 and disabling or deleting a user stops all of their tokens.
 
 Revoke a token on the same page. Admins see every user's tokens under **Admin > All API
 tokens** (`/tokens/all`) and can revoke any of them. Creating and revoking tokens, and every
-upload or replace made with one, appears in the audit log with the token's owner and "api".
+upload, replace, emergency send and emergency clear made with one, appears in the audit log
+with the token's owner and "api".
 
 ## Authentication
 
@@ -64,12 +71,16 @@ Every error has the same JSON shape. Decide on `error` and the HTTP status, neve
 | 403 | `forbidden` | The owner's current role no longer allows this scope |
 | 404 | `not_found` | No media with that id, or an unknown path |
 | 405 | `method_not_allowed` | Wrong HTTP method |
-| 409 | `not_replaceable` | The item is a web page; only uploaded files can be replaced |
+| 409 | `not_replaceable` | The item is a web page or a plugin; only uploaded files can be replaced |
 | 413 | `too_large` | The upload is larger than `AISIGNX_MAX_UPLOAD_MB` (default 2048 MB) |
 | 415 | `unsupported_type` | The file name does not end in a supported image or video extension |
 | 429 | `rate_limited` | Too many failed token checks from this IP address; retry after `Retry-After` |
 | 503 | `maintenance` / `busy` | The server is restoring a backup or busy; retry after `Retry-After` |
 | 500 | `server_error` | Unexpected server fault |
+
+The emergency endpoints use the same error shape. Besides the codes above they answer
+`404 not_found` (unknown saved message or emergency id) and `409 template_unusable` (the saved
+message's screens or playlist no longer exist).
 
 ## The media item
 
@@ -91,7 +102,11 @@ Every error has the same JSON shape. Decide on `error` and the HTTP status, neve
 }
 ```
 
-- `type` is `image`, `video` or `web`. Web pages have a `url` and no file fields.
+- `type` is `image`, `video`, `web` or `plugin`. Web pages have a `url` and no file fields.
+  A plugin item (see [plugins.md](plugins.md)) has no file either and carries an extra
+  `plugin` object, `{"key": "weather", "config": {...}}`, with its public options only (private
+  fields such as an RSS feed address are left out). Plugin items can be listed and read, but
+  not created or replaced through this API.
 - `duration` is how long the item plays (seconds) when a playlist item doesn't set its own.
 - `media_duration_s` is the length read from a video file (null for images, or when ffmpeg is
   not installed).

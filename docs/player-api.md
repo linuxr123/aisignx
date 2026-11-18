@@ -1,9 +1,28 @@
 # Player API (v1)
 
 This is the contract between the AiSignX server and its players: the browser player at
-`/player/` and the Electron and Android clients that follow in Phase 5. A client that follows
-this document can pair, play content, stay up to date and recover from errors without any other
-knowledge of the server.
+`/player/`, the Windows (Electron) app, the Android app and the optional privileged Windows agent.
+A client that follows this document can pair, play content, stay up to date and recover from
+errors without any other knowledge of the server. It has been exercised with the browser player,
+the Windows and Android apps and automated tests; apart from the owner's own test devices (a Galaxy
+Tab and a Shield) none of it has run on real screens yet.
+
+Summary of what exists (all paths under `/api/player/v1`, except the last two rows):
+
+| Path | Credential | Purpose |
+|---|---|---|
+| `POST /pair`, `POST /pair/status` | none | Pairing |
+| `GET /manifest` | display token | What to play |
+| `GET /events` | display token | Live updates (SSE) |
+| `POST /heartbeat` | display token | Online status, diagnostics |
+| `GET /media/<id>/<name>` | display token | Image, video and web screenshot files |
+| `GET /plugins/<id>/data`, `GET /plugins/<id>/assets/<asset>` | display token | Plugin data |
+| `POST /plays` | display token | Proof of play |
+| `POST /screenshot` | display token | Answer to a screenshot request |
+| `GET /commands`, `POST /commands/<id>/ack`, `POST /commands/<id>/logs` | display token | Device commands |
+| `GET /command-key`, `GET /commands/<id>/package` | display token | Signed-command key, installer for an update |
+| `POST /agent/enroll`, `GET /agent/commands`, `GET /agent/command-key`, `POST /agent/commands/<id>/ack`, `GET /agent/commands/<id>/package`, `POST /agent/diagnostics`, `GET /agent/status`, `POST /agent/unenroll` | agent token (enroll: one-time code) | The privileged Windows agent |
+| `GET /provision/apk/<token>`, `GET /get/<code>` (outside `/api/player/v1`) | time-limited link | Android installation |
 
 All paths below are relative to `<server>/api/player/v1`, for example
 `http://192.168.1.10:5000/api/player/v1/manifest`. Every request and response body is JSON,
@@ -52,6 +71,10 @@ Decide on `error` (and the HTTP status), never on `message`, which is for people
 | HTTP | `error` | Meaning | What the client does |
 |---|---|---|---|
 | 400 | `bad_request` | Body is not a JSON object, or a field is invalid | Client bug. Log it; don't repeat the same request in a loop. |
+| 400 | `enroll_refused` | `POST /agent/enroll` with a bad public key | Client bug. |
+| 403 | `enroll_refused` | `POST /agent/enroll` with a wrong, used or expired code | Ask the admin for a new code. |
+| 409 | `agent_enrolled` | The display has a privileged agent; `GET /command-key` and `GET /commands/<id>/package` are for the agent now | Use the `/agent/` routes (the agent) or ignore (the player). |
+| 400/404/409/413 | `command_*`, `logs_*`, `package_*` | A command, log upload or installer request that is not valid (see [Device commands](#device-commands)) | Do not retry the same request. |
 | 400 | `too_many_events` | `POST /plays` with more than 200 events | Send smaller batches. |
 | 400 | `bad_image` | `POST /screenshot` body is not a readable JPEG or PNG, or is over 40 megapixels | Drop the screenshot. |
 | 401 | `unauthorized` | Token missing, wrong, unpaired or the display was deleted | Drop the token (and cached manifest), go back to pairing. |
@@ -62,7 +85,7 @@ Decide on `error` (and the HTTP status), never on `message`, which is for people
 | 409 | `stale_request` | `POST /screenshot` with a request id that is not (or no longer) open | Drop the screenshot. |
 | 413 | `too_large` | Request body over 8 KB (64 KB for `POST /plays`, 4 MB for `POST /screenshot`) | Client bug. |
 | 415 | `unsupported_type` | `POST /screenshot` body is not `image/jpeg` or `image/png` | Client bug. |
-| 429 | `too_many_pending` | Too many screens are waiting to pair | Wait `Retry-After` seconds (60), then try again. |
+| 429 | `too_many_pending` | Too many screens are waiting to pair, or too many `POST /agent/enroll` attempts from one address | Wait `Retry-After` seconds (60), then try again. |
 | 503 | `busy` | Server is at its connection limit, or a pairing code collision | Wait `Retry-After` seconds, keep playing. |
 | 500 | `server_error` | Unexpected server fault | Retry later, keep playing. |
 | 503 | `setup_required` | The server has no admin account yet | Show "waiting for setup", retry after `Retry-After` (30). |
@@ -164,7 +187,9 @@ Authenticated. Returns what the screen should play.
  "emergency": null,
  "settings": {"orientation": 0, "volume": 100, "show_offline_banner": true,
               "allow_input": false, "kiosk_lock": false, "resume_after_s": 300,
-              "unlock": null}}
+              "unlock": null,
+              "agent": {"watchdog": true, "restart": true, "logs": true,
+                        "reboot": false, "startup": false, "update": false}}}
 ```
 
 | Field | Meaning |
@@ -177,12 +202,13 @@ Authenticated. Returns what the screen should play.
 | `sync` | Only in manifests of screens in a group with synchronized playback: `{group_id, anchor_ms, cycle_ms}`. The slide at server time `T` comes from walking the items' `duration_ms` (each at least 1000) through `(T - anchor_ms) mod cycle_ms`; slides run for their duration, never ended early. The server clock is `server_time_ms` corrected by half the round trip. See [synced-playback.md](synced-playback.md). Clients that do not know it play normally. |
 | `id` | Playlist item ID (report it as `current_item_id`). |
 | `type` | `image`, `video`, `web` or `plugin` (see [Plugin items](#plugin-items)). Skip types you don't support. |
-| `url` | Image and video: a path on this server; resolve it against the server base URL and fetch it with your token. Web: an absolute `http(s)://` URL to show in a web view, without your token. |
+| `url` | Image and video: a path on this server; resolve it against the server base URL and fetch it with your token. Web: an absolute `http(s)://` URL to show in a web view, without your token. A web page that cannot be embedded (the server checks this) is sent as `type: "image"` with a `url` to its screenshot, a PNG fetched like any image; clients need no special case. |
 | `sha256`, `size` | Checksum and byte size of the file, when known. Useful for an offline cache. |
 | `duration_ms` | How long the item stays on screen. This is a hard limit. |
 | `media_duration_ms` | Length of the video file, or `null`. |
 | `transition` | How this item enters (see below). |
 | `fit` | How the item fills the screen (see below). When the admin sets a fit for the whole display, every item carries that value. |
+| `video` | Videos only, when known: `{"codec": "avc1.640028", "width", "height", "fps", "bitrate"}`. Lets the player ask its decoder whether this screen plays the file smoothly; the result is reported in the diagnostics and shown as a warning on the display page. Ignore it if you do not check. |
 | `muted` | Play the video's sound only when this is `false`. Always `true` for images and web pages. For plugins with sound (YouTube) it follows the playlist item's Mute box. |
 | `volume` | `0`-`100` (default `100` when missing): the playlist item's share of the display volume. The player multiplies it with `settings.volume`. Videos and YouTube only. |
 
@@ -216,7 +242,8 @@ auto-resume after 300 seconds. Clients ignore keys they don't know.
 | `orientation` | `0`, `90`, `180` or `270`: rotate the output clockwise by this many degrees. The browser player rotates with CSS unless the shell reports the `rotate` capability (it then rotates the device itself). |
 | `volume` | `0`-`100`. Applied to the player's own videos (not the OS volume, not inside web pages). `muted` items stay muted. |
 | `show_offline_banner` | Show a small "Offline" pill while the screen cannot reach the server. |
-| `allow_input` | `false`: touches, clicks, keys and the wheel are ignored. `true`: they become player controls (see [Player controls](#player-controls)); a transparent overlay covers every item, so web items cannot be clicked or scrolled either way. |
+| `allow_input` | `false` (always, for screens in a group with synchronized playback): touches, clicks, keys and the wheel are ignored. `true`: they become player controls (see [Player controls](#player-controls)); a transparent overlay covers every item, so web items cannot be clicked or scrolled either way. |
+| `agent` | `{"watchdog", "restart", "logs", "reboot", "startup", "update"}`, all booleans: the admin's switches for the device agent (Edit > Device agent). See [Device commands](#device-commands). A client must not do what its switch forbids. |
 | `kiosk_lock` | `true`: the native apps cannot be left without the unlock PIN (window close and minimize blocked; Android lock task). The server only allows it while a PIN is set. A shell that sees `true` with no valid `unlock` hash stays locked but lets its admin exit through without a PIN, so a bad hash never bricks a screen. Missing (older server): `false`. The browser player never reads it. |
 | `resume_after_s` | `60`-`3600`: a paused player resumes on its own after this many seconds. A missing or bad value means `300`; clamp anything else to the range. |
 | `unlock` | `null`, or `{"alg": "pbkdf2-sha256", "iter": 200000, "salt": "<32 hex>", "hash": "<64 hex>"}`: the PIN that guards leaving the native apps. |
@@ -283,7 +310,8 @@ Rules for the overlay:
 
 ### `GET /media/<media_id>/<name>`
 
-Authenticated. Returns the image or video file for an item `url`.
+Authenticated. Returns the image or video file for an item `url`, or the PNG screenshot of a web page item
+that is played as an image.
 
 - Supports `Range` requests (`206 Partial Content`) for video seeking and resumed downloads.
 - `Cache-Control: private, max-age=31536000, immutable`. The URL changes when the file changes,
@@ -357,17 +385,48 @@ lowercase hex characters). `image/png`, `image/jpeg` or `image/webp`, with
 `Cache-Control: private, max-age=86400, immutable`: an asset ID never changes content.
 `404 not_found` for anything else.
 
-## Device agent commands
+## Device commands
 
 For the native apps only (never the page): the Windows and Android apps fetch their own commands with
-the display token. Design: [device-agent-design.md](device-agent-design.md).
+the display token. Design: [device-agent-design.md](device-agent-design.md); the signed ones are specified in
+[signed-commands.md](signed-commands.md). An admin creates a command on the display page (a closed list, no
+free-form commands); each only works when its switch is on for that display and the app reports it can do it.
+
+| Action | Kind | Meaning | Waits for the device |
+|---|---|---|---|
+| `restart_player` | plain | Restart the player | 2 minutes |
+| `collect_logs` | plain | Upload the app's redacted log | 5 minutes |
+| `reboot_device` | signed | Reboot the device (not more than once per 10 minutes) | 2 minutes |
+| `set_startup` | signed | Autostart on or off, app or shell mode (Windows) | 5 minutes |
+| `update_app` | signed | Install the newest installer of the app's kind from Downloads | 15 minutes |
+| `set_autologin` | signed, agent only | Set or undo automatic Windows sign-in | 5 minutes |
+
+A display gets at most 10 commands per hour and one open command per action. A command is handed out **once**
+and a display runs each at most once; finished commands are deleted after 30 days.
 
 - The heartbeat answer carries `commands`: how many commands wait for this display.
-- `GET /commands` returns `{"commands": [{"id": "<16 hex>", "action": "restart_player" | "collect_logs",
-  "params": {}, "expires_in_s": 120}]}` and marks them delivered. A command is handed out **once**; a
-  display runs each at most once.
-- `POST /commands/<id>/ack` with `{"state": "done" | "failed", "result": "short text"}`. 404 for an id that
-  is not this display's, 409 if it expired or was answered differently, 400 for a bad state.
+- `GET /commands` returns `{"commands": [...], "server_time_ms": <epoch ms>}` and marks up to 5 as delivered.
+  Each command is `{"id": "<16 hex>", "action": "...", "params": {}, "expires_in_s": 120}`; a signed action also
+  has `"signed": {"payload": "<string>", "sig": "<base64>"}`, and the device must act on the signed payload only
+  (verify the signature, `display_id`, `exp_ms`, `seq` and the local switch; see
+  [signed-commands.md](signed-commands.md)). `set_autologin` is never handed to a display token. Once a privileged
+  agent is enrolled for the display, **no** signed action is handed to the display token any more, and the
+  heartbeat count leaves them out.
+- `GET /command-key` (display token) returns `{"public_key": "<base64, 32 raw bytes>", "fingerprint": "ab12 cd34 ef56 7890"}`.
+  The device pins the first key it sees together with the server address (trust on first use; a device set up by
+  the Android QR code is given the key in the code and pins that). A different key later means the device keeps
+  the old pin, refuses signed commands and reports `command_key_changed`. With an agent enrolled this answers
+  `409 agent_enrolled`.
+- `GET /commands/<id>/package` (display token): the installer of this display's own open `update_app` command,
+  as `application/octet-stream`. Only while that command is delivered and not expired; the device checks the
+  size and SHA-256 from the **signed** payload before installing. Errors: `404 package_unknown_command`,
+  `404 package_the_installer_is_gone` (the file left the Downloads folder), `409 package_not_open`,
+  `409 agent_enrolled`.
+- `POST /commands/<id>/ack` with `{"state": "done" | "failed", "result": "short text"}` (result up to 200
+  characters). Acknowledge `reboot_device` and `update_app` with `done` **before** the reboot or the install
+  starts. 404 `command_unknown_command` for an id that is not this display's (or not one it may see), 409
+  `command_expired`, `command_already_acknowledged` (answered differently) or `command_not_open`, 400 for a bad
+  state. The same answer twice is fine.
 - `POST /commands/<id>/logs` (raw body, gzip, at most 1 MB): the log for an open `collect_logs` command that
   was delivered to this display. 404 unknown id, 409 not open (answered, expired or not delivered), 413 too
   large, 400 not gzip or empty. The server stores it as is (never unpacks it), keeps the newest 5 per display
@@ -380,10 +439,49 @@ the display token. Design: [device-agent-design.md](device-agent-design.md).
   "tier": "plain"|"device_owner"|"admin", "can_restart", "can_collect_logs", "can_reboot", "can_update",
   "watchdog", "restarts_1h", "gave_up", "last_restart_ms"}`. The cap `agent` in `info().caps` marks an app
   that has an agent. Both are ignored by an older page or app.
-- `settings.agent` in the manifest: `{"watchdog": bool, "restart": bool, "logs": bool}`, the admin's switches.
+- `settings.agent` in the manifest: `{"watchdog", "restart", "logs", "reboot", "startup", "update"}`, the admin's switches.
 - The app reports what it can do in its heartbeat `diag.agent` (version, tier `plain` / `device_owner` /
-  `admin`, `can_restart`, `can_collect_logs`, `can_reboot`, `can_update`, `watchdog`, `restarts_1h`, `gave_up`).
-  The admin page hides what the app cannot do.
+  `admin`, `can_restart`, `can_collect_logs`, `can_reboot`, `can_set_startup`, `can_update`, `startup`,
+  `watchdog`, `restarts_1h`, `gave_up`). The admin page hides what the app cannot do. Once an agent is enrolled,
+  the privileged abilities (`can_reboot`, `can_update`, `can_set_startup`, `can_autologin`) are taken from the
+  agent's own diagnostics only; what the player claims for them is ignored.
+
+## Privileged Windows agent
+
+The optional SYSTEM service on a Windows screen ([windows-agent.md](windows-agent.md)) uses a separate
+credential and its own routes. The agent token (`agt_` plus 43 URL-safe characters) is sent only as
+`Authorization: Bearer agt_...`; it works only under `/api/player/v1/agent/`, and a display token never works
+there. A missing or unknown agent token is `401 unauthorized` with `{"error": "unauthorized", "message": "Unknown agent."}`.
+
+| Route | Purpose |
+|---|---|
+| `POST /agent/enroll` | No credential. `{"code": "<one-time code>", "public_key": "<b64 X25519>", "host": "PC1", "version": "3.1.0"}` returns `{"agent_token", "display_id", "command_key", "fingerprint", "server_time_ms"}`. The code is made by an admin on the display page, is valid 15 minutes, works once, dies after 5 wrong tries and is rate limited to 10 requests a minute per address (`429 too_many_pending`). `403 enroll_refused` for a wrong, used or expired code, `400 enroll_refused` for a bad key. Enrolling again replaces the old token and cancels waiting signed commands. |
+| `GET /agent/commands` | Only the signed actions, same signed format as above, plus `server_time_ms`. An automatic-sign-in envelope is wiped from the server's row right after it is handed out. |
+| `GET /agent/command-key` | The public key and fingerprint (the agent compares it with its pin and never replaces it). |
+| `POST /agent/commands/<id>/ack` | `{"state": "done" or "failed", "result": "..."}`, for signed actions only. |
+| `GET /agent/commands/<id>/package` | The installer of the agent's own open `update_app` command. |
+| `POST /agent/diagnostics` | `{"diag": {...}}` with a whitelist of fields: versions, `can_*`, `key_id`, `kiosk_user`, `startup`, `autologin`, `last_update`, `command_key_fingerprint`. Anything else is dropped. |
+| `GET /agent/status` | `{"player_version", "player_last_seen_s"}`, for the health check after an update. |
+| `POST /agent/unenroll` | The uninstall script's courtesy call; the server removes the agent. |
+
+An admin can also remove the agent on the display page, and unpairing the display revokes it. The agent's
+protocol for automatic sign-in (the encrypted envelope) is in [signed-commands.md](signed-commands.md).
+
+## Provisioning an Android device
+
+These routes are not under `/api/player/v1`. They are how an Android device gets the app and its first pairing
+without a person typing a code ([android-kiosk.md](android-kiosk.md)).
+
+- `/provision/android` (an admin page; the form is under **Downloads**, *Set up an Android tablet as a kiosk
+  (QR code)*): submitting it makes the Android Enterprise provisioning QR code. It pre-approves a new display and puts a one-time pairing secret (valid 24 hours) in the code, together with the
+  server address, the app's download link, the SHA-256 of the app, optional Wi-Fi and the server's command key.
+  The device claims its display with `POST /pair/status` and that secret, like any screen.
+- `GET /provision/apk/<token>`: the app (an APK of package `com.aisignx.player` or `.debug`, the newest
+  Android app on Downloads). No sign-in, because the device has no account yet; the token is signed and valid 3
+  days, and the device checks the file against the SHA-256 in the QR code.
+- `GET /get/<code>`: a small public page with a download button and the server address, for phones that are
+  already set up and Android TV boxes. The 8-character code is made by an admin, valid 7 days, and a new one
+  replaces the old. It gives the app and the address only; it cannot pair anything.
 
 ## Heartbeat
 
@@ -499,6 +597,7 @@ Authenticated. A Server-Sent Events stream (`text/event-stream`). Every `data:` 
 | `command` | `{"action": "identify", "seconds": 15}` | Show the display name over the content for that many seconds (clamp to 3-60). |
 | `command` | `{"action": "screenshot", "request_id": "<16 hex>"}` | Capture the screen and send it with `POST /screenshot`. Also sent right after `hello` while a request made in the last 2 minutes is still open. |
 | `command` | `{"action": "diagnostics"}` | Send a heartbeat with `diag` now. |
+| `command` | `{"action": "commands"}` | A device command was created. The browser player ignores it and does not pass it to the app. The Windows and Android apps poll `GET /commands` every 20 seconds by themselves, so a command reaches a screen within about 20 seconds either way. |
 | `command` | `{"action": "unlock", "minutes": 15, "request_id": "<16 hex>"}` | Lift the Lock player for `minutes` (clamp to 1-240), measured on a monotonic clock and kept in memory only, so a restart locks again. While unlocked, the app can be closed and its admin exit skips the PIN. Ignore a `request_id` you have already seen. The browser player forwards it to the shell (`onCommand`) and, when the shell reports the `kiosk-lock` cap, shows "Unlocked for 15 min" (with no such shell, "No app to unlock" in debug mode only). Never stored and not re-sent after a reconnect. |
 | `command` | `{"action": "lock", "request_id": "<16 hex>"}` | End a remote unlock now. Forwarded to the shell like `unlock`. |
 | `revoked` | `{}` | The token was revoked. Fetch the manifest; the 401 sends you back to pairing. |

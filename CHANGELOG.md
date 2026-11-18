@@ -1,37 +1,63 @@
 # Changelog
 
-## Project status (updated 2026-11-15)
+## Project status (updated 2026-11-17)
 
-A quick overview. The detailed list of every change follows further down.
+A quick overview. The detailed list of every change follows, newest first. Everything is listed
+as "Unreleased": no release has been published yet.
+
+**Honest limits:** the automated tests pass (about 1,300 on the server, plus the Electron, Android and PowerPoint
+suites), but almost nothing has run on real hardware. Only the owner's Galaxy Tab and an NVIDIA Shield have been
+tried. The Windows privileged agent, the server installers (the Scheduled Task and systemd parts), signed
+commands on Windows and the PowerPoint add-in inside PowerPoint have never run on a real machine. See
+[docs/testing-checklist.md](docs/testing-checklist.md).
+
+**Platforms:** Windows and Android are primary. Linux is best effort, with free means only. macOS is dropped.
 
 ### Done
 - **Core:** setup wizard (no default passwords), sign-in, users and roles (admin, editor, viewer), settings.
 - **Content:** media library (images, videos, web pages with screenshot previews), playlists with drag-and-drop, durations, transitions and fit modes.
-- **Screens:** pairing with a short code, browser player at `/player/`, live updates within about a second, online/offline status.
-- **Scheduling:** schedules by day, time and date, display groups, emergency messages.
-- **Player apps:** Windows (Electron, current installer 3.1.0) and Android (phones and TVs), with offline caching and certificate pinning.
+- **Screens:** pairing with a short code, browser player at `/player/`, live updates within about a second, online/offline status, synchronized playback for a group.
+- **Scheduling:** schedules by day, time and date, display groups, emergency messages with saved templates, scheduled emergencies and an API.
+- **Player apps:** Windows (Electron, current installer 3.1.0) and Android 3.0.3 (phones, tablets and TVs), with offline caching and certificate pinning.
 - **Display options:** orientation, volume, offline banner, location, exit PIN, Identify, remote screenshots, diagnostics.
 - **Player controls:** pause, next/previous and seek by keyboard, mouse, touch and TV remote. **Lock player** kiosk mode with remote unlock.
-- **Operations:** backup and restore, audit log, alerts by e-mail, proof of play, API tokens and a media upload API, health checks and logs, Docker, HTTPS guide.
+- **Device management:** the device agent (watchdog, restart player, collect logs), signed commands (reboot, startup, app update), the optional SYSTEM-level Windows agent with automatic Windows sign-in, Android QR provisioning with Device Owner lockdown.
+- **Distribution:** server installers (Windows, Linux), the Downloads page with automatic kind and version detection, the install link for phones and TV boxes, an update notice for the apps.
+- **Operations:** backup and restore, audit log, alerts by e-mail, proof of play, API tokens and a media upload API, health checks and logs, Docker, HTTPS guide, update check and release signing.
 - **Plugins:** the plugin framework and seven plugins: clock, weather, weather radar, RSS / Atom, stocks, YouTube and image library.
-- **Fixed 2026-11-14:** videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
+- **PowerPoint add-in:** built and documented (3.0.2); needs a hands-on test in PowerPoint (checklist in its README).
 
 ### In progress
-- **Plugins:** the manual checks in the Windows and Android apps (see "Not yet checked" below).
-- **PowerPoint add-in:** built and documented; needs a hands-on test in PowerPoint (checklist in its README).
-- **Designs being written:** the device agent/watchdog, and content extras.
+- Hands-on testing on real devices: plugins in the Windows and Android apps, the Windows privileged agent, the tablet kiosk on more than one model (see "Not yet checked" and the test checklist).
 
-### Planned (in this order)
-1. **Device agent and watchdog** (Windows and Android; design in [docs/device-agent-design.md](docs/device-agent-design.md)). First release done (settings, durable commands, watchdogs, restart, collect logs). Later phases need decisions: command signing, reboot, signed updates, kiosk helpers.
-2. **Update check and signed one-click update:** the server checks GitHub releases, shows admins "update available" with release notes, and a button downloads, verifies a signature (public key built into the server), backs up the database, upgrades and restarts. Works for servers set up by the installer scripts; other setups get the notice only.
-3. **Web pages, what is left:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
-4. **Emergency improvements:**
-   - ~~saved emergency templates~~ (done);
-   - scheduled emergencies;
-   - ~~triggering an emergency from another device~~ (done: API).
-   - ~~scheduled emergencies~~ (done).
-5. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
-6. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+### Planned (not built)
+1. **One-click server update:** a button on Admin > Updates that downloads a release, verifies its signature (public key built into the server), backs up the database, upgrades and restarts. Needs a privileged helper and a generated release key; works only for servers set up by the installer scripts. Today the page only shows "update available"; see [docs/updates.md](docs/updates.md).
+2. **Recurring emergencies** (planned emergencies repeat on a schedule; today a plan runs once).
+3. **API plan scheduling:** planning an emergency through the API (today the API sends and clears prepared messages only).
+4. **Brightness setting** for screens (no setting exists, on any platform).
+5. **Windows live mode for web pages:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
+6. **Content extras:** media tags and folders, smart playlists (filled by tags), a schedule conflict view.
+7. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
+
+Done since the last plan: the device agent and watchdog, signed commands, the Windows privileged agent, the update check, release signing, saved and scheduled emergencies, the emergency API, the Downloads page and the install link.
+
+### Fixed 2026-11-14
+- Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
+
+## Unreleased: Android kiosk, install link and app versions 3.0.0 to 3.0.3
+
+### Added
+- **Android 3.0.0:** the app carries out signed commands (reboot, startup, app update, see "Signed device commands"), is set up by **QR provisioning** and, as Device Owner, runs the **kiosk lockdown** driven by the display's **Lock player** switch (lock task mode, no Home, Recents or notifications, screen stays on, release after a crash loop or an unreachable server). The QR code carries the app address, a checksum, the server's command key (pre-pinned) and optional Wi-Fi details. See [docs/android-kiosk.md](docs/android-kiosk.md) and [docs/kiosk-lockdown.md](docs/kiosk-lockdown.md).
+- **Install link** (Downloads > "Set up an Android tablet as a kiosk" > "Phones that are already set up, and Android TV boxes"): a short public address `/get/<code>` and a QR code that open a page with the app and the server address, for phones and Android TV boxes that are not wiped (the Shield route, with the Downloader app on a TV). The link is valid for 7 days and a new link replaces the old one. See [docs/android-tv.md](docs/android-tv.md).
+- The Android setup screen shows **Android settings** and **Wi-Fi** buttons after the unlock.
+
+### Fixed
+- **Provisioning loop:** the tablet read its display cookie at the site root, never saw it, and looped on "waiting for the network and server". It now reads it at its own path (`/api/player`).
+- **Provisioning QR code:** a fixed size that overflowed its box (half white, half black on a dark page); it now has a solid white background, scales to fit and uses a shorter link.
+- **3.0.1:** version bump (versionCode 301) with the fixes above.
+- **3.0.2:** a local **unlock window** after the PIN (the lockdown does not come back while you use Android's settings), direct links to the settings pages, an on-device **factory reset** (Device Owner only, confirmed with a typed word) and logging of the set-up state.
+- **3.0.3:** a **reboot ends the unlock window** (in 3.0.2 it survived a reboot and the tablet booted unlocked to the Samsung home screen); **Use as Home app** keeps the player as Home after the lockdown is lifted, so the tablet boots straight into it.
+- Only one tablet (a Samsung SM-X210) has run this; see the Galaxy notes in [docs/android-kiosk.md](docs/android-kiosk.md). On that tablet, Power + Volume Down still opens the power menu in the lockdown and shutting down from it works; there is no remote shutdown.
 
 ## Unreleased: Windows privileged agent
 
@@ -52,9 +78,9 @@ A quick overview. The detailed list of every change follows further down.
 - **Displays list:** tells admins when screens run an older app than the Downloads page, and when a screen already runs a newer version than the page has ("upload that installer to update the others").
 - Admin > System shows the command key fingerprint.
 - **Android tablet provisioning (server side):** Downloads > "Set up an Android tablet as a kiosk" makes a QR code for a factory-reset device: it downloads the app from this server (time-limited link, checked against a checksum in the code), is made Device Owner, and pairs itself with a one-time secret. The kiosk lockdown is then controlled by the display's Lock player switch. Wi-Fi details can be included.
-- The Windows and Android apps do not carry out these commands yet (next); until they report the new abilities the buttons stay disabled.
+- The Windows and Android apps carry out these commands (added with the client work, see the Android and Windows agent entries). Until an app reports the abilities, the buttons stay disabled. Unit tests only; no real Windows screen has run them.
 
-## Unreleased: Sync polish
+## Unreleased: Sync polish and video watchdog
 
 ### Fixed
 - **Big video freezing (and a green block on a Galaxy) on its first showing:** the player's frozen-video watchdog used to treat a paused or still-seeking video as healthy forever. It now asks a paused or stationary video to play (after 2 to 3 s, repeatedly), asks again if a seek takes over 6 s, and gives up on the slide after 10 s (20 s for a seek); it never interferes when the viewer paused on purpose. A slide that starts late no longer seeks a video that is still loading: it starts from the beginning and jumps once the video can play, and drift corrections skip paused videos and small corrections into data that has not arrived. Only the first showing was affected (the file is not cached on the device yet, so it streams while it downloads). Found by a read-only investigation, not reproduced on a device: please check the new rows in the test checklist.
@@ -75,7 +101,7 @@ A quick overview. The detailed list of every change follows further down.
 - **YouTube clip looping in a synced group:** a single video with a start and an end time now gets a slide exactly that long in synced groups, so it plays once and the playlist moves on. (With only a start time the slide still lasts the item's duration.)
 
 ### Added
-- **App update notice:** a display's page shows "Update available" when its Android or Windows app is older than the newest installer on the Downloads page (versions compared properly, 3.0.10 > 3.0.2). It only informs; installing is manual from the device's Downloads page. Pushing installs to devices waits for command signing and a release key ([docs/updates.md](docs/updates.md)).
+- **App update notice:** a display's page shows "Update available" when its Android or Windows app is older than the newest installer on the Downloads page (versions compared properly, 3.0.10 > 3.0.2). It informs, and with signed commands an admin can now push the update (see "Signed device commands" and [docs/updates.md](docs/updates.md)).
 - `flask --app wsgi downloads add FILE --kind ...` to publish installers to the Downloads page; [docs/downloads.md](docs/downloads.md).
 - [docs/testing-checklist.md](docs/testing-checklist.md): the manual tests, step by step.
 
@@ -84,18 +110,18 @@ A quick overview. The detailed list of every change follows further down.
 ### Added
 - **Update check** (Admin > Updates): a daily anonymous look at the GitHub releases page; admins see a banner and the release notes when a newer version exists. Can be switched off (setting or `AISIGNX_UPDATE_CHECK=0`).
 - **Release signing:** Ed25519 verification built into the server and `tools/release-sign.py` (keygen, sign, verify). See [docs/updates.md](docs/updates.md).
-- Not yet: the one-click download-and-install button (needs a privileged helper and a published signed release).
+- Not yet: the one-click download-and-install button (needs a privileged helper, a generated release key and a published signed release). No signing key exists yet.
 
 ## Unreleased: Downloads area
 
 ### Added
-- **Downloads page** (user menu > Downloads): any signed-in user downloads the Windows player, the Android APK and the PowerPoint add-in, with version, size and SHA-256. Admins upload and remove files (audited). Files are stored outside the media folder under random names and served as attachments. Migration 0015.
+- **Downloads page** (sidebar and user menu > Downloads): any signed-in user downloads the Windows player, the Android APK and the PowerPoint add-in, with version, size and SHA-256. Admins upload and remove files (audited). Files are stored outside the media folder under random names and served as attachments. Migration 0015. Later: the kind and version of an upload are detected automatically (exact from an APK, from the file name for installers; you can type them), and the newest version of each kind is what the install link, the QR set-up and **Push the update** use.
 
 ## Unreleased: Server installers
 
 ### Added
-- **Install the server as a service that starts with the computer:** `scripts\install-server.ps1` (Windows: a Scheduled Task running as the low-privilege `LOCAL SERVICE` account that restarts on failure, a firewall rule for private and domain networks) and `scripts/install-server.sh` (Linux with systemd, hardened, and macOS with launchd). Each finds or installs Python 3.10+, offers ffmpeg and a browser, keeps the program and your data apart, writes a settings file, applies the database migrations, starts the server and prints the address. Run again to upgrade (database backed up first, previous version kept as `app.prev`); `--uninstall` removes it and keeps your data (`--purge` deletes it). See [docs/installing-the-server.md](docs/installing-the-server.md).
-- Tested here: the Windows script's non-elevated parts (copy, environment, migrations, backup, the installed server answering). Not run yet: the Scheduled Task, firewall rule and permissions (need administrator), and the Linux/macOS script on a real machine.
+- **Install the server as a service that starts with the computer:** `scripts\install-server.ps1` (Windows: a Scheduled Task running as the low-privilege `LOCAL SERVICE` account that restarts on failure, a firewall rule for private and domain networks) and `scripts/install-server.sh` (Linux with systemd, hardened; the macOS launchd branch is a leftover, macOS is dropped and unsupported). Each finds or installs Python 3.10+, offers ffmpeg and a browser, keeps the program and your data apart, writes a settings file, applies the database migrations, starts the server and prints the address. Run again to upgrade (database backed up first, previous version kept as `app.prev`); `--uninstall` removes it and keeps your data (`--purge` deletes it). See [docs/installing-the-server.md](docs/installing-the-server.md).
+- Tested here: the Windows script's non-elevated parts (copy, environment, migrations, backup, the installed server answering). Not run yet: the Scheduled Task, firewall rule and permissions (need administrator), and the Linux script on a real machine.
 
 ## Unreleased: Device agent
 
@@ -106,7 +132,7 @@ A quick overview. The detailed list of every change follows further down.
 - **Collect logs:** an admin asks for a screen's log from the display page; the app uploads it (redacted, gzip, at most 1 MB) only for that open request. The server stores it as is, keeps the newest 5 per display for 7 days, and admins download it from the display page.
 - **Windows app:** the device agent. A per-user Scheduled Task watchdog (no administrator needed) restarts the player after a crash or hang within about a minute, at most 6 times per hour, then reports that it gave up. Admins can restart the player and collect logs from the display page. The log rotates to a `.1` file instead of truncating.
 - **Android app:** the device agent. A hang watchdog (reload the page after 45 s without a sign of life, then a new WebView, a new activity, a process restart, capped per hour), remote **Restart the player** and **Collect logs**, a crash handler, the previous exit reasons in the log, and the player starts after an app update when kiosk mode is configured. A process restart is only reliable as Device Owner or in Home mode; without them Android may refuse to start the app from the background.
-- The web player tells the app it is alive every 10 seconds (`alive` on the shell hook) and the app reports its abilities (`stats().agent`) in the diagnostics. Everything is **off by default** per display and admin-only. No reboot or update commands yet (they need signed commands; see the design).
+- The web player tells the app it is alive every 10 seconds (`alive` on the shell hook) and the app reports its abilities (`stats().agent`) in the diagnostics. Everything is **off by default** per display and admin-only. Reboot and update commands came later as signed commands (see "Signed device commands").
 - Not run on real hardware yet: both apps' watchdogs and commands are covered by unit tests, and the Windows watchdog script and Scheduled Task were exercised on this PC with a stand-in process. Manual test checklists are in each app's README.
 
 ## Unreleased: Player fixes and the PowerPoint add-in
@@ -131,7 +157,7 @@ A quick overview. The detailed list of every change follows further down.
 ## Unreleased: Admin interface makeover
 
 ### Changed
-- **New layout:** a left sidebar replaces the top bar. Menus are grouped: Content (Media, Plugins, Playlists), Screens (Displays, Groups, Schedules, Emergency), Monitoring (Alerts, Reports) and, for admins, Administration (Users, Settings, All API tokens, Audit log, Backups, System, Logs). The sidebar collapses to icons (the choice is remembered), and on phones and tablets it slides in over the page.
+- **New layout:** a left sidebar replaces the top bar. Menus are grouped: Dashboard, Content (Media, Plugins, Playlists), Screens (Displays, Groups, Schedules, Emergency), Monitoring (Alerts, Reports, Downloads) and, for admins, Administration (Users, Settings, All API tokens, Audit log, Backups, Updates, System, Logs). The sidebar collapses to icons (the choice is remembered), and on phones and tablets it slides in over the page.
 - **Light and dark themes:** a button in the sidebar cycles *follows the system*, *light* and *dark* (remembered per browser, applied before the page paints, so nothing flashes). Icons are built in (no network needed).
 - **Media library:** drag and drop images and videos anywhere on the page (or click the drop zone), many at once. Each file gets its own progress bar (two upload at a time), problems are shown per file (wrong type, too big, not a valid image), and the page refreshes when everything is in. Filter chips with counts (All, Images, Videos, Web pages, Plugins) and the search box work instantly, with no page reload. Without JavaScript the plain upload form still works.
 - **Display pages:** the edit page is now titled cards (General, Screen, Controls and lock) in two columns with a Save bar that stays in view; the display page uses the full width, with the status and settings on the left and the screenshot, playback check, next 7 days and diagnostics on the right.
@@ -245,7 +271,7 @@ v3 is a clean rewrite of AiSignX as a single-organization app.
 - Display options: location and notes (admin only, never sent to the screen), orientation (0/90/180/270), a fit mode for every item, video volume, an offline banner, and an input lock. Admins can also set a 4-8 digit unlock PIN that the Windows and Android apps ask for before leaving the player; it is stored and sent only as a salted PBKDF2 hash, with a growing lockout after 5 wrong PINs.
 - Display page: **Identify** shows the display name on the screen, **Screenshot** asks the screen for a picture (the apps capture the real screen, a browser draws its own media), and a **Diagnostics** card shows screen size, app version and capabilities, cache, free storage and recent player errors.
 - Player API: the manifest gains `settings`; new `command` actions `identify`, `screenshot` and `diagnostics`; `POST /screenshot`; an optional `diag` object in the heartbeat; shell `caps`, `capture()` and `stats()`. Existing keys are unchanged.
-- Phase 6 (Operations): see [docs/operations.md](docs/operations.md). A background jobs thread (`AISIGNX_JOBS`) runs alerts, scheduled backups, retention and rollups; each job's last run and error are kept in the database so restarts don't repeat work. New settings for instance, log and backup folders (`AISIGNX_INSTANCE_DIR`, `AISIGNX_LOG_DIR`, `AISIGNX_LOG_LEVEL`, `AISIGNX_BACKUP_DIR`) and a rotating log file. An **Admin** menu (audit log, backups, system, logs, all API tokens) and top-level **Alerts** and **Reports**.
+- Phase 6 (Operations): see [docs/operations.md](docs/operations.md). A background jobs thread (`AISIGNX_JOBS`) runs alerts, scheduled backups, retention and rollups; each job's last run and error are kept in the database so restarts don't repeat work. New settings for instance, log and backup folders (`AISIGNX_INSTANCE_DIR`, `AISIGNX_LOG_DIR`, `AISIGNX_LOG_LEVEL`, `AISIGNX_BACKUP_DIR`) and a rotating log file. An admin menu (audit log, backups, system, logs, all API tokens) and top-level **Alerts** and **Reports**.
 - Audit log viewer (filters, CSV export, retention) and audit entries for setup, sign-in, users, displays, groups, playlists, schedules, media, emergency messages, settings, tokens, backups and alerts, with History links on edit pages. Passwords, tokens, PINs and keys are never recorded.
 - Login rate limiting: failed sign-ins limited per IP address and per user name (429 with Retry-After; `AISIGNX_LOGIN_MAX_PER_IP`, `AISIGNX_LOGIN_MAX_PER_USER`, `AISIGNX_LOGIN_WINDOW_MIN`). Failed API token checks count against the same per-IP limit.
 - API tokens (per user, scoped `media:read`/`media:write`, optional expiry, revocable, stored only as hashes) and a JSON media API at `/api/v1/media` with the PowerPoint add-in's `/api/media` paths: list, get, upload and replace. See [docs/api.md](docs/api.md).

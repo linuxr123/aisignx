@@ -16,6 +16,9 @@ replica). Several things live in that process's memory only:
 - the maintenance flag set while a backup is restored, and the backup progress shown in the admin;
 - the background jobs thread and the schedule ticker.
 
+Two more files live next to the database and matter when you move or restore a server: the
+instance folder's `secret_key` and `command_key` (see [Files that are not in a backup](#files-that-are-not-in-a-backup)).
+
 A second process would not see the first one's limiter or maintenance flag. The background jobs
 are protected against running twice, but everything else is not. Scale up with threads
 (`AISIGNX_MAX_STREAMS`), not processes.
@@ -37,6 +40,10 @@ restart does not make a daily job run again.
 | `media.webpages` | minute | Checks whether web pages allow being embedded (once a day each) and retakes the screenshots of pages shown as screenshots when their refresh interval has passed (2 per run) |
 | `media.probe` | 5 min | Reads the codec, size, bitrate and frame rate of videos uploaded before those were recorded (10 per run), for the "May stutter" warnings |
 | `media.orphans` | day | Deletes upload files no media item uses (older than 1 hour; not in the first day after a restore) and temp files older than a day |
+| `agent.commands` | minute | Expires device commands a screen never carried out, deletes finished ones after 30 days, and deletes uploaded device logs older than 7 days |
+| `emergency.schedule` | 30 seconds | Sends scheduled emergency messages when their time comes and clears the ones whose duration is over ([emergency-api.md](emergency-api.md)) |
+| `updates.check` | day | Asks GitHub for the latest release (see [updates.md](updates.md)); does nothing when the check is off |
+| `plugin_cache_prune` | day | Removes plugin data nobody read for 7 days and keeps the plugin cache under its size cap |
 
 `AISIGNX_JOBS=0` turns the thread off; nothing above then happens. **Admin > System** lists
 every job with its last run and error. A job that fails three times in a row opens a
@@ -44,7 +51,7 @@ every job with its last run and error. A job that fails three times in a row ope
 
 ## Alerts
 
-**Alerts** in the top bar shows open alerts, with a red badge counting those not yet
+**Alerts** in the menu shows open alerts, with a red badge counting those not yet
 acknowledged. Everyone can see the page; editors and admins can acknowledge an alert and mute
 a display. Alerts are worked out from facts every minute, so they open and close on their own:
 
@@ -90,8 +97,9 @@ flood.
 ## Audit log
 
 **Admin > Audit log** records who did what: sign-ins (also failed and rate-limited ones), user,
-display, group, playlist, schedule, media, emergency and settings changes, API token use,
-backups and restores. Each row has the time, user, how (`web`, `api`, `cli` or `system`), the
+display, group, playlist, schedule, media, emergency (also scheduled and API sends) and settings changes,
+device commands and the privileged agent (enrolment, removal, results), Android provisioning, Downloads
+uploads and removals, update-check changes, API token use, backups and restores. Each row has the time, user, how (`web`, `api`, `cli` or `system`), the
 IP address, the item and a detail. Passwords, tokens, PINs and keys are never written to it.
 
 - Filter by user, action, item and dates (in the organization's time zone); **Export CSV**
@@ -146,6 +154,19 @@ database grows too large, lower the raw retention; the daily totals are unaffect
   log lives in `AISIGNX_LOG_DIR` (default: `server/logs`), rotates at 5 MB and keeps 5 old files.
   `AISIGNX_LOG_LEVEL=DEBUG` gives more detail.
 
+## Files that are not in a backup
+
+A backup holds the database, the `secret_key` and the uploaded media (see [backup.md](backup.md)). It does **not**
+hold:
+
+- `instance/command_key`, the key that signs reboot, startup and update commands to screens. Copy it yourself
+  when you move a server. A new server makes a new key, and screens that pinned the old one refuse those
+  commands until they are paired again or their saved server key is cleared ([signed-commands.md](signed-commands.md)).
+- The **downloads** folder (the installers on the Downloads page, `downloads` next to `uploads`). The database
+  remembers the entries, so after a restore onto a bare machine they are listed but cannot be downloaded or
+  pushed to screens until you upload the files again.
+- Device logs collected from screens (`uploads/agent-logs`), the plugin cache, `.env` and the log files.
+
 ## Retention at a glance
 
 | Data | Default | Where to change |
@@ -156,6 +177,8 @@ database grows too large, lower the raw retention; the daily totals are unaffect
 | Daily play totals | 400 days | Reports > Plays (admin) |
 | Scheduled backups | newest 7 | Admin > Backups |
 | Log files | 5 x 5 MB | fixed |
+| Finished device commands | 30 days | fixed |
+| Device logs uploaded from screens | newest 5 per screen, and 7 days | fixed |
 
 Manual, uploaded and pre-restore backups are never deleted automatically.
 
@@ -171,5 +194,7 @@ Manual, uploaded and pre-restore backups are never deleted automatically.
 4. Look at **Admin > Logs** with the level set to warnings for repeated errors.
 5. Skim the **Audit log** for failed sign-ins and for users or tokens you do not expect.
 6. Under **Admin > All API tokens**, revoke tokens nobody uses any more.
-7. Check free disk space on the server, and install updates for the operating system, ffmpeg
+7. Look at **Admin > Updates** to see whether a newer AiSignX release exists, and at the **Displays** list for
+   screens whose app is older than the newest installer on **Downloads**.
+8. Check free disk space on the server, and install updates for the operating system, ffmpeg
    and the browser. After updating AiSignX itself, run `flask --app wsgi db upgrade`.

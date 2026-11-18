@@ -50,7 +50,7 @@ your playlists, so the screens update by themselves.
 ## 1. Install
 
 You need the installer folder (a zip file called `AiSignX-PowerPoint-Addin-<version>.zip`). Your
-administrator gives it to you, or builds it (see [For administrators](#10-for-administrators-rolling-it-out-to-a-team)).
+administrator gives it to you (it may be on the **Downloads** page in AiSignX, under **PowerPoint add-in**), or builds it (see [For administrators](#10-for-administrators-rolling-it-out-to-a-team)).
 
 1. **Unzip it** somewhere on your PC, for example your Documents folder. Do not run the installer
    from inside the zip.
@@ -252,7 +252,7 @@ The zip contains `Install AiSignX for PowerPoint.exe` (the one-click launcher wi
 `setup.exe` and the add-in files, `AiSignX-addin.cer` (the public certificate) and `INSTALL.txt`.
 Details and build problems are in the [add-in README](../clients/powerpoint-addin/README.md).
 
-**Give it to people:** put the zip (or the unzipped folder) on a shared drive. Each person unzips
+**Give it to people:** upload the zip on the **Downloads** page (kind **PowerPoint add-in**), or put the zip (or the unzipped folder) on a shared drive. Each person unzips
 it to their own PC and runs the launcher; no administrator rights are needed (the certificate is
 trusted per user).
 

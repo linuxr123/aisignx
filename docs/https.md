@@ -4,6 +4,32 @@ AiSignX itself speaks plain HTTP. For HTTPS, put a reverse proxy in front of it.
 the network is not fully trusted: guest Wi-Fi, shared offices, or anything reachable from the
 internet.
 
+## Why HTTPS matters
+
+On plain HTTP anyone on the network path can read what is sent. With the device features that
+now exist, that is more than a sign-in:
+
+- **Tokens and sign-ins.** Admin sessions, API tokens (`Authorization: Bearer`) and each screen's
+  display token cross the network in the clear. A display token can fetch that screen's content and
+  pending commands; an API token can upload media or raise emergencies.
+- **Signed commands.** Reboot, startup changes and app updates are signed by the server's command
+  key ([signed-commands.md](signed-commands.md)). A screen pins that key the first time it sees it
+  (trust on first use). Over plain HTTP, someone who sits between the screen and the server at that
+  moment can hand it their own key and later send it commands it will obey. Over HTTPS with a
+  certificate the screen trusts, that window is closed. Screens set up with the Android QR code get
+  the key inside the code, and the privileged Windows agent compares the key's fingerprint with the
+  one the admin typed, so those two paths do not depend on the first contact. Compare the
+  fingerprint on **Admin > System** with the one a screen shows if you want to check by hand.
+- **Automatic Windows sign-in.** The form on the display page sends a Windows password to the server
+  once, encrypted for the screen's agent. The server refuses it over plain `http://`, except when you
+  browse from the server machine itself.
+- **Installers.** An app update pushed to a screen is checked against the size and SHA-256 inside the
+  signed command (and, by the privileged Windows agent, against the installer's Authenticode signature),
+  but the download itself should not travel in the clear either.
+
+For a small network you fully control, HTTP is workable. Anything shared, wireless for guests, or reachable from the internet
+should use HTTPS. None of this has been tested on a hostile network.
+
 This page covers Caddy, nginx, IIS and Cloudflare. For Docker, the compose file has a ready-made
 Caddy profile (see [docker.md](docker.md#https-with-caddy)).
 
@@ -11,6 +37,9 @@ Caddy profile (see [docker.md](docker.md#https-with-caddy)).
 
 1. Make AiSignX listen on the local machine only, so nobody can bypass the proxy:
    `flask --app wsgi serve --host 127.0.0.1`. In Docker, remove the `5000:5000` port mapping.
+   The Linux installer takes `--host 127.0.0.1`. The Windows installer always starts the server on all
+   interfaces (`run-server.ps1` in its program folder, rewritten on every upgrade), so there, remove or
+   narrow the Windows Firewall rule **AiSignX server** instead, so only the proxy can reach port 5000 (run upgrades with `-NoFirewall`, or the rule comes back).
 2. Point the proxy at `http://127.0.0.1:5000` (in Docker Compose: `http://aisignx:5000`).
 3. In `server/.env` (or the compose environment), set:
    - `AISIGNX_PROXY_HOPS=1`. AiSignX then reads the real client IP and `https` from the

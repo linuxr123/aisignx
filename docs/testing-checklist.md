@@ -1,15 +1,15 @@
 # AiSignX v3: manual test checklist
 
-Everything here needs a human, a real screen, or real hardware. Automated tests (about 1,000) already
-pass; this list covers what they cannot. Tick as you go; write what you saw next to anything that fails.
+Everything here needs a human, a real screen, or real hardware. Automated tests (about 1,300 on the server, plus the Windows and Android app suites) already
+pass; this list covers what they cannot. None of the device sections have been run on more than the owner's Galaxy Tab and a Shield. Tick as you go; write what you saw next to anything that fails.
 
 **Before you start:** restart the server (`flask --app wsgi serve`), open the admin in a browser, sign in as admin.
-Have ready: one Windows PC with the player app, the Android phone and/or Shield, a PowerPoint PC, and 2+
+Restart the server after any server code change before testing it. Have ready: one Windows PC with the player app, the Android phone, tablet and/or Shield, a PowerPoint PC, and 2+
 screens (or browser tabs at `/player`) for sync tests.
 
 ---
 
-## A. Server installers (use a spare machine or VM, not your main server)
+## A. Server installers (use a spare machine or VM, not your main server; Windows is the main target)
 
 | # | Step | Expect | Result |
 |---|---|---|---|
@@ -20,15 +20,16 @@ screens (or browser tabs at `/player`) for sync tests.
 | A5 | Task Scheduler: end the "AiSignX Server" task's process | It comes back within ~1 min | |
 | A6 | Run the installer again (upgrade) | "Backing up the database", server back up, data still there, `app.prev` exists | |
 | A7 | `-Uninstall`, then check `C:\ProgramData\AiSignX` | Service gone, data kept | |
-| A8 | Linux: `sudo ./scripts/install-server.sh`, then `systemctl status aisignx`, reboot | Running, survives reboot | |
-| A9 | macOS: `sudo ./scripts/install-server.sh`, reboot | Running after reboot | |
-| A10 | Linux/macOS: `--uninstall` | Service removed, data kept | |
+| A8 | Linux (best effort, never run): `sudo ./scripts/install-server.sh`, then `systemctl status aisignx`, reboot | Running, survives reboot | |
+| A9 | Linux: `sudo ./scripts/install-server.sh --uninstall` | Service removed, data kept | |
+
+macOS is dropped: the install script still has a launchd branch, but it is not supported and not tested.
 
 ## B. Downloads and updates
 
 | # | Step | Expect | Result |
 |---|---|---|---|
-| B1 | User menu > Downloads (as admin) | Page opens with an "Add a file" form | |
+| B1 | Sidebar > Downloads (also in the user menu), as admin | Page opens with an "Add a file" form | |
 | B2 | Upload the Android APK, kind "Android player app" | Listed with size and SHA-256 | |
 | B3 | On the phone's browser: sign in, open `http://<server>:5000/downloads/`, tap the APK | Downloads; Android asks to allow installs from the browser, then installs | |
 | B4 | Compare the shown SHA-256 with `certutil -hashfile <file> SHA256` on the PC | Same | |
@@ -123,6 +124,13 @@ video, a YouTube clip.
 | H9 | `curl -X POST -H "Authorization: Bearer TOKEN" http://SERVER:5000/api/v1/emergency/clear` | Screens clear | |
 | H10 | A viewer-role user: try to create a token with emergency:send | Not offered | |
 
+## I. Update notice
+
+| # | Step | Expect | Result |
+|---|---|---|---|
+| I1 | Upload an APK (or Windows installer) to Downloads with a version newer than the one on a device | That display's page shows "Update available: <version>" next to its app | |
+| I2 | Same version as the device | No notice | |
+
 ## J. Galaxy tablet as a locked kiosk (QR provisioning) - see docs/android-kiosk.md
 
 Use a tablet that holds nothing you need. First upload the newest Android APK on Downloads.
@@ -138,6 +146,8 @@ Use a tablet that holds nothing you need. First upload the newest Android APK on
 | J7 | Lock the tablet, do the 7-tap exit and enter the PIN | Setup opens and shows "Unlocked for N more minutes"; the lockdown does NOT come back (no "lockdown engage" in the log) for 10 minutes, also not after Home or after opening Wi-Fi/Display/Date/Sound/Apps/About pages; the log has a `user_setup_complete=... device_provisioned=...` line. Press "End the unlock now": the player returns and locks. After 10 minutes the lockdown comes back by itself. Also check which settings pages open (the main page may still close by itself) | |
 | J8 | Setup > **Factory reset this device** (Device Owner only): Cancel, wrong word, then RESET; or alternatively Lock player off and Settings > Factory data reset | Cancel and a wrong word erase nothing; RESET erases the tablet, which then shows the Welcome screen and can be provisioned again from J2 | |
 | J9 | Try Reboot / Push the update with those switches off (Edit > Device agent) | Refused with a message | |
+| J10 | With the lockdown on, hold Power + Volume Down and choose Power off | The power menu opens even in the lockdown and the tablet shuts down. There is no remote shutdown; the admin can only reboot (J5). Write down if your model behaves differently | |
+| J11 | Look for a brightness setting on the display's edit page and in the Device agent options | There is none: a brightness setting is not built (it is on the planned list). Set the brightness on the tablet itself | |
 
 ## K. Windows: reboot, startup and updates (signed commands)
 
@@ -181,13 +191,20 @@ A spare Windows PC with the installed player, a standard (non-admin) Windows acc
 | L20 | **Turn it off** | Windows asks for the password at the next boot; the LSA secret is gone | |
 | L21 | `Install-Agent.ps1 -Uninstall -Yes`, then press **Remove agent** on the display page | Task, folders, certificate trust and the auto-login/startup settings are gone; the player works as before | |
 | L22 | Run the script against `http://` and again against `https://` | A warning for http; the auto-login form is refused over http | |
+| L23 | Run the script with `-DryRun` first | Checks every parameter and prints the plan; changes nothing | |
 
-## I. Update notice
+## M. Android TV box or phone: install link (docs/android-tv.md)
+
+Only the NVIDIA Shield has been tried. Upload the newest Android APK on Downloads first.
 
 | # | Step | Expect | Result |
 |---|---|---|---|
-| I1 | Upload an APK (or Windows installer) to Downloads with a version newer than the one on a device | That display's page shows "Update available: <version>" next to its app | |
-| I2 | Same version as the device | No notice | |
+| M1 | Downloads > **Set up an Android tablet as a kiosk**, scroll to **Phones that are already set up, and Android TV boxes**, press **Make an install link** | A short address such as `192.168.1.19:5000/get/K7M2Q9XD` and a QR code; a new link replaces the old one; valid 7 days | |
+| M2 | Phone: scan the QR code, **Download the app**, allow installs from the browser, install | The app installs and opens its setup screen | |
+| M3 | TV box: install Downloader (AFTVnews) from the box's store, type the full address with `http://`, open the page, **Download the app**, Install | The app installs after you allow Downloader to install apps | |
+| M4 | In the app: server address, **Test**, **Save and start**, then pair the code under Displays > Pair a display | The screen plays its playlist | |
+| M5 | Open the install link with a wrong or expired code, or while signed out | A 404 page for a wrong or expired code; no login needed for a valid one | |
+| M6 | Chromecast with Google TV, Fire TV (if you have one) | Same route as M3; note what differs | |
 
 ---
 

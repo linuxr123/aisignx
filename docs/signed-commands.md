@@ -1,7 +1,11 @@
 # Signed device commands (protocol)
 
-Status: **server side built; Windows and Android clients follow this document.** Extends
-[device-agent-design.md](device-agent-design.md) ("Tier B" commands).
+Status: **built** in the server (`server/aisignx/displays/signing.py`, `agent.py`), the Windows app
+(`clients/electron-client/src/agent/verify.js`, `tierb.js`), the Android app (`shell/SignedCommand.kt`) and the privileged
+Windows agent (`src/agent-svc`). **Never run on real devices except the owner's Galaxy tablet** (reboot, update and the
+QR key pin were exercised there; the Windows parts have only unit tests). Extends
+[device-agent-design.md](device-agent-design.md) ("Tier B" commands). Windows and Android are the supported platforms;
+Linux would be best effort and has no client; macOS is dropped.
 
 ## Why
 
@@ -21,12 +25,14 @@ the key). That is a deliberate, stated limit.
   instance). Rotating means deleting the file and re-pairing the devices.
 - A device fetches the public key with `GET /api/player/v1/command-key` (display token) and **pins the first one
   it sees** (trust on first use), together with the server address. A device set up by the Android QR code is
-  given the key inside the code (`command_key` in the extras bundle) and pins that, so there is no first-contact
+  given the key inside the code (`command_key` in the provisioning extras bundle, next to `server_url` and
+  `pairing_secret`) and pins that, so there is no first-contact
   window. Plain trust-on-first-use over plain http can be fooled by someone on the network at that moment; the
-  fingerprint on Admin > System lets you check. It later accepts only commands signed by the
+  **Command key** fingerprint on Admin > System lets you check. (The Windows player app has no QR step, so it is
+  always trust on first use; the privileged agent is not, see below.) It later accepts only commands signed by the
   pinned key. If the server presents a different key the device keeps the old pin, refuses Tier B commands and
-  reports `command_key_changed` in its diagnostics. Re-pairing the device (or "Forget server key" in its setup)
-  clears the pin.
+  reports `command_key_changed` in its diagnostics. **Forget server** in the app's setup (PIN protected when a PIN is
+  set), or changing the server address, clears the pin together with the stored `seq` and server-time mark.
 - The fingerprint shown on the server (Admin > System) is the first 16 hex characters of the SHA-256 of the raw
   32-byte public key, in groups of four. An admin can compare it with the one the device shows.
 
@@ -69,15 +75,21 @@ and, once per response, `"server_time_ms": <epoch ms>`. Tier A commands have no 
    allows the action is on (`settings.agent.reboot` / `.startup` / `.update` in the manifest).
 
 Any failure: do not act; acknowledge `failed` with a short reason (`bad_signature`, `wrong_display`, `expired`,
-`replayed`, `not_allowed`, `unsupported`, `bad_params`).
+`replayed`, `not_allowed`, `unsupported`, `bad_params`). The two apps differ in small ways: a payload with `v` other than
+1 is `unsupported` on Windows and `bad_signature` on Android, and a response whose `server_time_ms` went backwards is
+`bad_time` on Windows and `expired` on Android.
+
+**Lifetime and limits on the server.** A signed command expires after 120 s (`reboot_device`), 300 s (`set_startup`,
+`set_autologin`) or 900 s (`update_app`), judged with server time. A display gets at most 10 commands per hour and one
+reboot per 10 minutes (the device enforces the same gap for reboots). A display can have only one open command per action.
 
 ## Actions and parameters
 
 | action | params | notes |
 |---|---|---|
 | `reboot_device` | `{}` | Windows: `shutdown /r /t 30` after acking (so the ack gets out); Android: Device Owner only (`DevicePolicyManager.reboot`). Not more than once per 10 minutes (device-side too). |
-| `set_startup` | `{"autostart": bool, "mode": "app"\|"shell"}` | `autostart`: start the player at sign-in (Windows: per-user Run key or scheduled task; Android: boot receiver). `mode`: `app` = normal program; `shell` = the player replaces the Windows shell for that user (Windows only; the device refuses `shell` unless it can undo it). Both optional; omitted keys are left alone. |
-| `update_app` | `{"version": "3.1.1", "sha256": "<64 hex>", "size": 120158154}` | The device downloads the package from `GET /api/player/v1/commands/<request id>/package` (display token, only while the command is open), checks size and sha256 against the **signed** values, then installs: Windows runs the installer silently (`/S`), Android installs with `PackageInstaller` (silent for Device Owner, otherwise the system asks the user). |
+| `set_startup` | `{"autostart": bool, "mode": "app"\|"shell"}` | `autostart`: start the player at sign-in (Windows player app: its login item; privileged agent: a machine Run entry for the kiosk account; Android: enables or disables the boot receiver). `mode`: `app` = normal program; `shell` = the player replaces the Windows shell for that user (Windows only; Android answers `unsupported`). Both optional; omitted keys are left alone. At least one must be given. |
+| `update_app` | `{"version": "3.1.1", "sha256": "<64 hex>", "size": 120158154}` | The device downloads the package from `GET /api/player/v1/commands/<request id>/package` (display token, only while the command is open), checks size and sha256 against the **signed** values, then installs: the Windows player app runs the installer silently (`/S`), the privileged agent runs it with `/S /allusers` after checking its Authenticode signature, Android installs with `PackageInstaller` (silent for Device Owner, otherwise the system asks the user; the package must have the app's own ID and the installed app's signing key; at most 500 MB). The server offers the newest installer of the screen's kind on the Downloads page. |
 
 Acknowledge with `POST /api/player/v1/commands/<id>/ack` `{"state": "done"|"failed", "result": "<=200 chars"}`
 as for Tier A. For `reboot_device` and `update_app`, ack `done` **before** the reboot or the install starts
@@ -101,8 +113,9 @@ command format changes; the differences are the credential, the routes and one m
 token never works on those routes and an agent token never works on the display routes.
 
 **Enrollment.** An **admin** (not editor) presses *Enroll privileged agent* on the display page. The server makes a
-one-time code (16 characters from a 32-symbol alphabet, about 80 bits), stores only its hash, valid 15 minutes, dead
-after 5 wrong tries (counted across all outstanding codes) and rate limited per address. On the PC the elevated install
+one-time code (16 characters from a 32-symbol alphabet, about 80 bits, shown as `ABCD-EFGH-JKLM-NPQR`), stores only
+its hash and keeps it valid for 15 minutes. Wrong codes are not counted against the real code any more (the code is long
+enough); enroll attempts are limited to 10 per minute per address. On the PC the elevated install
 script posts it:
 
 ```
@@ -112,7 +125,8 @@ POST /api/player/v1/agent/enroll   {"code": "...", "public_key": "<b64 X25519>",
 
 The code burns atomically (works once). The script compares `command_key` with the fingerprint the admin typed (printed
 on the same page) and stops on a mismatch, so there is no trust-on-first-use window. Enrolling again replaces the token;
-*Remove agent* clears it. Both cancel the display's waiting Tier B commands.
+*Remove agent* clears it. Both cancel the display's waiting Tier B commands. Unpairing the display also ends the agent.
+The page marks the agent "not seen" after 10 minutes without a poll (the agent polls every 20 s).
 
 | Route | Purpose |
 |---|---|
@@ -162,4 +176,6 @@ and the node agent: `clients/electron-client/test/vectors/` (`gen_vectors.py` wr
 ## Not in this protocol
 
 The agent updating **itself** (its own program files change only when an admin runs the signed `Install-Agent.ps1`
-again), Linux and macOS (macOS is dropped; a Linux root service would reuse this protocol).
+again), Linux and macOS (macOS is dropped; a Linux root service would reuse this protocol but nothing is built), vendor
+release keys, canary rollout and a release catalog (the server signs the installer's hash and size itself; see
+[device-agent-design.md](device-agent-design.md)).

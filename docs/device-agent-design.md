@@ -1,7 +1,10 @@
 # Device agent and watchdog: design
 
-Status: **design, approved to build in phases** (first release = phases 1-5). Written 2026-11-15 from
-a read-only review of the Windows app, the Android app and the server.
+Status: **design, mostly built** (see [Status of the phases](#status-of-the-phases) and
+[Decisions taken](#decisions-taken)). Written 2026-11-15 from a read-only review of the Windows app, the Android app and
+the server. The text below is the original design and is kept as written; where the build differs, the two sections at
+the end say how. Platform scope: Windows and Android supported, Linux best effort and not built, macOS dropped. Nothing
+has run on hardware other than the owner's Samsung Galaxy tablet and a Shield.
 
 ## Goal
 
@@ -142,9 +145,48 @@ Nothing here has been run on hardware yet; every item gets a manual test checkli
 | Command signing key | Server-held operator key, public key pinned at pairing with the fingerprint shown to the admin. It protects against network attackers and stolen display tokens, not against a fully compromised server. |
 | Windows kiosk helper | Documentation now, a local undoable script later, **never** a remote "set the password / replace the shell" command. |
 
+## Status of the phases
+
+| Phase | State |
+|---|---|
+| 1 Server foundation | Built: agent switches per display (`agent_watchdog`, `agent_allow_restart`, `agent_allow_logs`, `agent_allow_reboot`, `agent_allow_startup`, `agent_allow_update`), capability fields in `diag.agent`, audit actions, UI that disables what a device cannot do. `agent_update_channel` was not built. |
+| 2 Durable commands | Built: `device_commands`, delivery with the heartbeat and `GET /commands`, ack, expiry job (30 days of history). Max 10 commands per display per hour. |
+| 3 Watchdogs | Built for both clients (Windows scheduled task `AiSignXWatchdog`; Android escalation ladder). Never run on a PC; the Android part ran on the tablet. |
+| 4 `restart_player` | Built on both. |
+| 5 `collect_logs` | Built on both. Uploads are stored as files (at most 1 MB, 5 per display, 7 days), not in a `device_logs` table. |
+| 6 Command signing | Built (Ed25519, see [signed-commands.md](signed-commands.md)). Differs from the plan, see below. |
+| 7 Reboot | Built: Android Device Owner `reboot`; Windows `shutdown /r /t 30` (in the app, or through the privileged agent). Rate limits as designed. |
+| 8 Updates | Partly built. Built: `update_app` with a signed size and SHA-256, silent install (Android Device Owner, Windows), the Downloads page as the source, **Update available** on the display page, rollback in the privileged agent. Not built: release catalog, vendor offline release key, canary rollout, health gate across displays. |
+| 9 Kiosk helpers | Built: `setup-kiosk.ps1` (auto-login and shell for a user, with undo), the `set_startup` shell mode with an Explorer fallback, the Android lockdown and QR provisioning ([android-kiosk.md](android-kiosk.md)). |
+| 10 Optional | Privileged Windows agent built ([windows-agent-service.md](windows-agent-service.md)). Display token rotation not built. |
+
+## Decisions taken
+
+These replace the recommendations in "Decisions for the owner" where they differ.
+
+| Question | What was decided and built |
+|---|---|
+| Command signing key | A server-held Ed25519 key (`command_key` in the instance folder), made on first use. Devices pin the public key on first use (trust on first use, per server address). Two ways around the first-contact window: the Android QR code carries the key, and the Windows agent's install script compares the server's key with a fingerprint the admin copies from the page. The fingerprint is on Admin > System. A changed key is refused and reported as `command_key_changed`. |
+| Sequence numbers | `seq` is time based: the server's clock in milliseconds, forced to rise per display. Restoring or rebuilding the database cannot make new commands look old. Replaces the plain counter. |
+| Windows SYSTEM service | **Built**, as an optional **privileged agent**: Electron's binary in node mode run by a SYSTEM scheduled task, with its own token, enrollment code and local switches. It handles reboot, startup, update and automatic sign-in once enrolled; the player's own handling then stands down. |
+| Windows code-signing certificate | A self-made, code-signing-only certificate (`New-DevCert.ps1`) is enough; the agent pins its thumbprint. Nothing has to be bought. A purchased certificate can replace it by reinstalling the agent. Without a signed installer the agent refuses updates. |
+| Android Device Owner as the managed tier | Yes, via adb or the QR code. |
+| Trust root for updates | The server signs the command that names the installer's hash and size; there is no separate vendor release key. The privileged agent adds a second key (the code-signing certificate). |
+| Windows kiosk helper | Documentation, `setup-kiosk.ps1` and the signed `set_startup` shell mode. No remote "set the password" command through the player; the agent's auto-login command is the one exception and is admin-only, encrypted end to end and HTTPS only. |
+| Auto-update default | Off. Admin-triggered per display. |
+
+**Dropped or deferred:** release catalog and canary rollout, a vendor offline release key, `agent_update_channel`,
+display token rotation, the agent updating itself (an admin re-runs the signed install script), any Linux agent, any
+macOS support, rollback of a bad update on Android (not possible on the device), a remote shutdown.
+
+**Power menu on Android.** With the Device Owner lockdown on, Power + Volume Down still opens the power menu on the
+owner's Galaxy tablet, and shutting down from it works. No command can shut a device down remotely; only reboot exists.
+
 ## Unverified before building
 
 - Whether native code can use the display credential as a bearer token on `/events` and
-  `/heartbeat` (Electron main and Android), or only the page cookie.
-- Multi-worker behaviour of the in-memory SSE broker (the server runs one process today).
-- The real implementation of the admin/editor decorators for the new endpoints.
+  `/heartbeat` (Electron main and Android), or only the page cookie. Settled for commands: both apps send it as a
+  bearer token on `/commands`, `/command-key` and the package download.
+- Multi-worker behaviour of the in-memory SSE broker (the server runs one process today). Still open.
+- The real implementation of the admin/editor decorators for the new endpoints. Settled: every device command (restart,
+  logs, reboot, startup, update, auto-login) and the agent enrollment need the admin role, not editor.

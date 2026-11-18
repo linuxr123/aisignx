@@ -1,15 +1,19 @@
 # Deployment
 
-How to run AiSignX for real screens: the server, start-up, plugin network access, the kiosk
-browser, and pointers to [HTTPS](https.md) and [Docker](docker.md).
-For a quick test at home, `flask --app wsgi run` is enough.
+How to run AiSignX for real screens: the server, settings, where data lives, start-up, plugin
+network access, the kiosk browser, and pointers to [HTTPS](https.md) and [Docker](docker.md).
+For a quick test at home, `flask --app wsgi run` is enough. To install the server as a service,
+see [installing-the-server.md](installing-the-server.md).
+
+Platforms: Windows and Linux are supported; Docker runs anywhere Docker does. macOS is not
+supported. None of this has been run on a large installation or on a wide range of hardware yet.
 
 ## Run the server
 
 In the `server` folder:
 
 ```powershell
-.venv\Scripts\flask --app wsgi serve        # Linux/macOS: .venv/bin/flask --app wsgi serve
+.venv\Scripts\flask --app wsgi serve        # Linux: .venv/bin/flask --app wsgi serve
 ```
 
 Options: `--host` (default `0.0.0.0`, all network interfaces), `--port` (default `5000`) and
@@ -31,6 +35,56 @@ processes or workers anyway, screens still pick up changes, but only within abou
 **Database.** SQLite runs in WAL mode. Keep `server/instance` on a local disk, never on a
 network share.
 
+## Settings and data folders
+
+Settings are environment variables. Put them in `server/.env` (read at start-up; the service
+installers write `aisignx.env` instead, see [installing-the-server.md](installing-the-server.md)) or in the
+service environment, and restart after a change. Nothing here is required: AiSignX runs with
+none of them set.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AISIGNX_SECRET_KEY` | generated | Session signing key. Unset: a random key is made once and kept in `instance/secret_key`. It also encrypts API keys saved on the Plugins page. |
+| `AISIGNX_DATABASE_URL` | SQLite file `instance/aisignx.db` | Any SQLAlchemy URL. With PostgreSQL see [backup.md](backup.md#postgresql). |
+| `AISIGNX_INSTANCE_DIR` | `server/instance` | Folder for the database, `secret_key` and `command_key`. |
+| `AISIGNX_UPLOAD_DIR` | `uploads` beside `instance/` | Uploaded media, thumbnails, screenshots and device logs. |
+| `AISIGNX_BACKUP_DIR` | `backups` beside `instance/` | Backup archives. |
+| `AISIGNX_LOG_DIR` | `logs` beside `instance/` | `aisignx.log`, rotated at 5 MB, 5 files. |
+| `AISIGNX_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
+| `AISIGNX_SECURE_COOKIES` | off | `1` marks cookies Secure. Set it once the admin is only used over HTTPS ([https.md](https.md)). |
+| `AISIGNX_PROXY_HOPS` | `0` | Number of reverse proxies in front whose `X-Forwarded-*` headers are trusted. |
+| `AISIGNX_MAX_UPLOAD_MB` | `2048` | Largest upload (media, Downloads files, backup archives). |
+| `AISIGNX_MAX_STREAMS` | `50` | Open live-update connections. `serve` starts this plus 16 threads. |
+| `AISIGNX_SCHEDULE_TICKER` | on | `0` turns off the per-minute push of schedule changes ([scheduling.md](scheduling.md)). |
+| `AISIGNX_JOBS` | on | `0` turns off the background jobs (alerts, backups, retention, proof-of-play totals, scheduled emergencies, update check). |
+| `AISIGNX_FFMPEG`, `AISIGNX_FFPROBE` | found on `PATH` | Paths to ffmpeg and ffprobe (video length, thumbnails, conversion). |
+| `AISIGNX_BROWSER` | auto-detect | Edge, Chrome or Chromium used for web page previews. |
+| `AISIGNX_BROWSER_NO_SANDBOX` | off | `1` starts that browser with `--no-sandbox` (needed in a container without root). |
+| `AISIGNX_WEBSHOT_TIMEOUT` | `45` | Seconds allowed per web page screenshot. |
+| `AISIGNX_SMTP_PASSWORD` | none | Password for alert e-mail; never stored in the database ([operations.md](operations.md#e-mail)). |
+| `AISIGNX_LOGIN_MAX_PER_IP` | `20` | Failed sign-ins (and failed API token checks) per IP address per window. |
+| `AISIGNX_LOGIN_MAX_PER_USER` | `5` | Failed sign-ins per user name per window. |
+| `AISIGNX_LOGIN_WINDOW_MIN` | `15` | Length of that window in minutes. |
+| `AISIGNX_UPDATE_CHECK` | on | `0` (also `false`, `no`, `off`) switches the daily check for a newer release off, whatever the Updates page says ([updates.md](updates.md)). |
+| `AISIGNX_UPDATE_REPO` | `linuxr123/aisignx` | `owner/name` of the GitHub repository the update check asks. A malformed value falls back to the default. |
+| `AISIGNX_PLUGIN_CACHE_DIR`, `AISIGNX_PLUGIN_CACHE_MB`, `AISIGNX_PLUGIN_HTTP_PROXY`, `AISIGNX_OPENMETEO_KEY`, `AISIGNX_FINNHUB_KEY` | see [Plugins](#plugins) | Plugin data cache, its size cap, the plugin proxy and provider keys. |
+
+The folders `uploads`, `backups`, `logs` and `plugin-cache` are placed next to the instance
+folder. That parent is the **data folder**: `server/` in a plain checkout,
+`C:\ProgramData\AiSignX` or `/var/lib/aisignx` with the installers, `/data` in Docker. It holds:
+
+| Where | Contents |
+|---|---|
+| `instance/aisignx.db` | The SQLite database (with `-wal` and `-shm` files while running). |
+| `instance/secret_key` | The session key, unless `AISIGNX_SECRET_KEY` is set. |
+| `instance/command_key` | The server's Ed25519 key that signs reboot, startup and update commands to screens. Made the first time a screen or the Android provisioning page needs it. Owner-only. Screens pin its public key on first contact, so keep it: a new server with a new key makes screens refuse those commands. The fingerprint is on **Admin > System**. **Not part of a backup**; copy it with your `.env` ([backup.md](backup.md)). |
+| `uploads/` | `media`, `thumbs`, `screenshots`, `agent-logs` (device logs collected from screens) and `tmp`. |
+| `downloads/` | The installers on the **Downloads** page, stored under random names ([downloads.md](downloads.md)). **Not part of a backup.** Installers pushed to screens are read from here. |
+| `backups/`, `logs/`, `plugin-cache/` | Backup archives, application log, fetched plugin data. |
+
+Never serve `uploads` or `downloads` straight from a web server; AiSignX checks the user or the
+screen's token before it hands out a file.
+
 **Firewall.** Screens connect to port 5000. On Windows, allow it once in an admin PowerShell:
 
 ```powershell
@@ -48,7 +102,8 @@ signed in:
 
 A service wrapper such as NSSM works too, with the same three values.
 
-**Linux (systemd).** Save as `/etc/systemd/system/aisignx.service`, then run
+**Linux (systemd).** The installer script does this for you
+([installing-the-server.md](installing-the-server.md)). By hand, save as `/etc/systemd/system/aisignx.service`, then run
 `sudo systemctl enable --now aisignx`:
 
 ```ini
@@ -72,7 +127,7 @@ Plugins (weather, radar, RSS, stocks; see [plugins.md](plugins.md)) make outboun
 the **server**. Screens never contact these providers, except YouTube, which each screen loads
 itself.
 
-**Settings** (in `server/.env` or the service environment; restart after a change):
+**Plugin settings** (same places as above):
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -117,7 +172,11 @@ The admin can add a contact e-mail or URL on the plugins page; MET Norway requir
 ## Reverse proxy and HTTPS
 
 Use HTTPS when the network is not fully trusted (guest Wi-Fi, shared offices, anything reachable
-from the internet). Put a reverse proxy such as Caddy, nginx or IIS in front of AiSignX, then set
+from the internet). It matters more now that screens can be told to reboot or install an app:
+the first time a screen sees the server's command key over plain `http://` it cannot tell a
+fake server from the real one, and API tokens and admin sign-ins cross the network in the
+clear. Sending a Windows password for automatic sign-in is refused over plain `http://` (except
+from the server machine itself). Put a reverse proxy such as Caddy, nginx or IIS in front of AiSignX, then set
 `AISIGNX_PROXY_HOPS=1` and `AISIGNX_SECURE_COOKIES=1`. The proxy must not buffer the screens'
 live-update stream. [https.md](https.md) has the full steps and examples for Caddy, nginx, IIS
 and Cloudflare, and how screens and the PowerPoint add-in trust a private certificate.

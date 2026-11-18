@@ -1,6 +1,8 @@
 # AiSignX Player (Electron)
 
-A kiosk shell around the AiSignX v3 browser player for Windows (and Linux, untested).
+A kiosk shell around the AiSignX v3 browser player for Windows 10 and 11 (version 3.1.0). Linux targets
+(AppImage, deb) exist in the build but have never been run: Linux is best effort. macOS is dropped. Nothing
+here has run on more than the owner's own hardware; the Windows parts that need a PC are marked below.
 It does not re-implement playback: Chromium shows the server's `/player/` page, loaded
 from a small caching proxy inside the app.
 
@@ -12,7 +14,7 @@ Chromium  ->  http://127.0.0.1:<port>/player/  ->  loopback proxy (main process)
 ```
 
 - **Pairing** is the browser player's own flow: the screen shows a code, an admin enters it
-  at `<server>/displays/pair`. The credential is an HttpOnly cookie kept in Chromium's
+  at `<server>/displays/pair` (**Displays > Pair a display**). The credential is an HttpOnly cookie kept in Chromium's
   persistent profile. No password, token or code is ever typed on the device.
 - **Offline:** when the server goes away the player keeps playing. A restart while the
   server is down plays from the page snapshot and the media cache. A screen that was never
@@ -55,14 +57,25 @@ checks that `window.AiSignXShell` exists, that `/__shell/offline` answers 503 an
 ## Build the installer
 
 ```powershell
-npm run dist:win     # dist-build\AiSignX Player Setup 3.0.0.exe
+npm run dist:win     # dist-build\AiSignX Player Setup 3.1.0.exe
+npm run agent:win    # optional: dist-build\agent\ (the privileged agent's install kit, see below)
 npm run dist:linux   # AppImage and deb (run on Linux; not verified yet)
 ```
 
 `dist:win` first runs `scripts\prebuild_clean.ps1`, which stops a running player and
 clears `dist-build\`. If electron-builder fails to extract `winCodeSign` with a symlink
-error, enable Windows Developer Mode. The installer is not code-signed, so expect a
-SmartScreen warning.
+error, enable Windows Developer Mode. The installer is an assisted NSIS installer
+(`oneClick: false`, per user by default, elevation allowed, no desktop shortcut).
+
+**Signing.** The build signs the app, the uninstaller and the installer only when the environment variable
+`AISIGNX_SIGN_THUMBPRINT` (40 hex characters of a code-signing certificate in `Cert:\CurrentUser\My`) is
+set; `AISIGNX_SIGN_TIMESTAMP` (for example `http://timestamp.digicert.com`) adds a timestamp. Without them the
+build works and stays unsigned, and Windows SmartScreen warns on a manual install. The hook is
+`scripts\sign-hook.js`, which calls `scripts\Sign-File.ps1`. To sign an installer that is already built, run
+`scripts\Sign-Installer.ps1`; it prints the SHA-256 and size of the signed file, which are what the server
+records when you upload it on **Downloads**. Sign last and do not touch the file afterwards. A self-signed
+certificate (`clients\powerpoint-addin\tools\New-DevCert.ps1`) is enough for the privileged agent and
+is not trusted by Windows for anyone else.
 
 The app ID is `com.aisignx.player`, the same as v2, so installing v3 replaces the v2
 app. v3 keeps its data in its own folder, so nothing from v2 is reused or overwritten.
@@ -83,8 +96,9 @@ app. v3 keeps its data in its own folder, so nothing from v2 is reused or overwr
 5. **Save and start** opens the player full screen; pair it in the admin.
 
 Changing the server, or **Forget server**, clears the pairing cookie, local storage, both
-caches and the pin. The client ID stays. Changing only the server's IP address does not
-force a re-pair, but the new address must be entered in setup.
+caches and the pin. The client ID stays. Saving a different server address in setup counts as
+changing the server, so it clears the same things and the screen must be paired again (give the
+server a fixed address or a DNS name).
 
 ## Keys
 
@@ -188,13 +202,22 @@ Build (on the PC that holds the signing certificate):
 ```powershell
 $env:AISIGNX_SIGN_THUMBPRINT = '<40 hex of your code-signing certificate>'   # never put it in a tracked file
 npm run dist:win              # installer; the hook signs the app, uninstaller and installer
-npm run agent:win             # dist-buildgent\AiSignX-Agent-<version>.zip and a signed Install-Agent.ps1
+npm run agent:win             # dist-build\agent\AiSignX-Agent-<version>.zip and a signed Install-Agent.ps1
 ```
 
 Install on the screen PC, as administrator, with the command line the display page shows
-(Display > Privileged agent > Enroll the privileged agent). `.\Install-Agent.ps1 -DryRun ...` checks every parameter
-and changes nothing. `.\Install-Agent.ps1 -Uninstall` removes it. While the agent is installed and running, the
-player's own reboot/startup/update code stands down; without it that code works as before.
+(display page > **Privileged agent** card > **Enroll the privileged agent**). `.\Install-Agent.ps1 -DryRun ...` checks
+every parameter and changes nothing. `.\Install-Agent.ps1 -Uninstall` removes it. Never run on a real PC yet.
+
+**In-app Tier B code or the agent?** Both can receive the signed reboot, startup and update commands, but never both
+at once. The player reads `%ProgramData%\AiSignXAgent\public\status.json`; while it says `running` and is younger than
+15 minutes the player's own handling of those commands stands down and the diagnostics report `delegated_to_agent`
+(and no `can_reboot`, `can_update` or `can_set_startup` from the player). Once the agent is enrolled the server also
+stops delivering them to the display token. If the agent stops or reports `unsafe_acl`, the in-app code does not take
+over by itself: those commands wait ("not seen for N min") until the agent runs again or an admin presses **Remove
+agent**. Use the in-app path (next section) for a normal user PC; use the agent when the PC must reboot, update and
+sign in with nobody logged in as administrator. Automatic sign-in is only possible through the agent, or by hand with
+`setup-kiosk.ps1`.
 
 ## Remote reboot, startup and updates
 
@@ -260,9 +283,10 @@ Undo, any of:
 
 ### Auto-login is local only (`resources\setup-kiosk.ps1`)
 
-Auto-login needs **administrator rights** (it writes under `HKLM`) and the user's **password**. The app runs as a
-normal user and must stay that way, and a password must not travel through the server, so this step is a helper you
-run on the device in an **elevated** PowerShell (it ships as `setup-kiosk.ps1` in the app's `resources` folder):
+Without the privileged agent, auto-login needs **administrator rights** (it writes under `HKLM`) and the user's
+**password**. The player app runs as a normal user and must stay that way, so this step is a helper you
+run on the device in an **elevated** PowerShell (with the agent, the admin page can send the password encrypted
+to the agent instead, which stores it as an LSA secret: [docs/windows-agent.md](../../docs/windows-agent.md)) (it ships as `setup-kiosk.ps1` in the app's `resources` folder):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\AiSignX Player\resources\setup-kiosk.ps1" -Do AutoLogin
@@ -277,8 +301,9 @@ LSA secret). `-Do Shell` writes the same shell value as the web admin, for any c
 
 ### Honest limits (nothing here has run on real hardware yet)
 
-- The installer is **not code-signed**: Windows SmartScreen may warn on a manual install. A silent install started by
-  the app is not interactive, but a managed PC with an application-control policy can still block it.
+- The installer is code-signed only if you built it with your own certificate (see Signing above): otherwise Windows
+  SmartScreen may warn on a manual install. A silent install started by the app is not interactive, but a managed PC
+  with an application-control policy can still block it.
 - A silent update closes the old app and starts the installer. In shell mode the launcher waits up to 10 minutes for the
   new version (it does not start Explorer). The NSIS flags (`/S --updated --force-run`) have not been tested against
   a real installer run. If the installer never relaunches the app, the launcher gives up after 10 minutes and starts
@@ -344,7 +369,7 @@ src/main.js            app lifecycle, IPC, wiring
 src/config.js          config.json, client_id, server URL rules
 src/trust.js           CA list, pinning agent, certificate capture
 src/health.js          setup's /healthz test
-src/agent.js           device agent: commands, heartbeat file, watchdog task
+src/agent.js           device agent: commands, heartbeat file, watchdog task (stands down for the agent via agent/delegate.js)
 src/agent-svc/         the privileged agent (SYSTEM): main, core, updater, ops, ecies, authenticode, config, state
 scripts/               Build-Agent, Sign-File, Sign-Installer, sign-hook.js
 resources/Install-Agent.ps1  elevated installer of the agent; resources/agent/ps/ its helper scripts
@@ -366,4 +391,6 @@ test/                  node:test unit tests
 
 ## Deferred
 
-Auto-update of the player without the agent, and macOS builds (dropped), are not planned.
+macOS builds (dropped), a Linux build that has been run, and an agent that updates itself (an admin re-runs the
+signed `Install-Agent.ps1`) are not planned. The player updates itself only through the signed `update_app` command
+described above.

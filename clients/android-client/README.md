@@ -12,7 +12,9 @@ updates all run in the player page, the same code a desktop browser uses. The ap
 - Lock player: Android lock task, with full lockdown as Device Owner,
 - an optional Home-app mode and a start-at-boot fallback.
 
-Android 8.0 (API 26) or newer. Phones, tablets and Android TV boxes.
+Android 8.0 (API 26) or newer. Phones, tablets and Android TV boxes. Current version: **3.0.3**
+(`versionCode` 303, application ID `com.aisignx.player`). The app has been run on one Samsung Galaxy
+tablet (QR provisioning, lockdown) and one NVIDIA Shield; other devices are untested.
 
 ## Build
 
@@ -51,8 +53,8 @@ media cache on first start; the screen is set up and paired again.
      the server: `openssl x509 -noout -fingerprint -sha256 -in cert.pem`. Tick **Trust this
      certificate** only if they match. The pin applies to this server only.
    - Plain http to a public address shows a warning. On a LAN it is silent.
-2. The player shows a pairing code. In the admin, open **Displays > Pair** and enter it.
-   The admin shows the player as `android-3.0.0` with the device model.
+2. The player shows a pairing code. In the admin, open **Displays > Pair a display** and enter it.
+   The admin shows the player as `android-3.0.3` with the device model.
 3. No password, token or code is typed on the device.
 
 **Back to setup:** hold the remote's OK (D-pad center) or Menu key for 1.5 seconds, or tap
@@ -67,7 +69,7 @@ name.
 ## Kiosk tablet from a QR code (factory reset to locked down)
 
 A factory-reset tablet can be set up with no cable: **Admin > Downloads > Set up an Android
-tablet** makes a QR code; on the tablet's Welcome screen tap 6 times and scan it. The app
+tablet as a kiosk (QR code)** makes a QR code; on the tablet's Welcome screen tap 6 times and scan it. The app
 installs, becomes Device Owner, pairs itself and shows the playlist. The display's **Lock player**
 switch then applies or removes the full lockdown (status bar, keyguard, Home, safe boot, factory
 reset button, ...) so the web page can always give the tablet back. Everything about it, the
@@ -78,6 +80,15 @@ unit tested) and `ui/LockdownApplier.kt` (the DevicePolicyManager calls), `shell
 and `shell/Ed25519.kt` (signed commands; the pure-Java `net.i2p.crypto:eddsa` library, because
 the JDK has Ed25519 only from API 33), `shell/Installer.kt` (PackageInstaller).
 
+On the tablet, after the PIN exit the Setup screen opens a **10 minute unlock window**: the lockdown stays
+released while it is open (it survives an app restart, a reboot ends it, **End the unlock now** ends it
+early). Setup then shows one button per Android settings page (Wi-Fi, Display, Date and time, Sound, Apps,
+About the device, main Settings page) and, as Device Owner, **Factory reset this device** (type `RESET`;
+`DevicePolicyManager.wipeData`). If the process starts 5 times in 10 minutes without a manifest being
+fetched, the app releases the lockdown by itself (crash-loop breaker). Details and what is unconfirmed:
+[docs/android-kiosk.md](../../docs/android-kiosk.md). With the lockdown on, **Power + Volume Down** opens
+the power menu on the owner's Galaxy tablet; shutting down from there works. There is no remote shutdown.
+
 ## Home-app mode and starting at boot
 
 For dedicated signage boxes tick **Use as Home app** in setup, then press Home once and
@@ -87,6 +98,10 @@ and after Home is pressed.
 Without Home mode the app relies on a `BOOT_COMPLETED` receiver. Android 10 and newer block
 activity starts from the background, so on many devices that start is refused; Home mode is
 the reliable option.
+
+A reboot ends the unlock window and goes straight to the player; with **Use as Home app** ticked
+(the default after QR provisioning) the player stays the Home app even when the lockdown is lifted.
+Untick it in Setup to get the device's own launcher back.
 
 Updates: the admin can send **Update app** from the display page (signed command, see
 [docs/signed-commands.md](../../docs/signed-commands.md)). As Device Owner the install is silent;
@@ -174,8 +189,8 @@ Media for a schedule that has not played since the server went away is not cache
 ## Device agent
 
 A small agent inside the player app. Everything is **off by default** and switched per display in the
-admin (Displays > display > Edit). The app reports what it can do (`stats().agent`, cap `agent`);
-the admin page hides the rest. Design: `docs/device-agent-design.md`.
+admin (Displays > display > Edit > Device agent). The app reports what it can do (`stats().agent`, cap
+`agent`); the admin page disables the rest. Design: [docs/device-agent-design.md](../../docs/device-agent-design.md).
 
 - **Watchdog** (switch "watchdog"). The page sends `alive` about every 10 s. If it stops, the app
   escalates: 45 s reload the page, 90 s recreate the WebView, 180 s recreate the activity, 300 s
@@ -194,6 +209,17 @@ the admin page hides the rest. Design: `docs/device-agent-design.md`.
 - **Crashes.** An uncaught exception is written to the log; with the watchdog on, the app asks for a
   relaunch (at most once per 10 min). At start the previous exit reasons (Android 11+) are logged.
 - **Update.** After an app update the player is started again, but only with Home mode or Lock player on.
+- **Reboot, startup, update (signed).** Three more verbs, `reboot_device`, `set_startup` and `update_app`, each
+  carry an Ed25519 signature from the server's command key. The app pins that key per server address (the QR code
+  carries it; otherwise it is pinned the first time it is seen) and refuses commands signed by another key, with
+  `command_key_changed` in the diagnostics. It checks the signature, display id, expiry (server clock), a rising
+  sequence number saved before acting, typed parameters and the switch. `reboot_device`: Device Owner only,
+  acknowledged first, at most once per 10 minutes. `set_startup`: `autostart` enables or disables the boot
+  receiver; `mode: shell` is refused (Windows only). `update_app`: downloads the installer with the display
+  credential, checks the signed size and SHA-256 while saving, and installs it with `PackageInstaller`, silently as
+  Device Owner. It only accepts a package with its own application ID signed by the installed app's key (at most
+  500 MB). **Forget server** clears the pin, the sequence number and the server-time mark. Protocol:
+  [docs/signed-commands.md](../../docs/signed-commands.md).
 
 ### Honest limits
 
@@ -203,13 +229,14 @@ the admin page hides the rest. Design: `docs/device-agent-design.md`.
 - The relaunch alarm is inexact (a few seconds late, more in Doze) because exact alarms need a
   permission Play policy restricts.
 - A user's **Force stop** cannot be undone by the app; nothing runs until it is opened again.
-- No reboot and no app update in this version (`can_reboot` and `can_update` are false).
+- Reboot works only as Device Owner. A reboot, a startup change or an app update is a **signed command** (below),
+  so it needs the server's command key; Restart and Collect logs are plain.
 - Not added: `LOCKED_BOOT_COMPLETED` (settings live in credential-protected storage, which is
   unreadable before the first unlock) and `QUICKBOOT_POWERON` (vendor-specific, unverified).
 - The watchdog relies on the page sending `alive`; a server older than this version never does, so
   its switch is off.
 
-### Manual test checklist (real device; nothing here was run on hardware yet)
+### Manual test checklist (real device; only parts of it were run, on one tablet)
 
 Do it on an Android TV box (Shield TV) and on a phone. Debug builds log to the file under "Logs".
 
@@ -246,9 +273,15 @@ app/src/main/java/com/aisignx/player/
   cache/    PageCache.kt  MediaCache.kt  MediaDownloader.kt  Range.kt  Served.kt
   shell/    ShellInfo.kt (window.AiSignXShellInfo)  ShellPort.kt (window.AiSignXShellPort)
             Agent.kt (watchdog, command poll)  AgentRules.kt (pure rules)  AgentStore.kt  AgentRestart.kt
-  ui/       SetupActivity.kt  PlayerActivity.kt  PlayerWebClient.kt  Kiosk.kt  TvKeys.kt
+            SignedCommand.kt  Ed25519.kt  Installer.kt  PackageDownload.kt (Tier B)
+            DisplaySettings.kt  Unlock.kt  Capture.kt (screenshot)
+  ui/       SetupActivity.kt  PlayerActivity.kt  PlayerWebClient.kt  PlayerCheck.kt  Kiosk.kt  TvKeys.kt
             ControlKeys.kt (keys -> control actions)  LockPolicy.kt  LockTask.kt (lock task, Device Owner)
+            Lockdown.kt  LockdownApplier.kt  LockdownRunner.kt (the Device Owner lockdown and its retries)
+            LocalUnlock.kt  LocalUnlockWindow.kt (10 minute unlock window)
+            SettingsPages.kt  SetupFlags.kt  FactoryReset.kt
+  provision/ QR provisioning: ProvisionActivity (Setting up this screen), Provisioning, ProvisionRules
   AisignxDeviceAdminReceiver.kt   Device Owner receiver
-  boot/     BootReceiver.kt
+  boot/     BootReceiver.kt (boot, and PackageReplacedReceiver)
 app/src/test/   JVM unit tests (no emulator needed)
 ```
