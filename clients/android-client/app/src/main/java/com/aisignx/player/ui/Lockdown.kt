@@ -19,11 +19,12 @@ object Lockdown {
     /**
      * Not Device Owner: nothing to do (screen pinning is the old LockTask behaviour).
      * Lock player on and not remotely unlocked: lock everything down. Anything else: release.
-     * A PIN exit or a remote unlock therefore lifts the lockdown until the player locks again.
+     * A remote unlock lifts it for its time; [localHold] (the local unlock window after a PIN exit, or the
+     * Setup screen being in front, see [LocalUnlock]) keeps it released the same way.
      */
-    fun decide(owner: Boolean, kioskLock: Boolean, remoteUnlocked: Boolean): Mode = when {
+    fun decide(owner: Boolean, kioskLock: Boolean, remoteUnlocked: Boolean, localHold: Boolean = false): Mode = when {
         !owner -> Mode.NONE
-        kioskLock && !remoteUnlocked -> Mode.ENGAGE
+        kioskLock && !remoteUnlocked && !localHold -> Mode.ENGAGE
         else -> Mode.RELEASE
     }
 

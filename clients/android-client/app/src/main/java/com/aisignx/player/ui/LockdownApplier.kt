@@ -59,7 +59,7 @@ object LockdownApplier {
     /** Boot, update, provisioning: apply what the last manifest said, without the player running. */
     fun syncStored(ctx: Context) {
         val config = AiSignXApp.from(ctx).config
-        sync(ctx, Lockdown.decide(LockTask.isDeviceOwner(ctx), config.kioskLock, false), config.homeMode)
+        sync(ctx, Lockdown.decide(LockTask.isDeviceOwner(ctx), config.kioskLock, false, LocalUnlockWindow.hold(ctx)), config.homeMode)
     }
 
     /** PIN exit or removal of the Device Owner: release now, ignoring every gate. Safe on a non-owner. */

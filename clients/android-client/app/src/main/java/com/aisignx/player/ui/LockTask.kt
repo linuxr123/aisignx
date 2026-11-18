@@ -61,6 +61,27 @@ object LockTask {
         }
     }
 
+    /**
+     * Setup screen, Device Owner only: erases the whole device. DISALLOW_FACTORY_RESET only hides and
+     * blocks the reset button in Settings (a restriction on the user); wipeData is the owner's own
+     * call and is not subject to it. The lockdown is released first anyway so nothing is left half set.
+     * Returns false when Android refused (the device is then unchanged); on success the device reboots.
+     */
+    fun wipeDevice(activity: Activity, homeMode: Boolean): Boolean {
+        if (!FactoryReset.offered(isDeviceOwner(activity))) return false
+        val dpm = dpm(activity) ?: return false
+        try { activity.stopLockTask() } catch (_: Exception) { }
+        LockdownApplier.releaseNow(activity, homeMode, full = true)
+        return try {
+            FileLog.w(TAG, "factory reset requested from the setup screen")
+            dpm.wipeData(0)
+            true
+        } catch (e: Exception) {
+            FileLog.w(TAG, "factory reset refused: ${e.message}")
+            false
+        }
+    }
+
     /** Enables or disables the Home alias. Throws when the change did not take effect (never swallowed). */
     fun setHomeAlias(ctx: Context, enabled: Boolean) {
         val state = if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED

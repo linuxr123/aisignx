@@ -4,7 +4,13 @@ import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.text.InputType
 import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import androidx.appcompat.app.AlertDialog
 import android.view.inputmethod.EditorInfo
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -80,9 +86,14 @@ class SetupActivity : AppCompatActivity() {
         b.saveButton.setOnClickListener { save() }
         b.forgetButton.setOnClickListener { forget() }
         b.removeOwnerButton.setOnClickListener { removeOwner() }
-        b.settingsButton.setOnClickListener { openSystemSettings(android.provider.Settings.ACTION_SETTINGS) }
-        b.wifiButton.setOnClickListener { openSystemSettings(android.provider.Settings.ACTION_WIFI_SETTINGS) }
-        b.ownerCard.visibility = if (LockTask.isDeviceOwner(this)) View.VISIBLE else View.GONE
+        buildSettingsButtons()
+        b.endUnlockButton.setOnClickListener { endUnlockWindow() }
+        val owner = LockTask.isDeviceOwner(this)
+        b.ownerCard.visibility = if (owner) View.VISIBLE else View.GONE
+        b.factoryResetButton.visibility = if (FactoryReset.offered(owner)) View.VISIBLE else View.GONE
+        b.factoryResetButton.setOnClickListener { confirmFactoryReset() }
+        SetupFlags.log(this, "setup screen")
+        if (owner) SetupFlags.tryMarkComplete(this)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (config.isConfigured) startPlayer() else finish()
@@ -90,6 +101,19 @@ class SetupActivity : AppCompatActivity() {
         })
         onAddressEdited()
         b.serverInput.requestFocus()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!::b.isInitialized) return
+        LocalUnlockWindow.setupInFront = true // never engage the lockdown under this screen
+        tickWindow()
+    }
+
+    override fun onPause() {
+        LocalUnlockWindow.setupInFront = false
+        if (::b.isInitialized) b.root.removeCallbacks(tick)
+        super.onPause()
     }
 
     override fun onDestroy() {
@@ -195,14 +219,89 @@ class SetupActivity : AppCompatActivity() {
         FileLog.i(TAG, "server forgotten")
     }
 
-    /** The setup screen is only reachable after the unlock, so Android's own settings are fair game here. */
-    private fun openSystemSettings(action: String) {
-        try {
-            startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (e: Exception) {
-            FileLog.w(TAG, "could not open $action: ${e.message}")
-            showResult(getString(R.string.settings_blocked), R.color.warn)
+    private val tick = Runnable { tickWindow() }
+
+    /** Shows how long the local unlock window still runs (hidden when it is over or never opened). */
+    private fun tickWindow() {
+        val left = LocalUnlockWindow.remainingMs(this)
+        b.unlockCard.visibility = if (left > 0) View.VISIBLE else View.GONE
+        if (left > 0) {
+            b.unlockText.text = getString(R.string.unlock_window, LocalUnlock.minutesLeft(left))
+            b.root.postDelayed(tick, 5_000L)
         }
+    }
+
+    private fun endUnlockWindow() {
+        LocalUnlockWindow.end(this)
+        startPlayer() // the player engages the lockdown again as soon as it is in front
+    }
+
+    private fun buildSettingsButtons() {
+        val labels = mapOf(
+            "wifi" to R.string.page_wifi, "display" to R.string.page_display, "date" to R.string.page_date,
+            "sound" to R.string.page_sound, "apps" to R.string.page_apps, "about" to R.string.page_about,
+            "main" to R.string.btn_android_settings,
+        )
+        for (page in SettingsPages.ALL) {
+            val button = Button(this, null, android.R.attr.buttonBarButtonStyle).apply {
+                setText(labels.getValue(page.id))
+                setBackgroundResource(R.drawable.field_bg)
+                setTextColor(ContextCompat.getColor(this@SetupActivity, R.color.accent))
+                minimumHeight = (48 * resources.displayMetrics.density).toInt()
+                setOnClickListener { openPage(page) }
+            }
+            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            lp.topMargin = (8 * resources.displayMetrics.density).toInt()
+            b.settingsPages.addView(button, lp)
+        }
+    }
+
+    /** The setup screen is only reachable after the unlock, so Android's own settings are fair game here. */
+    private fun openPage(page: SettingsPages.Page) {
+        val result = SettingsPages.open(page) { action ->
+            try {
+                startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                true
+            } catch (e: Exception) {
+                FileLog.w(TAG, "could not open $action: ${e.javaClass.simpleName}")
+                false
+            }
+        }
+        when (result) {
+            SettingsPages.Result.OPENED -> Unit
+            SettingsPages.Result.FALLBACK -> showResult(getString(R.string.page_fallback), R.color.warn)
+            SettingsPages.Result.FAILED -> showResult(getString(R.string.page_failed), R.color.error)
+        }
+    }
+
+    /** Two steps: a warning, then the word RESET typed. Device Owner only (the button is hidden otherwise). */
+    private fun confirmFactoryReset() {
+        if (!FactoryReset.offered(LockTask.isDeviceOwner(this))) return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.reset_title)
+            .setMessage(R.string.reset_message)
+            .setNegativeButton(R.string.reset_cancel, null)
+            .setPositiveButton(R.string.reset_continue) { _, _ -> askResetWord() }
+            .show()
+    }
+
+    private fun askResetWord() {
+        val field = EditText(this).apply {
+            setHint(R.string.reset_type_hint)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.reset_type_title)
+            .setView(field)
+            .setNegativeButton(R.string.reset_cancel, null)
+            .setPositiveButton(R.string.reset_erase) { _, _ ->
+                if (!FactoryReset.confirmed(field.text.toString())) {
+                    showResult(getString(R.string.reset_wrong), R.color.warn)
+                } else if (!LockTask.wipeDevice(this, config.homeMode)) {
+                    showResult(getString(R.string.reset_failed), R.color.error)
+                }
+            }
+            .show()
     }
 
     private fun applyHomeMode(enabled: Boolean) {

@@ -135,8 +135,8 @@ Use a tablet that holds nothing you need. First upload the newest Android APK on
 | J4 | With Lock player on: try Home, Back, Recents, pulling down the status bar, power menu | None leave the app; the screen stays on while charging | |
 | J5 | On the display page, press **Reboot the device** | It reboots, comes back, and goes straight back to the player | |
 | J6 | Upload a newer APK (higher version) to Downloads, open the display page, press **Push the update** | The tablet installs it silently and returns to the player | |
-| J7 | Edit the display, turn **Lock player** off | Within a minute the lock is released: status bar, Home and Settings work again | |
-| J8 | Settings > Factory data reset on the tablet (after J7) | It is allowed; after the reset you can provision it again from J2 | |
+| J7 | Lock the tablet, do the 7-tap exit and enter the PIN | Setup opens and shows "Unlocked for N more minutes"; the lockdown does NOT come back (no "lockdown engage" in the log) for 10 minutes, also not after Home or after opening Wi-Fi/Display/Date/Sound/Apps/About pages; the log has a `user_setup_complete=... device_provisioned=...` line. Press "End the unlock now": the player returns and locks. After 10 minutes the lockdown comes back by itself. Also check which settings pages open (the main page may still close by itself) | |
+| J8 | Setup > **Factory reset this device** (Device Owner only): Cancel, wrong word, then RESET; or alternatively Lock player off and Settings > Factory data reset | Cancel and a wrong word erase nothing; RESET erases the tablet, which then shows the Welcome screen and can be provisioned again from J2 | |
 | J9 | Try Reboot / Push the update with those switches off (Edit > Device agent) | Refused with a message | |
 
 ## K. Windows: reboot, startup and updates (signed commands)
@@ -152,6 +152,35 @@ Use a spare Windows PC with the installed app (not `npm start`). Edit the displa
 | K5 | Startup form: Run as = An app | The normal desktop returns after the next sign-in | |
 | K6 | Upload a newer installer, **Push the update** | The app installs it and comes back; in shell mode the Explorer desktop does not appear | |
 | K7 | Press Reboot twice within 10 minutes | The second is refused | |
+
+## L. Windows: privileged agent (docs/windows-agent.md)
+
+A spare Windows PC with the installed player, a standard (non-admin) Windows account for the screen, and the signing certificate of the build PC. Build the kit on the build PC first (`npm run dist:win`, then `scripts\Build-Agent.ps1`).
+
+| # | Step | Expect | Result |
+|---|---|---|---|
+| L1 | Display page > Privileged agent > **Enroll the privileged agent** (as an admin) | A one-time code and a ready command line, shown once | |
+| L2 | On the PC, PowerShell **as administrator**: run the command line from the page with `-KioskUser <the screen account> -AllowReboot -AllowStartup -AllowUpdate` | The script prints the plan and finishes with "The agent is running" | |
+| L3 | Run the same script in a normal (not elevated) PowerShell | It refuses: "Run this script elevated" | |
+| L4 | Run it with a wrong `-KeyFingerprint` | Enrollment stops with "does not match the fingerprint"; no task is created | |
+| L5 | Display page | "Privileged agent" card shows enrolled, last seen under a minute, the abilities, and the player's own Tier B buttons now talk to the agent | |
+| L6 | Task Scheduler (or `Get-ScheduledTask 'AiSignX Agent'`) | Runs as SYSTEM, starts at boot, restarts after `taskkill /F /IM aisignx-agent.exe` within a minute | |
+| L7 | As the standard user: try to change, rename or delete anything in `C:\ProgramData\AiSignXAgent` and `C:\Program Files\AiSignX\Agent`; try to plant a junction there | Access denied everywhere except reading `public\status.json`; the agent keeps working | |
+| L8 | Press **Reboot the device** | The PC restarts about 30 seconds later; the command shows done | |
+| L9 | Startup form: shell mode, then back to app mode | Works with nobody logged in (the agent edits the kiosk user's profile) and is undone cleanly | |
+| L10 | Sign the installer with the pinned certificate (`scripts\Sign-Installer.ps1`), upload it, **Push the update** | The agent installs it silently, the player comes back on the new version, the command shows done, the card shows last update "ok" | |
+| L11 | Upload the same installer **unsigned** and push the update | Refused: command failed with "bad_signature"; the running player is untouched; nothing left in `ProgramData\AiSignXAgent\staging` | |
+| L12 | Sign with a **different** self-signed certificate and push | Refused with "wrong_signer" | |
+| L13 | Change one byte of a signed installer, upload, push | The server's hash is of the changed file, so Windows reports a broken signature: refused ("bad_signature") | |
+| L14 | Push an update that does not start (a deliberately broken build signed with the right key) | After 10 minutes the agent reinstalls the previous version once; the card shows "rolled back" | |
+| L15 | With the agent running, try the in-app path: stop the agent task and restart the player | Within 15 minutes of the agent stopping, the player's own reboot/update/startup handling is live again (until the agent returns) | |
+| L16 | Display page > Privileged agent > **Turn on automatic sign-in** (over https): kiosk account name and password, then your own AiSignX password | Accepted; the command history shows no password; after delivery the database row has no ciphertext | |
+| L17 | Reboot the PC | Windows signs the kiosk account in by itself | |
+| L18 | `reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword` | Not found (the password is an LSA secret, not a registry value) | |
+| L19 | Try the form over plain http from another PC; try as an editor; try another account name | Refused each time | |
+| L20 | **Turn it off** | Windows asks for the password at the next boot; the LSA secret is gone | |
+| L21 | `Install-Agent.ps1 -Uninstall -Yes`, then press **Remove agent** on the display page | Task, folders, certificate trust and the auto-login/startup settings are gone; the player works as before | |
+| L22 | Run the script against `http://` and again against `https://` | A warning for http; the auto-login form is refused over http | |
 
 ## I. Update notice
 

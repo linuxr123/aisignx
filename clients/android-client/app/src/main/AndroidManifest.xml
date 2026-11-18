@@ -84,6 +84,11 @@
             android:name=".ui.LockdownRetryReceiver"
             android:exported="false" />
 
+        <!-- End of the local unlock window after a PIN exit: the lockdown comes back. -->
+        <receiver
+            android:name=".ui.LocalUnlockEndReceiver"
+            android:exported="false" />
+
         <!-- QR provisioning of a fully managed device (docs/android-kiosk.md). Android requires both. -->
         <activity
             android:name=".provision.GetProvisioningModeActivity"

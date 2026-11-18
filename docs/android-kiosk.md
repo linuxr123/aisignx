@@ -76,8 +76,13 @@ Always possible, in this order of preference:
 2. **Remote unlock** (display page, **Unlock remotely**, 5 minutes to 1 hour): lifts the
    lockdown for that time, then locks again. The tablet must be online.
 3. **On the tablet:** tap the top-left corner 7 times within 3 seconds (or long-press Menu/OK on a
-   remote), enter the unlock PIN. The lockdown is lifted until the player locks again on its
-   next start. Press **Remove Device Owner** on the setup screen to leave management for good.
+   remote), enter the unlock PIN. The Setup screen opens and the lockdown stays released for a
+   **10 minute unlock window** (saved, so it survives a restart). Setup shows "Unlocked for N more
+   minutes; the lockdown comes back after that" and a button **End the unlock now** (it returns to
+   the player, which locks again). The lockdown never comes back while the window is open or while
+   the Setup screen is in front, also when the tablet goes Home (Home is this app) in between. At the
+   end of the window an alarm engages it again and brings the player back. Press **Remove Device
+   Owner** on the setup screen to leave management for good.
 4. **Automatic: crash-loop breaker.** If the app process starts 5 times within 10 minutes without a
    manifest having been fetched by a process that lived at least a minute (a broken update that crashes at
    start), the app releases the **whole** lockdown by itself (restrictions, persistent Home, status bar) and
@@ -87,10 +92,36 @@ Always possible, in this order of preference:
    the next boot and at the next app start; release is never held back by a failed lock-down attempt.
 6. **Last resort:** the hardware recovery menu (next section). It does not need the app.
 
+## Android settings from the Setup screen
+
+After the PIN unlock the Setup screen has one button per settings page: **Wi-Fi, Display, Date and
+time, Sound, Apps, About the device**, and last the **main Settings page**. Each is opened on its
+own; a page that cannot be opened falls back to the main page with a message. Device Owner only: a
+**Factory reset this device** button (warning, then type `RESET`). It calls
+`DevicePolicyManager.wipeData`, which works although the lockdown sets `DISALLOW_FACTORY_RESET`,
+because that restriction only blocks the reset button in Settings, not the owner's own call. All data
+is erased and the tablet must be provisioned again with a new QR code.
+
+**What the first field log showed** (Samsung SM-X210, Android 16, QR-provisioned): after "unlock PIN
+accepted" the main Settings page flashed white and closed at once, while the Wi-Fi page worked, and
+2 to 5 seconds after every unlock "lockdown engage: done" appeared again. Two causes were assumed and
+are both handled in the app: (1) Samsung's Settings main page may close itself when
+`user_setup_complete` / `device_provisioned` are not set after QR provisioning (the log now prints
+both at every app start and when Setup opens: look for `SetupFlags`); the direct pages above avoid
+the main page. (2) the bounce landed on Home, which is this app, which restarted the player and
+engaged the lockdown: the unlock window prevents that. Not confirmed on a tablet yet.
+
+Marking set-up complete: there is no documented way for a Device Owner. The app tries the public
+`DevicePolicyManager.setSecureSetting("user_setup_complete", "1")` once when Setup opens and the flag
+is 0, and logs the result (`mark user set-up complete`). Android's allow-list for that call does not
+document this key and probably refuses it (the log then says "refused"); hidden APIs and root are not
+used. If it is refused the direct settings pages are the way, or a tablet provisioned through the
+normal set-up wizard.
+
 ## Factory reset a locked tablet
 
-1. Unlock it as above (web page, or PIN on the tablet).
-2. On the tablet open **Settings > General management > Reset > Factory data reset**. (The
+1. Unlock it as above (web page, or PIN on the tablet). On the tablet the quickest way is Setup > **Factory reset this device**.
+2. Or on the tablet open **Settings > General management > Reset > Factory data reset**. (The
    status bar is back after the lockdown is released; if you cannot find Settings, use the
    app's setup screen after the PIN and press **Remove Device Owner**, then Home.)
 3. If the tablet is not reachable at all (powered off, no PIN): hardware recovery. On most

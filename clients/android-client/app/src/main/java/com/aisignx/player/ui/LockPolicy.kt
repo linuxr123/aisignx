@@ -15,6 +15,10 @@ class LockPolicy(private val clock: () -> Long) {
         private set
 
     @Volatile private var unlockedUntil = 0L
+
+    /** The local unlock window (after a PIN exit) or the Setup screen: lock task is not wanted. */
+    @Volatile private var held = false
+    fun hold(on: Boolean) { held = on }
     private val seen = ArrayDeque<String>()
 
     /** Without Device Owner each start shows the pin prompt, so it is tried once per lock period. */
@@ -28,7 +32,7 @@ class LockPolicy(private val clock: () -> Long) {
     }
 
     /** Lock task is wanted: Lock player is on and no remote unlock is running. */
-    fun want(): Boolean = kioskLock && clock() >= unlockedUntil
+    fun want(): Boolean = kioskLock && !held && clock() >= unlockedUntil
 
     /** Lock player is on but lifted by a remote unlock; the hidden exit skips the PIN. */
     fun remoteUnlocked(): Boolean = kioskLock && clock() < unlockedUntil
@@ -66,7 +70,7 @@ class LockPolicy(private val clock: () -> Long) {
     /** For stats().lock: off, unlocked, failed, owner, pinned or locked (wanted, not active). */
     fun state(inLockTask: Boolean, owner: Boolean, failed: Boolean): String = when {
         !kioskLock -> "off"
-        remoteUnlocked() -> "unlocked"
+        remoteUnlocked() || held -> "unlocked"
         failed -> "failed"
         inLockTask -> if (owner) "owner" else "pinned"
         else -> "locked"

@@ -88,6 +88,7 @@ class PlayerActivity : AppCompatActivity() {
     private var lockState = ""
     private var resumed = false
     private val relockRunnable = Runnable { updateLock() }
+    private val windowRunnable = Runnable { updateLock() }
     private val lockWatchdog = object : Runnable {
         override fun run() {
             if (!resumed || !lockOwner || !lock.kioskLock) return
@@ -230,7 +231,14 @@ class PlayerActivity : AppCompatActivity() {
         lockOwner = owner
         // Device Owner: the lockdown follows the web page's Lock player switch (and is lifted by a
         // remote unlock or the PIN exit). Idempotent; a no-op when nothing changed.
-        val lockdown = Lockdown.decide(owner, lock.kioskLock, lock.remoteUnlocked())
+        val hold = LocalUnlockWindow.hold(this)
+        lock.hold(hold)
+        if (hold) { // the window ends by itself: look again right after it
+            main.removeCallbacks(windowRunnable)
+            val left = LocalUnlockWindow.remainingMs(this)
+            if (left > 0) main.postDelayed(windowRunnable, left + RELOCK_SLACK_MS)
+        }
+        val lockdown = Lockdown.decide(owner, lock.kioskLock, lock.remoteUnlocked(), hold)
         LockdownApplier.sync(this, lockdown, AiSignXApp.from(this).config.homeMode)
         val active = LockTask.inLockTask(this)
         when (lock.step(active, owner, canStart = resumed)) {
@@ -531,7 +539,11 @@ class PlayerActivity : AppCompatActivity() {
     private fun leaveToSetup() {
         main.removeCallbacks(lockWatchdog)
         // Device Owner: give the admin the tablet back (status bar, Settings, factory reset).
-        if (lockOwner) LockdownApplier.releaseNow(this, AiSignXApp.from(this).config.homeMode)
+        if (lockOwner) {
+            // Open the window first: the bounce back to Home (this app) must not engage it again.
+            LocalUnlockWindow.start(this)
+            LockdownApplier.releaseNow(this, AiSignXApp.from(this).config.homeMode)
+        }
         if (LockTask.inLockTask(this)) {
             try { stopLockTask() } catch (e: Exception) { FileLog.w(TAG, "stopLockTask failed: ${e.message}") }
         }

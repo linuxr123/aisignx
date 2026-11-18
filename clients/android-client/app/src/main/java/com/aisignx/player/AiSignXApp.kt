@@ -33,6 +33,7 @@ class AiSignXApp : Application() {
         config = Config(this)
         FileLog.init(this, BuildConfig.VERSION_NAME)
         config.ensureClientId()
+        com.aisignx.player.ui.SetupFlags.log(this, "app start")
         try {
             com.aisignx.player.ui.LockdownApplier.onProcessStart(this) // crash-loop breaker, pending release
         } catch (e: Throwable) {

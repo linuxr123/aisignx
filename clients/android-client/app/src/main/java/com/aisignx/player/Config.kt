@@ -73,6 +73,12 @@ class Config(ctx: Context) {
     val unlockFailures: Int get() = prefs.getInt(KEY_UNLOCK_FAILURES, 0)
     val unlockLockedUntil: Long get() = prefs.getLong(KEY_UNLOCK_LOCKED_UNTIL, 0L)
 
+    /** End (wall clock ms) of the local unlock window after a PIN exit; 0 when none. See LocalUnlock. */
+    var localUnlockUntil: Long
+        get() = prefs.getLong(KEY_LOCAL_UNLOCK_UNTIL, 0L)
+        @SuppressLint("ApplySharedPref") // must survive a restart
+        set(v) { prefs.edit().putLong(KEY_LOCAL_UNLOCK_UNTIL, v).commit() }
+
     @SuppressLint("ApplySharedPref") // kept across a power cut right after the change
     fun saveDisplaySettings(s: DisplaySettings) {
         val e = prefs.edit()
@@ -123,6 +129,7 @@ class Config(ctx: Context) {
         private const val KEY_ORIENTATION = "display_orientation"
         private const val KEY_ALLOW_INPUT = "allow_input"
         private const val KEY_KIOSK_LOCK = "kiosk_lock"
+        private const val KEY_LOCAL_UNLOCK_UNTIL = "local_unlock_until"
 
         val CLIENT_ID_RE = Regex("^[0-9a-f]{32}$")
         val PIN_RE = Regex("^[0-9a-f]{64}$")
