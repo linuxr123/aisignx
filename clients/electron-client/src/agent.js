@@ -150,7 +150,11 @@ function createAgent(o) {
   }
 
   // Tier B: only with a valid id; the verdict (and the signature work) is tierb.js's.
+  // While the privileged agent is in charge (agent/delegate.js) this code leaves Tier B alone entirely.
+  const delegated = () => { try { return !!(o.agentDelegated && o.agentDelegated()); } catch (e) { return false; } };
+
   async function runTierB(c, serverTimeMs) {
+    if (delegated()) return;   // not even the ledger is touched
     if (typeof c.id !== 'string' || !L.ID_RE.test(c.id) || ledger.includes(c.id)) return;
     if (!Number.isSafeInteger(displayId)) return;   // no manifest yet: leave the command open, do not burn its id
     try { saveLedger(c.id); } catch (e) { log.error('agent: cannot save the ledger, command skipped'); return; }
@@ -220,7 +224,7 @@ function createAgent(o) {
       pollWarned = false;
       const list = r.data.commands.slice(0, 10);
       const serverTime = r.data.server_time_ms;
-      if (!list.length && (settings.reboot || settings.startup || settings.update)) await tierB.checkKey();
+      if (!list.length && !delegated() && (settings.reboot || settings.startup || settings.update)) await tierB.checkKey();
       tierB.observeTime(serverTime);   // after a possible first pin, so the mark starts at once
       for (const c of list) await runCommand(c, serverTime);
       return list.length;
@@ -238,7 +242,7 @@ function createAgent(o) {
     return Object.assign({
       version: o.version, tier: 'plain', can_restart: true, can_collect_logs: true,
       can_reboot: false, can_update: false, watchdog: settings.watchdog && registered === true,
-    }, st, tierB.report());
+    }, st, tierB.report(), delegated() ? { can_reboot: false, can_update: false, can_set_startup: false, delegated_to_agent: true } : {});
   }
 
   function start() {

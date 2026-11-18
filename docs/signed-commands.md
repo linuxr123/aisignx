@@ -90,7 +90,76 @@ The device reports in `diag.agent`: `can_reboot`, `can_set_startup`, `can_update
 set now. The admin enables each ability per display (Edit > Device agent); the manifest's `settings.agent`
 carries `reboot`, `startup`, `update` booleans.
 
+## The privileged Windows agent (agent token, enrollment, auto-login)
+
+A second receiver of these same signed commands: a small SYSTEM program on the Windows PC
+([windows-agent.md](windows-agent.md), design in [windows-agent-service.md](windows-agent-service.md)). Nothing in the
+command format changes; the differences are the credential, the routes and one more action.
+
+**Agent token.** A different credential from the display token: `agt_` plus 43 URL-safe characters, sent only as
+`Authorization: Bearer agt_...`, accepted only on `/api/player/v1/agent/*`. The server keeps `sha256(token)`. A display
+token never works on those routes and an agent token never works on the display routes.
+
+**Enrollment.** An **admin** (not editor) presses *Enroll privileged agent* on the display page. The server makes a
+one-time code (16 characters from a 32-symbol alphabet, about 80 bits), stores only its hash, valid 15 minutes, dead
+after 5 wrong tries (counted across all outstanding codes) and rate limited per address. On the PC the elevated install
+script posts it:
+
+```
+POST /api/player/v1/agent/enroll   {"code": "...", "public_key": "<b64 X25519>", "host": "PC1", "version": "3.1.0"}
+-> {"agent_token": "agt_...", "display_id": 7, "command_key": "<b64 Ed25519>", "fingerprint": "ab12 cd34 ef56 7890", "server_time_ms": ...}
+```
+
+The code burns atomically (works once). The script compares `command_key` with the fingerprint the admin typed (printed
+on the same page) and stops on a mismatch, so there is no trust-on-first-use window. Enrolling again replaces the token;
+*Remove agent* clears it. Both cancel the display's waiting Tier B commands.
+
+| Route | Purpose |
+|---|---|
+| `GET /agent/commands` | only the signed (Tier B) commands, same signed format, plus `server_time_ms` |
+| `GET /agent/command-key` | the public key (the agent compares it with its pin and never replaces it) |
+| `POST /agent/commands/<id>/ack` | acknowledge a Tier B command |
+| `GET /agent/commands/<id>/package` | the installer of the agent's own open `update_app` command |
+| `POST /agent/diagnostics` | `{"diag": {...}}` whitelisted: versions, `can_*`, `key_id`, `kiosk_user`, `startup`, `autologin`, `last_update`, `command_key_fingerprint` |
+| `GET /agent/status` | `{"player_version", "player_last_seen_s"}` for the post-update health check |
+| `POST /agent/unenroll` | the uninstall script's courtesy call |
+
+**Exclusivity.** Once an agent is enrolled the display token no longer receives, acknowledges or downloads Tier B
+commands (Tier A, restart and logs, stays with the player), so nothing is handled twice and a stolen display token
+cannot fetch an installer. If the agent stops, Tier B pauses (the page says "not seen for N min") until it runs again
+or an admin removes it. The abilities the page shows (`can_reboot`, `can_update`, ...) come from the agent's
+diagnostics, never from the player's.
+
+**Action `set_autologin`** (the agent only; the in-app code answers `failed`, `unsupported`):
+
+```
+{"enabled": true, "user": "kiosk", "domain": ".", "key_id": "<16 hex>", "enc": "<b64 envelope>"}
+{"enabled": false}
+```
+
+Switch name `autologin`. The agent acts only for the kiosk account fixed at install, whatever `user` says.
+
+**Auto-login envelope** (ECIES-style; `server/aisignx/displays/ecies.py`, `clients/electron-client/src/agent-svc/ecies.js`).
+The password is encrypted **in the admin's request**, to the agent's X25519 public key, so only the PC can open it:
+
+```
+eph      = fresh X25519 key pair                       agent_pub = the agent's public key (from its diagnostics / enrollment)
+shared   = X25519(eph_private, agent_pub)
+key      = HKDF-SHA256(shared, salt = eph_public || agent_pub, info = "aisignx-autologin-v1", length 32)
+aad      = "v1|<display id>|<request id>|<user>|<domain>"          (UTF-8)
+envelope = base64( eph_public (32) || nonce (12, random) || AES-256-GCM(key, nonce, password UTF-8, aad) || tag (16) )
+key_id   = first 16 hex of sha256(agent_pub)
+```
+
+The associated data ties the ciphertext to one display, one command and one account, so it cannot be replayed to
+another. The form is accepted only over HTTPS or a loopback address, for an admin who re-types their own password.
+Only the envelope is stored (`params`), and it is **wiped from the row when the command is first delivered** (the
+signed response is built first); the plaintext lives only in the request handler. The password is never written to the
+audit log, application logs, flash messages or the command history; the audit row says who, which display and which
+account. A delivery lost in transit simply fails and the admin asks again. Test vectors shared by the Python server
+and the node agent: `clients/electron-client/test/vectors/` (`gen_vectors.py` writes them, both test suites check them).
+
 ## Not in this protocol
 
-**Auto-login** needs a Windows password and is designed separately (the password is encrypted for the device and
-never stored in the clear on the server). Until then the Windows installer sets it up locally.
+The agent updating **itself** (its own program files change only when an admin runs the signed `Install-Agent.ps1`
+again), Linux and macOS (macOS is dropped; a Linux root service would reuse this protocol).

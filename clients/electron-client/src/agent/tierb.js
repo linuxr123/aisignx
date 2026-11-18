@@ -190,6 +190,8 @@ function createTierB(o) {
   // c: the raw command (id already validated). ctx: {serverTimeMs, displayId, settings}.
   // -> {state, result, after?} to acknowledge, or null when nothing can be said (no connection).
   async function run(c, ctx) {
+    // Automatic sign-in is only ever done by the privileged agent (docs/windows-agent-service.md).
+    if (c && c.action === 'set_autologin') return fail('unsupported (needs the privileged agent)');
     const up = o.getUpstream();
     if (!up) return null;
     const k = await resolveKey(up.origin);

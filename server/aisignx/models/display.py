@@ -87,6 +87,18 @@ class Display(db.Model):
     agent_allow_startup = db.Column(db.Boolean, nullable=False, default=False, server_default=sa.false())
     agent_allow_update = db.Column(db.Boolean, nullable=False, default=False, server_default=sa.false())
 
+    # Privileged (SYSTEM) Windows agent (docs/windows-agent-service.md). It has its own credential, separate
+    # from the display token. Only sha256 of the token and of the one-time enrollment code is stored.
+    # Written with Core UPDATE only (an ORM write would broadcast a manifest hint to the screen).
+    agent_token_hash = db.Column(db.String(64), nullable=True, unique=True, index=True)
+    agent_enroll_hash = db.Column(db.String(64), nullable=True, index=True)
+    agent_enroll_expires = db.Column(db.DateTime(timezone=True), nullable=True)
+    agent_enroll_fails = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    agent_pubkey = db.Column(db.String(64), nullable=True)   # base64 X25519 public key (auto-login envelopes)
+    agent_diag = db.Column(db.Text, nullable=True)           # cleaned JSON the agent reported
+    agent_seen_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    agent_enrolled_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
     # Device-reported data and screenshot requests. These are written only with Core
     # UPDATE; an ORM write broadcasts a manifest hint to every screen.
     diagnostics = db.Column(db.Text, nullable=True)  # JSON, at most 4096 characters

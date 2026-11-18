@@ -99,7 +99,7 @@
 <div class="card mb-4"><div class="card-body">
   <h2 class="h5">Device agent</h2>
   {% if caps %}
-  <p class="small text-body-secondary mb-2">App agent {{ caps.version or "?" }} &middot; {{ {"device_owner": "Device Owner", "admin": "administrator", "plain": "standard app"}.get(caps.tier, "standard app") }}
+  <p class="small text-body-secondary mb-2">App agent {{ caps.version or "?" }} &middot; {{ {"device_owner": "Device Owner", "admin": "administrator", "system": "privileged agent", "plain": "standard app"}.get(caps.tier, "standard app") }}
     {% if caps.watchdog %}&middot; watchdog on{% endif %}
     {% if caps.restarts_1h %}&middot; restarted the player {{ caps.restarts_1h }}&times; in the last hour{% endif %}</p>
   {% if caps.gave_up %}<div class="alert alert-warning py-2 small">The watchdog gave up after too many restarts. The player may need a look in person.</div>{% endif %}
@@ -152,7 +152,7 @@
   {% if cmds %}
   <ul class="list-unstyled small mb-0">
     {% for c in cmds %}
-    <li class="text-break"><span class="text-body-secondary">{{ c.created_at|localtime }}</span> {{ {"restart_player": "Restart the player", "collect_logs": "Collect logs", "reboot_device": "Reboot the device", "set_startup": "Startup settings", "update_app": "Update the app"}.get(c.action, c.action) }}
+    <li class="text-break"><span class="text-body-secondary">{{ c.created_at|localtime }}</span> {{ {"restart_player": "Restart the player", "collect_logs": "Collect logs", "reboot_device": "Reboot the device", "set_startup": "Startup settings", "update_app": "Update the app", "set_autologin": "Automatic sign-in"}.get(c.action, c.action) }}
       &mdash; <span class="{{ 'text-success' if c.state == 'done' else 'text-danger' if c.state in ('failed', 'expired') else 'text-body-secondary' }}">{{ c.state }}</span>{% if c.result %} ({{ c.result }}){% endif %}{% if c.action == "collect_logs" and c.state == "done" and is_admin %} &middot; <a href="{{ url_for('displays.agent_logs', display_id=display.id, request_id=c.request_id) }}">Download</a>{% endif %}</li>
     {% endfor %}
   </ul>

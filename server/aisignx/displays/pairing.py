@@ -119,6 +119,8 @@ def approve(code: str | None, name: str | None, playlist_id: int | None,
         display = replace_display
         display.token_hash = None
         display.paired_at = None
+        from .service import revoke_device
+        revoke_device(display)  # the new device must not inherit the old agent or its open commands
         # An earlier approval for this display that was never claimed must not win later.
         db.session.execute(delete(PairingCode).where(PairingCode.display_id == display.id)
                            .execution_options(synchronize_session=False))

@@ -1,0 +1,50 @@
+{% macro privileged_card(display, priv, is_admin, action_form, autologin_form) %}
+{# The privileged (SYSTEM) Windows agent: enrollment, state, automatic sign-in. Admin only. #}
+{% if display.is_paired and is_admin %}
+{% set d = priv.diag %}
+<div class="card mb-4"><div class="card-body">
+  <h2 class="h5">Privileged agent <span class="small text-body-secondary">(Windows)</span></h2>
+  {% if priv.enrolled %}
+    <p class="small mb-2">
+      {% if priv.stale %}<span class="badge text-bg-warning">not seen{% if priv.seen_min is not none %} for {{ priv.seen_min }} min{% endif %}</span>
+      {% else %}<span class="badge text-bg-success">running</span>{% endif %}
+      version {{ d.version or "?" }}{% if d.host %} &middot; {{ d.host }}{% endif %}{% if d.kiosk_user %} &middot; account <code>{{ d.kiosk_user }}</code>{% endif %}
+      {% if d.state == "unsafe_acl" %}<span class="badge text-bg-danger">refuses to act: folder permissions changed</span>{% endif %}
+    </p>
+    {% if priv.stale %}<div class="alert alert-warning py-2 small">Reboot, startup, update and sign-in changes wait until the agent is back. Remove it to let the player handle them again.</div>{% endif %}
+    {% if d.last_update %}<p class="small text-body-secondary mb-2">Last update: {{ d.last_update.state }}{% if d.last_update.to %} ({{ d.last_update.to }}){% endif %}</p>{% endif %}
+    <p class="small mb-2">Automatic sign-in:
+      {% if d.autologin and d.autologin.enabled %}<strong>on</strong> for <code>{{ d.autologin.user }}</code>{% else %}off{% endif %}</p>
+    {% if d.can_autologin %}
+    <form method="post" action="{{ url_for('displays.agent_autologin', display_id=display.id) }}" autocomplete="off" class="border rounded p-3 mb-3">
+      {{ autologin_form.hidden_tag() }}
+      <div class="alert alert-warning small">The password is encrypted on this server for this PC's agent and only the encrypted text is kept, until the agent fetches it. Windows then keeps it in its own protected store (an LSA secret): anyone who is an administrator on that PC can still read it. Use a dedicated account with no rights. Needs an https address.</div>
+      <div class="row g-2">
+        <div class="col-md-4"><label class="form-label small mb-0">Windows account</label>
+          <input class="form-control form-control-sm" name="user" value="{{ d.kiosk_user or '' }}" readonly></div>
+        <div class="col-md-4"><label class="form-label small mb-0">Windows password</label>
+          <input class="form-control form-control-sm" type="password" name="password" maxlength="127" autocomplete="new-password"></div>
+        <div class="col-md-4"><label class="form-label small mb-0">Your AiSignX password</label>
+          <input class="form-control form-control-sm" type="password" name="confirm" autocomplete="current-password"></div>
+      </div>
+      <div class="mt-2 d-flex gap-2">
+        <button class="btn btn-sm btn-outline-danger" name="do" value="set" type="submit" data-confirm="Send the sign-in password to this PC?">Turn on automatic sign-in</button>
+        <button class="btn btn-sm btn-outline-secondary" name="do" value="undo" type="submit" data-confirm="Remove automatic sign-in from this PC?">Turn it off</button>
+      </div>
+    </form>
+    {% endif %}
+    <form method="post" action="{{ url_for('displays.agent_remove', display_id=display.id) }}" data-confirm="Remove the privileged agent from this display? Uninstall it on the PC too.">
+      {{ action_form.hidden_tag() }}
+      <button class="btn btn-sm btn-outline-secondary" type="submit">Remove agent</button>
+    </form>
+  {% else %}
+    <p class="small text-body-secondary">A small program that runs as SYSTEM on the PC and can reboot it, change its startup and install updates, but only when the command is signed by this server <em>and</em> the installer is signed with your certificate. Without it, the player app does these things itself with fewer rights.</p>
+    {% if priv.code_live %}<p class="small text-body-secondary">A code was made recently and has not been used.</p>{% endif %}
+    <form method="post" action="{{ url_for('displays.agent_enroll_code', display_id=display.id) }}">
+      {{ action_form.hidden_tag() }}
+      <button class="btn btn-outline-secondary" type="submit">Enroll the privileged agent</button>
+    </form>
+  {% endif %}
+</div></div>
+{% endif %}
+{% endmacro %}

@@ -21,6 +21,7 @@ const { createUnlockWindow } = require('./unlock-window');
 const { createLock, parseCommand } = require('./lock');
 const { createAgent } = require('./agent');
 const systemOps = require('./agent/system');
+const delegate = require('./agent/delegate');
 
 function argValue(name) {
   const hit = process.argv.find((a) => a.startsWith('--' + name + '='));
@@ -281,6 +282,8 @@ function startAgent() {
     exe: process.execPath,
     exeArgs: process.argv.slice(1).filter((a) => a.startsWith('--user-data-dir=')),
     scriptSource: path.join(app.isPackaged ? process.resourcesPath : path.join(__dirname, '..', 'resources'), 'watchdog.ps1'),
+    // The privileged agent, when installed and alive, handles Tier B; this code then stands down.
+    agentDelegated: () => delegate.isActive(delegate.statusFile(process.env), Date.now()),
     getUpstream: () => S.upstream,
     getToken: () => S.cookie,
     getConfig: () => S.cfg,

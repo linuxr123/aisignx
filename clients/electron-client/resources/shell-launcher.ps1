@@ -9,7 +9,7 @@
 #   stopped     marker written by the app on a deliberate quit
 #   updating    marker written by the app when an update quits it: the player comes back, so wait
 #               up to 10 minutes for it instead of starting Explorer
-param([string]$Dir = $PSScriptRoot)
+param([string]$Dir = $PSScriptRoot, [string]$ConfigDir = '')
 
 $ErrorActionPreference = 'Stop'
 $QuickMs = 30000; $QuickMax = 3
@@ -34,7 +34,8 @@ function Start-Desktop($why) {
 }
 
 try {
-    $cfgFile = Join-Path $Dir 'shell.json'
+    # The privileged agent keeps shell.json in its protected folder (-ConfigDir); markers and the log stay in -Dir.
+    $cfgFile = Join-Path $(if ($ConfigDir) { $ConfigDir } else { $Dir }) 'shell.json'
     $cfg = $null
     if (Test-Path -LiteralPath $cfgFile) { $cfg = Get-Content -LiteralPath $cfgFile -Raw -Encoding UTF8 | ConvertFrom-Json }
     if (-not $cfg -or -not $cfg.exe -or -not (Test-Path -LiteralPath $cfg.exe)) { Start-Desktop 'player not installed'; exit 0 }

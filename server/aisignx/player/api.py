@@ -247,7 +247,7 @@ def heartbeat():
     db.session.commit()
     # `commands`: how many device-agent commands wait for this display (it then GETs /commands).
     return jsonify(server_time_ms=int(time.time() * 1000), manifest_version=version,
-                   heartbeat_s=_heartbeat_s(), commands=agent.pending_count(g.display.id))
+                   heartbeat_s=_heartbeat_s(), commands=agent.pending_count(g.display.id, exclude=agent.hidden_from_player(g.display)))
 
 
 # --- device agent commands (docs/device-agent-design.md) ----------------------------------------
@@ -257,7 +257,7 @@ def heartbeat():
 @api_bp.get("/commands")
 @display_required
 def commands():
-    cmds = agent.deliver(g.display)
+    cmds = agent.deliver(g.display, exclude=agent.hidden_from_player(g.display))
     db.session.commit()
     out = []
     for c in cmds:
@@ -273,6 +273,8 @@ def commands():
 @display_required
 def command_key():
     """The server's public command key. A device pins the first one it sees (trust on first use)."""
+    if g.display.agent_token_hash:   # the privileged agent has its own route (docs/windows-agent-service.md)
+        return api_error(409, "agent_enrolled", "A privileged agent handles signed commands for this display.")
     return jsonify(public_key=signing.public_key_b64(), fingerprint=signing.fingerprint())
 
 
@@ -280,6 +282,8 @@ def command_key():
 @display_required
 def command_package(request_id: str):
     """The installer for this display's open update_app command (and nothing else)."""
+    if g.display.agent_token_hash:
+        return api_error(409, "agent_enrolled", "A privileged agent handles installers for this display.")
     row, found = agent.package_for(g.display, request_id)
     if row is None:
         status = 404 if found in ("unknown command", "the installer is gone") else 409
@@ -314,7 +318,8 @@ def command_ack(request_id: str):
     if body is None:
         return _bad("Expected a JSON object.")
     cmd, error = agent.acknowledge(g.display, request_id, str(body.get("state") or ""),
-                                   _text(body.get("result"), agent.MAX_RESULT))
+                                   _text(body.get("result"), agent.MAX_RESULT),
+                                   exclude=agent.hidden_from_player(g.display))
     db.session.commit()
     if cmd is None:
         status = 404 if error == "unknown command" else 409 if error in ("expired", "already acknowledged", "not open") else 400

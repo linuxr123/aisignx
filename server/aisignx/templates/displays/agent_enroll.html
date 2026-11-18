@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Enroll the privileged agent{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Enroll the privileged agent for {{ display.name }}</h1>
+<div class="card mb-4" style="max-width: 52rem"><div class="card-body">
+  <p>This one-time code is shown <strong>only now</strong>. It works once and expires in {{ minutes }} minutes.</p>
+  <p class="display-6 font-monospace user-select-all">{{ code }}</p>
+  <p class="mb-1">On the PC, in an <strong>elevated</strong> PowerShell (Run as administrator), from the folder that holds the agent files:</p>
+  <pre class="border rounded p-2 small user-select-all text-break" style="white-space: pre-wrap">.\Install-Agent.ps1 -Server {{ server }} -Code {{ code }} -KeyFingerprint "{{ fingerprint }}" -KioskUser &lt;the Windows account that shows the screen&gt; -AllowUpdate</pre>
+  <p class="small text-body-secondary">The fingerprint is this server's command key. The script compares it with what the server answers and stops on a mismatch, so a stranger on the network cannot swap in a key.
+    Add <code>-AllowReboot</code>, <code>-AllowStartup</code> or <code>-AllowAutologin</code> only for what this PC should accept; all are off by default.</p>
+  <a class="btn btn-primary" href="{{ url_for('displays.detail', display_id=display.id) }}">Done</a>
+</div></div>
+{% endblock %}

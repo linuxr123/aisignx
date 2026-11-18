@@ -3,4 +3,4 @@ from flask import Blueprint
 
 bp = Blueprint("displays", __name__, url_prefix="/displays")
 
-from . import routes  # noqa: E402,F401
+from . import agent_admin, routes  # noqa: E402,F401

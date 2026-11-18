@@ -16,7 +16,8 @@ from ..player.manifest import build_manifest
 from ..pop import service as pop_service
 from ..schedules.resolve import load_context, resolve, split_by_day, week_segments
 from ..downloads.service import app_update, fleet_updates
-from . import agent, bp, options, pairing, screenshots, service
+from . import agent, bp, enroll, options, pairing, screenshots, service
+from .agent_admin_forms import AutologinForm
 from .forms import ActionForm, DisplayForm, PairForm, UnlockForm
 
 
@@ -129,6 +130,7 @@ def detail(display_id: int):
                            diag=diag, support=_support_rows(diag),
                            app_update=app_update(diag.get("shell") if isinstance(diag, dict) else None),
                            agent_caps=agent.capabilities(display),
+                           priv=enroll.summary(display), autologin_form=AutologinForm(),
                            agent_cmds=DeviceCommand.query.filter_by(display_id=display.id)
                            .order_by(DeviceCommand.id.desc()).limit(5).all(),
                            pin_set=bool(display.unlock_pin_hash),

@@ -174,6 +174,28 @@ Manual test checklist (a real PC; nothing here has run on hardware yet):
 10. Stop the server for a few minutes: the player shows the offline page and is not restarted by the watchdog.
 11. Reboot with auto-logon: the player comes back (login item) and the task keeps running.
 
+## Privileged agent (Windows, optional)
+
+For PCs that should reboot, change startup, update the app and sign in automatically on command from the server
+without anyone logged in as administrator. A small separate program runs as SYSTEM (a scheduled task, started at boot
+and restarted on failure) using this app's own Electron binary in node mode. It obeys only commands signed by the
+server's pinned key and installs only installers signed with the pinned certificate. Everything is in
+[../../docs/windows-agent.md](../../docs/windows-agent.md); the protocol part is in
+[../../docs/signed-commands.md](../../docs/signed-commands.md).
+
+Build (on the PC that holds the signing certificate):
+
+```powershell
+$env:AISIGNX_SIGN_THUMBPRINT = '<40 hex of your code-signing certificate>'   # never put it in a tracked file
+npm run dist:win              # installer; the hook signs the app, uninstaller and installer
+npm run agent:win             # dist-buildgent\AiSignX-Agent-<version>.zip and a signed Install-Agent.ps1
+```
+
+Install on the screen PC, as administrator, with the command line the display page shows
+(Display > Privileged agent > Enroll the privileged agent). `.\Install-Agent.ps1 -DryRun ...` checks every parameter
+and changes nothing. `.\Install-Agent.ps1 -Uninstall` removes it. While the agent is installed and running, the
+player's own reboot/startup/update code stands down; without it that code works as before.
+
 ## Remote reboot, startup and updates
 
 Three more commands, **off by default** (switches `reboot`, `startup`, `update` per display, Edit > Device agent).
@@ -323,6 +345,9 @@ src/config.js          config.json, client_id, server URL rules
 src/trust.js           CA list, pinning agent, certificate capture
 src/health.js          setup's /healthz test
 src/agent.js           device agent: commands, heartbeat file, watchdog task
+src/agent-svc/         the privileged agent (SYSTEM): main, core, updater, ops, ecies, authenticode, config, state
+scripts/               Build-Agent, Sign-File, Sign-Installer, sign-hook.js
+resources/Install-Agent.ps1  elevated installer of the agent; resources/agent/ps/ its helper scripts
 src/agent/             logic (pure rules), task (schtasks), verify (signed commands), store (key pin, seq),
                        system (shutdown, shell registry), package (update download), tierb (Tier B commands)
 resources/shell-launcher.ps1  shell mode launcher with Explorer fallback
@@ -341,4 +366,4 @@ test/                  node:test unit tests
 
 ## Deferred
 
-Auto-update, remote reboot, macOS builds and code signing come later.
+Auto-update of the player without the agent, and macOS builds (dropped), are not planned.

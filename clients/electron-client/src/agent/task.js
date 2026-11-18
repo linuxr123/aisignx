@@ -15,7 +15,8 @@ function agentDir() {
 
 function writeJsonAtomic(file, obj) {
   const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(obj));
+  const fd = fs.openSync(tmp, 'w');
+  try { fs.writeFileSync(fd, JSON.stringify(obj)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }   // on disk BEFORE the rename: a power cut never leaves an empty file
   fs.renameSync(tmp, file);
 }
 function readJson(file) {

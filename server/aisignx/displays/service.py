@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 
 from flask import current_app
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 
 from ..extensions import db
 from ..models import Display, PairingCode, PlaylistItem
@@ -65,10 +65,24 @@ def current_item_name(display: Display) -> str | None:
     return item.media.name if item is not None and item.media is not None else None
 
 
+def revoke_device(display: Display) -> None:
+    """The old device loses everything: the privileged agent (token, key, diagnostics, codes) and every open command."""
+    from ..models.device_command import OPEN_STATES, STATE_CANCELLED
+    from ..models import DeviceCommand
+    from . import enroll
+
+    enroll.remove(display)
+    db.session.execute(update(DeviceCommand).where(
+        DeviceCommand.display_id == display.id, DeviceCommand.state.in_(OPEN_STATES))
+        .values(state=STATE_CANCELLED, params=None, result="Display unpaired.")
+        .execution_options(synchronize_session=False))
+
+
 def unpair(display: Display) -> None:
     """Drop the display's credential. The caller commits, then calls broker.close()."""
     display.token_hash = None
     display.paired_at = None
+    revoke_device(display)
     # Approved-but-unclaimed codes would otherwise re-pair the display behind our back.
     db.session.execute(delete(PairingCode).where(PairingCode.display_id == display.id)
                        .execution_options(synchronize_session=False))

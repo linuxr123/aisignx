@@ -24,14 +24,14 @@ from ..extensions import db
 from ..media import storage
 from ..models import DeviceCommand, Display
 from ..models.device_command import (ACTION_COLLECT_LOGS, ACTION_REBOOT, ACTION_RESTART_PLAYER,
-                                     ACTION_SET_STARTUP, ACTION_UPDATE_APP, ACTIONS, OPEN_STATES,
+                                     ACTION_SET_AUTOLOGIN, ACTION_SET_STARTUP, ACTION_UPDATE_APP, ACTIONS, OPEN_STATES,
                                      SIGNED_ACTIONS, STATE_DELIVERED, STATE_DONE, STATE_EXPIRED,
                                      STATE_FAILED, STATE_PENDING)
 from ..timeutil import as_utc, utcnow
 
 # How long a command may wait for its device (server time).
 TTL_S = {ACTION_RESTART_PLAYER: 120, ACTION_COLLECT_LOGS: 300, ACTION_REBOOT: 120,
-         ACTION_SET_STARTUP: 300, ACTION_UPDATE_APP: 900}
+         ACTION_SET_STARTUP: 300, ACTION_UPDATE_APP: 900, ACTION_SET_AUTOLOGIN: 300}
 REBOOT_GAP_MIN = 10        # a reboot loop (or a mistake) cannot keep a screen down
 MAX_PER_HOUR = 10          # commands per display: a loop or a mistake cannot hammer a device
 KEEP_DAYS = 30             # finished commands are deleted after this long
@@ -41,27 +41,50 @@ MAX_LOG_BYTES = 1_000_000  # an uploaded log (gzip): about a day of a busy playe
 LOGS_PER_DISPLAY = 5       # the newest few are kept
 LOG_KEEP_DAYS = 7
 _REQUEST_ID = re.compile(r"^[0-9a-f]{16}$")
+_USER = re.compile(r"[A-Za-z0-9._ -]{1,64}")
+_KEY_ID = re.compile(r"[0-9a-f]{16}")
+_B64 = re.compile(r"[A-Za-z0-9+/]+={0,2}")
 
 LABELS = {ACTION_RESTART_PLAYER: "Restart the player", ACTION_COLLECT_LOGS: "Collect logs",
           ACTION_REBOOT: "Reboot the device", ACTION_SET_STARTUP: "Change the startup settings",
-          ACTION_UPDATE_APP: "Update the app"}
+          ACTION_UPDATE_APP: "Update the app", ACTION_SET_AUTOLOGIN: "Change the automatic sign-in"}
 # display column that must be on, device capability key that must be true.
 _SETTING = {ACTION_RESTART_PLAYER: "agent_allow_restart", ACTION_COLLECT_LOGS: "agent_allow_logs",
             ACTION_REBOOT: "agent_allow_reboot", ACTION_SET_STARTUP: "agent_allow_startup",
-            ACTION_UPDATE_APP: "agent_allow_update"}
+            ACTION_UPDATE_APP: "agent_allow_update"}   # set_autologin has none: it needs the privileged agent
 _CAP = {ACTION_RESTART_PLAYER: "can_restart", ACTION_COLLECT_LOGS: "can_collect_logs",
-        ACTION_REBOOT: "can_reboot", ACTION_SET_STARTUP: "can_set_startup", ACTION_UPDATE_APP: "can_update"}
+        ACTION_REBOOT: "can_reboot", ACTION_SET_STARTUP: "can_set_startup", ACTION_UPDATE_APP: "can_update",
+        ACTION_SET_AUTOLOGIN: "can_autologin"}
 MODES = ("app", "shell")
 
 
+# What only the privileged agent can vouch for (an unprivileged player's claims are not evidence).
+PRIVILEGED_CAPS = ("can_reboot", "can_update", "can_set_startup", "can_autologin")
+
+
 def capabilities(display: Display) -> dict:
-    """What the device reported in its diagnostics ("agent" block); {} if it reports none."""
+    """What the device reported in its diagnostics ("agent" block); {} if it reports none. Once the
+    privileged agent is enrolled it alone speaks for the privileged abilities."""
     try:
         data = json.loads(display.diagnostics or "{}")
     except (TypeError, ValueError):
         return {}
     agent = data.get("agent") if isinstance(data, dict) else None
-    return agent if isinstance(agent, dict) else {}
+    caps = dict(agent) if isinstance(agent, dict) else {}
+    if display.agent_token_hash:
+        from . import enroll
+        diag = enroll.diag_of(display)
+        for key in PRIVILEGED_CAPS:
+            caps[key] = diag.get(key) is True
+        caps["startup"] = diag.get("startup") if isinstance(diag.get("startup"), dict) else {}
+        caps["tier"] = "system"
+        caps["privileged_version"] = diag.get("version")
+    return caps
+
+
+def hidden_from_player(display: Display) -> tuple:
+    """Actions the display-token routes never deliver: set_autologin always, all Tier B once an agent is enrolled."""
+    return SIGNED_ACTIONS if display.agent_token_hash else (ACTION_SET_AUTOLOGIN,)
 
 
 def _why_not(display: Display, action: str) -> str | None:
@@ -70,8 +93,15 @@ def _why_not(display: Display, action: str) -> str | None:
         return "Unknown command."
     if not display.is_paired:
         return "This display is not paired."
-    if not getattr(display, _SETTING[action]):
+    if action == ACTION_SET_AUTOLOGIN:
+        if not display.agent_token_hash:
+            return "Automatic sign-in needs the privileged Windows agent (Device agent > Enroll)."
+    elif not getattr(display, _SETTING[action]):
         return f"{LABELS[action]} is switched off for this display (Edit > Device agent)."
+    if display.agent_token_hash and action in SIGNED_ACTIONS:
+        from . import enroll
+        if enroll.summary(display)["stale"]:
+            return "The privileged agent has not checked in recently."
     caps = capabilities(display)
     if not caps:
         return "This screen has not reported an agent yet. Update its app and wait for it to check in."
@@ -112,6 +142,14 @@ def validate_params(display: Display, action: str, params) -> tuple[dict | None,
         if not version or not re.fullmatch(r"[0-9a-f]{64}", sha) or not isinstance(size, int) or size <= 0:
             return None, "No installer to push."
         return {"version": version[:32], "sha256": sha, "size": size}, None
+    if action == ACTION_SET_AUTOLOGIN:
+        if params.get("enabled") is False and set(params) == {"enabled"}:
+            return {"enabled": False}, None
+        ok = (params.get("enabled") is True and set(params) == {"enabled", "user", "domain", "key_id", "enc"}
+              and all(isinstance(params[k], str) for k in ("user", "domain", "key_id", "enc"))
+              and _USER.fullmatch(params["user"]) and params["domain"] == "." and _KEY_ID.fullmatch(params["key_id"])
+              and len(params["enc"]) <= 600 and _B64.fullmatch(params["enc"]))
+        return (dict(params), None) if ok else (None, "Bad automatic sign-in request.")
     return {}, None  # reboot_device and the Tier A actions take no parameters
 
 
@@ -119,6 +157,8 @@ def update_package(display: Display):
     """The Download this display would be updated with: the newest installer of its app's kind, or None."""
     from ..downloads.service import SHELL_KINDS, latest_download
 
+    if display.agent_token_hash:   # the privileged agent is Windows; the unprivileged player does not choose
+        return latest_download(SHELL_KINDS["electron"])
     try:
         shell = json.loads(display.diagnostics or "{}").get("shell") or {}
     except (TypeError, ValueError, AttributeError):
@@ -127,8 +167,8 @@ def update_package(display: Display):
     return latest_download(kind) if kind else None
 
 
-def create(display: Display, action: str, user, now: datetime | None = None, params: dict | None = None
-           ) -> tuple[DeviceCommand | None, str | None]:
+def create(display: Display, action: str, user, now: datetime | None = None, params: dict | None = None,
+           request_id: str | None = None) -> tuple[DeviceCommand | None, str | None]:
     """(command, None) or (None, reason). One open command per display and action."""
     now = now or utcnow()
     reason = _why_not(display, action)
@@ -155,7 +195,7 @@ def create(display: Display, action: str, user, now: datetime | None = None, par
         return None, "Too many commands for this screen in the last hour. Try again later."
     last = db.session.query(func.max(DeviceCommand.seq)).filter(DeviceCommand.display_id == display.id).scalar() or 0
     seq = max(int(now.timestamp() * 1000), int(last) + 1)
-    cmd = DeviceCommand(display_id=display.id, request_id=secrets.token_hex(8), action=action, seq=seq,
+    cmd = DeviceCommand(display_id=display.id, request_id=request_id or secrets.token_hex(8), action=action, seq=seq,
                         params=clean or None, state=STATE_PENDING, created_by_id=getattr(user, "id", None),
                         created_at=now, expires_at=now + timedelta(seconds=TTL_S[action]))
     db.session.add(cmd)
@@ -171,25 +211,32 @@ def expire_due(now: datetime | None = None) -> int:
                                           DeviceCommand.expires_at <= now).all():
         cmd.state = STATE_EXPIRED
         cmd.result = "Not carried out in time."
+        if cmd.action == ACTION_SET_AUTOLOGIN:
+            cmd.params = None   # an envelope nobody fetched is not kept
         n += 1
     return n
 
 
-def pending_count(display_id: int, now: datetime | None = None) -> int:
+def pending_count(display_id: int, now: datetime | None = None, exclude: tuple = ()) -> int:
     now = now or utcnow()
     return DeviceCommand.query.filter(DeviceCommand.display_id == display_id,
                                       DeviceCommand.state == STATE_PENDING,
+                                      DeviceCommand.action.notin_(exclude),
                                       DeviceCommand.expires_at > now).count()
 
 
-def deliver(display: Display, now: datetime | None = None) -> list[DeviceCommand]:
+def deliver(display: Display, now: datetime | None = None, only: tuple | None = None,
+            exclude: tuple = ()) -> list[DeviceCommand]:
     """The display's commands that are waiting (and still valid), marked delivered. A command
     already delivered is not handed out again: it runs at most once."""
     now = now or utcnow()
     expire_due(now)
-    cmds = (DeviceCommand.query.filter(DeviceCommand.display_id == display.id,
-                                       DeviceCommand.state == STATE_PENDING)
-            .order_by(DeviceCommand.id).limit(5).all())
+    query = DeviceCommand.query.filter(DeviceCommand.display_id == display.id,
+                                       DeviceCommand.state == STATE_PENDING,
+                                       DeviceCommand.action.notin_(exclude))
+    if only is not None:
+        query = query.filter(DeviceCommand.action.in_(only))
+    cmds = query.order_by(DeviceCommand.id).limit(5).all()
     for cmd in cmds:
         cmd.state = STATE_DELIVERED
         cmd.delivered_at = now
@@ -197,14 +244,14 @@ def deliver(display: Display, now: datetime | None = None) -> list[DeviceCommand
 
 
 def acknowledge(display: Display, request_id: str, state: str, result: str | None,
-                now: datetime | None = None) -> tuple[DeviceCommand | None, str | None]:
+                now: datetime | None = None, only: tuple | None = None, exclude: tuple = ()) -> tuple[DeviceCommand | None, str | None]:
     """(command, None) or (None, error). Only this display's own command, only done or failed,
     and acknowledging twice with the same answer is fine."""
     now = now or utcnow()
     if state not in (STATE_DONE, STATE_FAILED):
         return None, "state must be done or failed"
     cmd = DeviceCommand.query.filter_by(display_id=display.id, request_id=str(request_id)[:32]).first()
-    if cmd is None:
+    if cmd is None or cmd.action in exclude or (only is not None and cmd.action not in only):
         return None, "unknown command"
     if cmd.state in (STATE_DONE, STATE_FAILED):
         return (cmd, None) if cmd.state == state else (None, "already acknowledged")
@@ -285,6 +332,10 @@ def job() -> str | None:
     old = DeviceCommand.query.filter(DeviceCommand.state.notin_(OPEN_STATES),
                                      DeviceCommand.created_at < now - timedelta(days=KEEP_DAYS))
     removed = old.delete(synchronize_session=False)
+    for cmd in DeviceCommand.query.filter(DeviceCommand.action == ACTION_SET_AUTOLOGIN,
+                                          DeviceCommand.state.notin_(OPEN_STATES)).all():
+        if isinstance(cmd.params, dict) and "enc" in cmd.params:
+            cmd.params = None
     db.session.commit()
     pruned = prune_all()
     return (f"expired {expired}, removed {removed}, logs pruned {pruned}"
@@ -314,3 +365,10 @@ def package_for(display: Display, request_id: str, now: datetime | None = None):
     if row is None or not path.is_file():
         return None, "the installer is gone"
     return row, path
+
+
+def scrub_delivered(cmd: DeviceCommand) -> None:
+    """Called right after a command was signed for delivery: an auto-login envelope is removed from the row, so
+    the database and its backups hold the ciphertext only until the agent has fetched it."""
+    if cmd.action == ACTION_SET_AUTOLOGIN and isinstance(cmd.params, dict) and cmd.params.get("enabled"):
+        cmd.params = {"enabled": True, "user": cmd.params.get("user"), "delivered": True}

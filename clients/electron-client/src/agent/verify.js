@@ -4,8 +4,10 @@
 // and then only on the returned payload (never on the unsigned fields next to it).
 const crypto = require('crypto');
 
-const ACTIONS = new Set(['reboot_device', 'set_startup', 'update_app']);
-const SWITCH_OF = { reboot_device: 'reboot', set_startup: 'startup', update_app: 'update' };
+const ACTIONS = new Set(['reboot_device', 'set_startup', 'update_app', 'set_autologin']);
+const SWITCH_OF = { reboot_device: 'reboot', set_startup: 'startup', update_app: 'update', set_autologin: 'autologin' };
+const USER_RE = /^[A-Za-z0-9._ -]{1,64}$/;
+const KEY_ID_RE = /^[0-9a-f]{16}$/;
 const SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex'); // Ed25519 SubjectPublicKeyInfo header
 const MAX_PAYLOAD = 4096;
 const MAX_PACKAGE_BYTES = 1024 * 1024 * 1024;
@@ -45,6 +47,15 @@ function checkParams(action, p) {
     if (typeof p.sha256 !== 'string' || !SHA_RE.test(p.sha256)) return { ok: false };
     if (!isInt(p.size) || p.size <= 0 || p.size > MAX_PACKAGE_BYTES) return { ok: false };
     return { ok: true, params: { version: p.version, sha256: p.sha256, size: p.size } };
+  }
+  if (action === 'set_autologin') {
+    // {enabled:false} or {enabled:true, user, domain:'.', key_id, enc}. Only the privileged agent acts on it.
+    if (p.enabled === false) return keys.length === 1 ? { ok: true, params: { enabled: false } } : { ok: false };
+    if (p.enabled !== true || keys.length !== 5) return { ok: false };
+    if (typeof p.user !== 'string' || !USER_RE.test(p.user) || p.domain !== '.') return { ok: false };
+    if (typeof p.key_id !== 'string' || !KEY_ID_RE.test(p.key_id)) return { ok: false };
+    if (typeof p.enc !== 'string' || p.enc.length > 600 || !B64_RE.test(p.enc)) return { ok: false };
+    return { ok: true, params: { enabled: true, user: p.user, domain: '.', key_id: p.key_id, enc: p.enc } };
   }
   return { ok: false };
 }

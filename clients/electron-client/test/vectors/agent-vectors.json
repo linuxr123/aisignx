@@ -1,0 +1,55 @@
+{
+ "agent_private_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+ "agent_public_b64": "B6N8vBQgk8i3VdwbEOhstCY3StFqqFPtC9/AsrhtHHw=",
+ "key_id": "aaa8fff703b50b22",
+ "ecies": {
+  "display_id": 7,
+  "request_id": "0123456789abcdef",
+  "user": "kiosk",
+  "domain": ".",
+  "aad": "v1|7|0123456789abcdef|kiosk|.",
+  "plaintext": "Sup3r secret \u00fc!",
+  "envelope": "VxR2nRFr92Q2rnS8eT0sMK0ZA8WaxSc4BcfiaYtBDDbJysvMzc7P0NHS09Qwy2UBqHnAF1rPMY41DJt1Tg8eqMR39Obo8LchN6eE2Q=="
+ },
+ "command_key_b64": "XkIwMwRPVqE6aGeZSHvL+mPdHjkgTOwn3TmibaphVig=",
+ "display_id": 7,
+ "exp_ms": 1800000000000,
+ "commands": {
+  "reboot": {
+   "id": "1111111111111111",
+   "action": "reboot_device",
+   "params": {},
+   "signed": {
+    "payload": "{\"action\":\"reboot_device\",\"display_id\":7,\"exp_ms\":1800000000000,\"params\":{},\"request_id\":\"1111111111111111\",\"seq\":1001,\"v\":1}",
+    "sig": "D/g2PK1uMbHegt8oEwhtB/xvRA5y4gxWIVthT9oCRSoLraf6amkxDowGWfC3LRPWxcaUz24TAH4fTbl03fipBg=="
+   }
+  },
+  "update": {
+   "id": "2222222222222222",
+   "action": "update_app",
+   "params": {},
+   "signed": {
+    "payload": "{\"action\":\"update_app\",\"display_id\":7,\"exp_ms\":1800000000000,\"params\":{\"sha256\":\"abababababababababababababababababababababababababababababababab\",\"size\":1234,\"version\":\"3.2.0\"},\"request_id\":\"2222222222222222\",\"seq\":1002,\"v\":1}",
+    "sig": "4b92Z6XzhiUCqWwEn3wedxmr18BAi4GnQS2MGVQI1ZelSZULlWVzmCNnXCD/4IJYUrEusTtX/6fTMkWuQUw4AA=="
+   }
+  },
+  "autologin": {
+   "id": "0123456789abcdef",
+   "action": "set_autologin",
+   "params": {},
+   "signed": {
+    "payload": "{\"action\":\"set_autologin\",\"display_id\":7,\"exp_ms\":1800000000000,\"params\":{\"domain\":\".\",\"enabled\":true,\"enc\":\"VxR2nRFr92Q2rnS8eT0sMK0ZA8WaxSc4BcfiaYtBDDbJysvMzc7P0NHS09Qwy2UBqHnAF1rPMY41DJt1Tg8eqMR39Obo8LchN6eE2Q==\",\"key_id\":\"aaa8fff703b50b22\",\"user\":\"kiosk\"},\"request_id\":\"0123456789abcdef\",\"seq\":1003,\"v\":1}",
+    "sig": "0mj2RKzgAkQ0ll5pAvNhrCFeXJzTGMajfGPZxUheiqdGHqeRDPapLvsSYOusdE1eH1V8V3gozapsisAPdkigDQ=="
+   }
+  },
+  "autologin_off": {
+   "id": "3333333333333333",
+   "action": "set_autologin",
+   "params": {},
+   "signed": {
+    "payload": "{\"action\":\"set_autologin\",\"display_id\":7,\"exp_ms\":1800000000000,\"params\":{\"enabled\":false},\"request_id\":\"3333333333333333\",\"seq\":1004,\"v\":1}",
+    "sig": "evlxR7jYfqTsyAFEpDeIT09J4LNeHYK2Uq4xMNPr6oEMS43C77tuIheeUcezk6RkYCpgBM87h5PzslDnunWKDw=="
+   }
+  }
+ }
+}

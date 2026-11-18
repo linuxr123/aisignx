@@ -13,7 +13,8 @@
     "smoke": "electron . --smoke --server=http://127.0.0.1:5000",
     "prebuild:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prebuild_clean.ps1",
     "dist:win": "npm run prebuild:win && electron-builder --win nsis --x64",
-    "dist:linux": "electron-builder --linux AppImage deb --x64"
+    "dist:linux": "electron-builder --linux AppImage deb --x64",
+    "agent:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Build-Agent.ps1"
   },
   "build": {
     "appId": "com.aisignx.player",
@@ -38,6 +39,10 @@
       {
         "from": "resources/setup-kiosk.ps1",
         "to": "setup-kiosk.ps1"
+      },
+      {
+        "from": "resources/agent/ps",
+        "to": "agent/ps"
       }
     ],
     "win": {
@@ -49,11 +54,16 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "signtoolOptions": {
+        "sign": "scripts/sign-hook.js"
+      }
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": false,
       "runAfterFinish": true,
       "createDesktopShortcut": false,
       "deleteAppDataOnUninstall": false

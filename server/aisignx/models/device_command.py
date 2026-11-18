@@ -18,7 +18,10 @@ ACTION_COLLECT_LOGS = "collect_logs"
 ACTION_REBOOT = "reboot_device"
 ACTION_SET_STARTUP = "set_startup"
 ACTION_UPDATE_APP = "update_app"
-SIGNED_ACTIONS = (ACTION_REBOOT, ACTION_SET_STARTUP, ACTION_UPDATE_APP)
+# Only the privileged Windows agent ever receives this one (docs/windows-agent-service.md); its params hold
+# an encrypted password until the command is delivered, then the ciphertext is wiped.
+ACTION_SET_AUTOLOGIN = "set_autologin"
+SIGNED_ACTIONS = (ACTION_REBOOT, ACTION_SET_STARTUP, ACTION_UPDATE_APP, ACTION_SET_AUTOLOGIN)
 ACTIONS = (ACTION_RESTART_PLAYER, ACTION_COLLECT_LOGS) + SIGNED_ACTIONS
 
 STATE_PENDING = "pending"        # created, not yet fetched by the device
