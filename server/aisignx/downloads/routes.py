@@ -15,7 +15,7 @@ from ..audit import service as audit
 from ..auth.decorators import admin_required
 from ..extensions import db
 from ..models import DOWNLOAD_KINDS, Download
-from . import bp
+from . import bp, meta
 from .forms import ActionForm, UploadForm
 
 ALLOWED = {"exe", "msi", "zip", "apk", "vsto", "pdf", "dmg", "pkg", "deb", "rpm", "sh", "ps1", "txt", "md"}
@@ -70,14 +70,23 @@ def upload():
         path.unlink(missing_ok=True)
         flash("The file was empty or could not be saved.", "danger")
         return redirect(url_for("downloads.index"))
-    row = Download(kind=form.kind.data, version=(form.version.data or "").strip(), filename=name,
+    kind, version = form.kind.data, (form.version.data or "").strip()
+    guessed_kind, guessed_version = meta.guess(name, path)
+    if kind == "auto" or kind not in DOWNLOAD_KINDS:
+        kind = guessed_kind
+    if not version:
+        version = guessed_version[:32]
+    row = Download(kind=kind, version=version, filename=name,
                    stored_name=stored, size=size, sha256=digest.hexdigest(),
                    notes=(form.notes.data or "").strip(), uploaded_by=current_user.username)
     db.session.add(row)
     db.session.flush()
     audit.record("download.upload", row, detail={"file": name, "size": size, "kind": row.kind})
     db.session.commit()
-    flash(f"Added {name}.", "success")
+    shown = DOWNLOAD_KINDS.get(row.kind, row.kind)
+    flash(f"Added {name}: {shown}" + (f", version {row.version}." if row.version else
+                                     ". No version found in the file or its name, add one by hand if you need updates."),
+          "success" if row.version else "warning")
     return redirect(url_for("downloads.index"))
 
 

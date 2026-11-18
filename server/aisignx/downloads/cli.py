@@ -11,6 +11,7 @@ from flask.cli import with_appcontext
 from ..audit import service as audit
 from ..extensions import db
 from ..models import DOWNLOAD_KINDS, Download
+from . import meta
 from .routes import ALLOWED, _clean_name, downloads_dir
 
 
@@ -21,8 +22,9 @@ def downloads_cli():
 
 @downloads_cli.command("add")
 @click.argument("file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.option("--kind", type=click.Choice(list(DOWNLOAD_KINDS)), required=True)
-@click.option("--version", default="", help="Shown next to the file.")
+@click.option("--kind", type=click.Choice(["auto", *DOWNLOAD_KINDS]), default="auto", show_default=True,
+              help="auto reads it from the file.")
+@click.option("--version", default="", help="Shown next to the file (default: read from the file).")
 @click.option("--notes", default="")
 @click.option("--replace/--keep", default=True, help="Remove older files of the same kind and name (default).")
 @with_appcontext
@@ -41,6 +43,10 @@ def add(file: Path, kind: str, version: str, notes: str, replace: bool):
         raise click.ClickException("The file is empty.")
     stored = secrets.token_hex(16)
     shutil.copyfile(file, downloads_dir() / stored)
+    guessed_kind, guessed_version = meta.guess(name, file)
+    if kind == "auto":
+        kind = guessed_kind
+    version = version.strip() or guessed_version
     if replace:
         for old in Download.query.filter_by(kind=kind, filename=name).all():
             (downloads_dir() / old.stored_name).unlink(missing_ok=True)

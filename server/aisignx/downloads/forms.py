@@ -9,7 +9,8 @@ from ..models import DOWNLOAD_KINDS
 
 class UploadForm(FlaskForm):
     file = FileField("File", validators=[FileRequired()])
-    kind = SelectField("What is it?", choices=[SelectChoice(k, v) for k, v in DOWNLOAD_KINDS.items()])
+    kind = SelectField("What is it?", choices=[SelectChoice("auto", "Detect automatically (recommended)")] +
+                      [SelectChoice(k, v) for k, v in DOWNLOAD_KINDS.items()], default="auto")
     version = StringField("Version", validators=[Optional(), Length(max=32)])
     notes = StringField("Notes", validators=[Optional(), Length(max=400)])
 

@@ -33,6 +33,17 @@ A quick overview. The detailed list of every change follows further down.
 5. **Content extras:** smart playlists (filled by tags), media tags and folders, a schedule conflict view.
 6. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
 
+## Unreleased: Windows privileged agent
+
+### Added
+- **A small SYSTEM agent for Windows PCs** ([docs/windows-agent.md](docs/windows-agent.md), design in [docs/windows-agent-service.md](docs/windows-agent-service.md)): reboot, startup/shell mode, app updates and (new) automatic Windows sign-in, done by a program that only the administrator can install or change, and that obeys only commands signed by the server's pinned key. An update is installed only if the server-signed command (display, expiry, seq, size, sha256) **and** the installer's Authenticode signature (the pinned certificate thumbprint) both check out on the same bytes, from a protected folder. It rolls back once to the previous verified installer if the new version does not come up.
+- **Enrollment:** the display page makes a one-time code (admin only, 15 minutes, hashed); the elevated `Install-Agent.ps1` enrolls with it and compares the server's command key with the fingerprint you typed. The agent has its own token that works only on `/api/player/v1/agent/*`; once it is enrolled the player's token no longer gets Tier B commands.
+- **Automatic Windows sign-in, remotely:** the password is encrypted in the admin's request to the PC's own X25519 key (HKDF-SHA256, AES-256-GCM), the server stores only the ciphertext and wipes it when the command is delivered, and it is never logged or audited. The agent keeps it as an LSA secret, not a registry value, and only for the one account chosen at install.
+- `scripts\Build-Agent.ps1`, `Sign-File.ps1`, `Sign-Installer.ps1` and an electron-builder signing hook (thumbprint from `AISIGNX_SIGN_THUMBPRINT`); the installer becomes the assisted NSIS form so one signed file serves per-user and all-users installs.
+- The player's own Tier B code (reboot, startup, update) stands down while the agent is in charge and remains the fallback when it is not installed.
+- Migration 0020; tests on both sides, including Python-signed commands and a Python-encrypted password opened by the node agent.
+- Not verified on real hardware yet (see docs/testing-checklist.md section L).
+
 ## Unreleased: Signed device commands (server side)
 
 ### Added
