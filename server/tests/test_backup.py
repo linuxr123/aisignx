@@ -617,3 +617,23 @@ def test_stale_banner(admin_client, app, monkeypatch):
     later = datetime.now(timezone.utc) + timedelta(days=3)
     monkeypatch.setattr(service, "utcnow", lambda: later)
     assert b"more than 48 hours old" in admin_client.get("/admin/backups/").data
+
+
+def test_backup_and_restore_carry_the_command_key(app):
+    """Screens pin the server's command key: a restore that makes a new one would lock the screens out of
+    reboot, startup and update commands."""
+    from aisignx.displays import signing
+    with app.app_context():
+        before = signing.public_key_b64()                       # makes instance/command_key
+    key_file = Path(app.instance_path) / "command_key"
+    assert key_file.is_file()
+    path = make_backup(app, include_uploads=False)
+    with zipfile.ZipFile(path) as zf:
+        assert "instance/command_key" in zf.namelist()
+        saved = zf.read("instance/command_key")
+    assert saved == key_file.read_bytes()
+    key_file.write_text("A" * 43 + "=\n")                       # as if the file were lost or replaced
+    with app.app_context():
+        restore_mod.restore(path, skip_snapshot=True)
+        assert signing.public_key_b64() == before               # same key again after the restore
+    assert key_file.read_bytes() == saved

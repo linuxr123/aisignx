@@ -14,6 +14,7 @@ AiSignX writes backups as single ZIP archives. You can make them from the web ad
 |---|---|
 | `db/aisignx.db` | A consistent copy of the SQLite database, made with SQLite's backup API while the server runs, and checked with `PRAGMA integrity_check`. |
 | `instance/secret_key` | The session signing key, if it is stored in the instance folder (that is, when `AISIGNX_SECRET_KEY` is not set). |
+| `instance/command_key` | The key that signs reboot, startup and app-update commands. Screens pin its public key the first time they see it, so a restore brings it back: a server with a different key makes screens refuse those commands until they are paired again. |
 | `uploads/media/*`, `uploads/thumbs/*` | Uploaded media and their previews, if "include uploads" is on. Screenshots and temporary files are left out. |
 | `manifest.json` | Format, AiSignX version, database revision, creation time, and the size and SHA-256 of every file. |
 
@@ -27,7 +28,6 @@ cannot read them.
 | Not in a backup | Why it matters |
 |---|---|
 | `server/.env` (settings such as `AISIGNX_SECRET_KEY` and `AISIGNX_SMTP_PASSWORD`) | Needed to start the same way on a new machine. |
-| `instance/command_key` | The key that signs reboot, startup and app-update commands. Screens pin its public key the first time they see it. A server without this file makes a **new** key, and screens that pinned the old one refuse those commands until they are paired again (or their saved server key is cleared). Android devices set up by the provisioning QR code pinned it too. Copy this file whenever you move or rebuild the server. It is a secret: treat the copy like the archives. |
 | The **downloads** folder (the installers and add-in files on the Downloads page) | The database keeps the list, so after a restore onto a machine without the folder the entries are still shown but cannot be downloaded, provisioned from, or pushed to screens. Upload the files again. |
 | `uploads/agent-logs` (logs collected from screens), `uploads/screenshots`, `uploads/tmp` | Short-lived. Collect them again if you need them. |
 | The plugin cache (`plugin-cache/`) | Fetched again on demand. |
@@ -150,11 +150,10 @@ web restore, including the safety backup. Start the server again afterwards.
 ## Moving to a new machine
 
 1. On the old machine, run `flask --app wsgi backup create` (or download a backup from the
-   web admin), and copy `server/.env`, `instance/command_key` and the `downloads` folder too
+   web admin), and copy `server/.env` and the `downloads` folder too (`command_key` is inside the archive)
    (see [what a backup does not contain](#what-a-backup-contains)).
 2. Install AiSignX on the new machine (same or newer version). Copy `.env` into `server/`, and
-   change paths in it if needed. Put `command_key` into the new instance folder and the
-   installers into the new `downloads` folder.
+   change paths in it if needed. Put the installers into the new `downloads` folder (the restore in step 4 brings `command_key` back).
 3. Run `flask --app wsgi db upgrade` to create an empty database. Don't go through the setup
    wizard; the restore replaces the admin account anyway.
 4. Copy the archive into `server/backups` and run `flask --app wsgi backup restore <name>`.

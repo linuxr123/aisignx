@@ -182,7 +182,7 @@ if [[ $UPGRADE -eq 1 && -d "$APP" && -x "$VENV/bin/flask" && -f "$DATA/instance/
 fi
 rm -rf "$APP.new"
 mkdir -p "$APP.new"
-( cd "$SOURCE/server" && tar --exclude='.venv' --exclude='instance' --exclude='uploads' --exclude='backups' --exclude='logs' --exclude='plugin-cache' \
+( cd "$SOURCE/server" && tar --exclude='.venv' --exclude='instance' --exclude='uploads' --exclude='backups' --exclude='logs' --exclude='downloads' --exclude='plugin-cache' \
     --exclude='__pycache__' --exclude='*.pyc' --exclude='*.db' --exclude='*.db-*' --exclude='.env' --exclude='tests' --exclude='.pytest_cache' -cf - . ) | tar -xf - -C "$APP.new"
 rm -rf "$APP.prev"; [[ -d "$APP" ]] && mv "$APP" "$APP.prev"
 mv "$APP.new" "$APP"

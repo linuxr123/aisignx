@@ -68,8 +68,8 @@ The `/data` volume holds:
 | `/data/logs` | `aisignx.log`, rotated at 5 MB x 5 files |
 | `/data/plugin-cache` | fetched plugin data (can be lost; fetched again) |
 
-All of it must persist, so keep the whole `/data` volume. `command_key` and `downloads` are **not** inside
-backup archives ([backup.md](backup.md)): deleting the volume loses them even if you restore an archive.
+All of it must persist, so keep the whole `/data` volume. `command_key` is inside backup archives, but the `downloads`
+folder is **not** ([backup.md](backup.md)): deleting the volume loses the installers even if you restore an archive.
 
 Keep the volume on a local disk. SQLite does not work reliably on a network share (NFS, SMB).
 
@@ -99,7 +99,7 @@ to an older version after a migration is not supported; restore the backup inste
 Scheduled daily backups run inside the container, as configured in **Admin > Backups**, and are
 written to `/data/backups`. That folder is on the same volume as the data, so copy archives
 somewhere else as well. See [backup.md](backup.md) for what an archive contains and what it leaves out
-(`instance/command_key`, the `downloads` folder). To copy the key out: `docker compose cp aisignx:/data/instance/command_key ./`.
+(the `downloads` folder). To copy the key out as well: `docker compose cp aisignx:/data/instance/command_key ./`.
 
 Run the backup commands inside the running container:
 

@@ -17,7 +17,7 @@ replica). Several things live in that process's memory only:
 - the background jobs thread and the schedule ticker.
 
 Two more files live next to the database and matter when you move or restore a server: the
-instance folder's `secret_key` and `command_key` (see [Files that are not in a backup](#files-that-are-not-in-a-backup)).
+instance folder's `secret_key` and `command_key`; both are in every backup (see [Files that are not in a backup](#files-that-are-not-in-a-backup) for what is not).
 
 A second process would not see the first one's limiter or maintenance flag. The background jobs
 are protected against running twice, but everything else is not. Scale up with threads
@@ -156,12 +156,10 @@ database grows too large, lower the raw retention; the daily totals are unaffect
 
 ## Files that are not in a backup
 
-A backup holds the database, the `secret_key` and the uploaded media (see [backup.md](backup.md)). It does **not**
-hold:
+A backup holds the database, the `secret_key`, the `command_key` (the key that signs reboot, startup and update
+commands to screens, see [signed-commands.md](signed-commands.md)) and the uploaded media (see [backup.md](backup.md)).
+It does **not** hold:
 
-- `instance/command_key`, the key that signs reboot, startup and update commands to screens. Copy it yourself
-  when you move a server. A new server makes a new key, and screens that pinned the old one refuse those
-  commands until they are paired again or their saved server key is cleared ([signed-commands.md](signed-commands.md)).
 - The **downloads** folder (the installers on the Downloads page, `downloads` next to `uploads`). The database
   remembers the entries, so after a restore onto a bare machine they are listed but cannot be downloaded or
   pushed to screens until you upload the files again.

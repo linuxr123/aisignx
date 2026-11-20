@@ -77,7 +77,7 @@ folder. That parent is the **data folder**: `server/` in a plain checkout,
 |---|---|
 | `instance/aisignx.db` | The SQLite database (with `-wal` and `-shm` files while running). |
 | `instance/secret_key` | The session key, unless `AISIGNX_SECRET_KEY` is set. |
-| `instance/command_key` | The server's Ed25519 key that signs reboot, startup and update commands to screens. Made the first time a screen or the Android provisioning page needs it. Owner-only. Screens pin its public key on first contact, so keep it: a new server with a new key makes screens refuse those commands. The fingerprint is on **Admin > System**. **Not part of a backup**; copy it with your `.env` ([backup.md](backup.md)). |
+| `instance/command_key` | The server's Ed25519 key that signs reboot, startup and update commands to screens. Made the first time a screen or the Android provisioning page needs it. Owner-only. Screens pin its public key on first contact, so keep it: a new server with a new key makes screens refuse those commands. The fingerprint is on **Admin > System**. Included in every backup and restored with it ([backup.md](backup.md)). |
 | `uploads/` | `media`, `thumbs`, `screenshots`, `agent-logs` (device logs collected from screens) and `tmp`. |
 | `downloads/` | The installers on the **Downloads** page, stored under random names ([downloads.md](downloads.md)). **Not part of a backup.** Installers pushed to screens are read from here. |
 | `backups/`, `logs/`, `plugin-cache/` | Backup archives, application log, fetched plugin data. |

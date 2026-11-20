@@ -26,7 +26,7 @@ from .. import dbinfo, maintenance
 from ..extensions import db
 from ..timeutil import utcnow
 from . import service
-from .service import (CHUNK, DB_MEMBER, FORMAT, MANIFEST, SECRET_MEMBER,
+from .service import (CHUNK, COMMAND_KEY_MEMBER, DB_MEMBER, FORMAT, MANIFEST, SECRET_MEMBER,
                       UPLOAD_MEMBER_RE, UPLOAD_SUBDIRS, BackupError)
 
 log = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ def _unsafe(name: str) -> bool:
 
 
 def _allowed(name: str) -> bool:
-    return name in (MANIFEST, DB_MEMBER, SECRET_MEMBER) or bool(UPLOAD_MEMBER_RE.match(name))
+    return name in (MANIFEST, DB_MEMBER, SECRET_MEMBER, COMMAND_KEY_MEMBER) or bool(UPLOAD_MEMBER_RE.match(name))
 
 
 def _inside(root: Path, name: str) -> Path:
@@ -295,6 +295,8 @@ def _apply(path: Path, manifest: dict, live: Path | None) -> list[str]:
                 skipped = _sync_uploads(zf, manifest["files"])
             if SECRET_MEMBER in manifest["files"]:
                 _write_secret(zf.read(SECRET_MEMBER))
+            if COMMAND_KEY_MEMBER in manifest["files"]:
+                _write_command_key(zf.read(COMMAND_KEY_MEMBER))
         if live is not None:
             _upgrade()
             _sign_everyone_out()
@@ -403,6 +405,17 @@ def _write_secret(data: bytes) -> None:
     tmp = folder / f".secret_key-{secrets.token_hex(4)}"
     tmp.write_bytes(data)
     os.replace(tmp, folder / "secret_key")
+
+
+def _write_command_key(data: bytes) -> None:
+    """Restore instance/command_key, so screens that pinned this server's key keep accepting its commands.
+    Written owner-only; the signing module notices the changed file by itself."""
+    folder = Path(current_app.instance_path)
+    tmp = folder / f".command_key-{secrets.token_hex(4)}"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+    os.replace(tmp, folder / "command_key")
 
 
 def _upgrade() -> None:

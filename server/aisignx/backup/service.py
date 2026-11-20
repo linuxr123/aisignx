@@ -5,6 +5,8 @@ BACKUP_DIR, holding (in this order):
 
     db/aisignx.db          a consistent copy of the SQLite database (sqlite3 backup API)
     instance/secret_key    the session signing key, when stored in the instance folder
+    instance/command_key   the key that signs device commands (screens pin its public half: without it
+                           they refuse reboot, startup and update commands after a restore)
     uploads/media/*        uploaded media files      (only with "include uploads")
     uploads/thumbs/*       their previews            (only with "include uploads")
     manifest.json          format, versions, alembic revision, size and sha256 per file
@@ -44,6 +46,7 @@ FORMAT = 1
 MANIFEST = "manifest.json"
 DB_MEMBER = "db/aisignx.db"
 SECRET_MEMBER = "instance/secret_key"
+COMMAND_KEY_MEMBER = "instance/command_key"
 UPLOAD_SUBDIRS = ("media", "thumbs")
 UPLOAD_MEMBER_RE = re.compile(r"^uploads/(media|thumbs)/([A-Za-z0-9][A-Za-z0-9._-]{0,200})$")
 SPACE_FACTOR = 1.2
@@ -217,6 +220,9 @@ def _create_locked(source: str, include_uploads: bool | None) -> Path:
             secret = Path(current_app.instance_path) / "secret_key"
             if secret.is_file():
                 files[SECRET_MEMBER] = _add_file(zf, SECRET_MEMBER, secret, zipfile.ZIP_DEFLATED)
+            command_key = Path(current_app.instance_path) / "command_key"
+            if command_key.is_file():
+                files[COMMAND_KEY_MEMBER] = _add_file(zf, COMMAND_KEY_MEMBER, command_key, zipfile.ZIP_DEFLATED)
             for member, path in uploads:
                 try:
                     files[member] = _add_file(zf, member, path, zipfile.ZIP_STORED)

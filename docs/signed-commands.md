@@ -21,8 +21,7 @@ the key). That is a deliberate, stated limit.
 ## Keys
 
 - The server makes one Ed25519 key pair the first time it needs it, stored in the instance folder as
-  `command_key` (owner read/write only, never in a backup of uploads, included in database backups of the
-  instance). Rotating means deleting the file and re-pairing the devices.
+  `command_key` (owner read/write only, included in every backup archive and restored with it). Rotating means deleting the file and re-pairing the devices.
 - A device fetches the public key with `GET /api/player/v1/command-key` (display token) and **pins the first one
   it sees** (trust on first use), together with the server address. A device set up by the Android QR code is
   given the key inside the code (`command_key` in the provisioning extras bundle, next to `server_url` and

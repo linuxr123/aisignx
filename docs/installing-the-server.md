@@ -44,8 +44,8 @@ Options: `-Port 8080`, `-NoFirewall`, `-NoStart`, `-Yes` (no questions), `-DryRu
 `-InstallDir`, `-DataDir`, `-Source <folder>`.
 
 **Upgrade:** get the newer AiSignX folder and run the same command. The database is backed up first (a normal
-AiSignX backup, see [backup.md](backup.md); it leaves out `command_key` and the downloads folder, which the
-upgrade does not touch either), your data is never touched, database migrations are applied, and the previous
+AiSignX backup, see [backup.md](backup.md); it contains `command_key` but not the downloads folder, which the
+upgrade does not touch), your data is never touched, database migrations are applied, and the previous
 version stays in `C:\Program Files\AiSignX\app.prev` until you delete it. Your `aisignx.env` is kept. If you
 changed the firewall rule by hand, add `-NoFirewall`, or the script puts it back. Upgrading the server does
 not update the apps on the screens; push those from the display page ([updates.md](updates.md)).

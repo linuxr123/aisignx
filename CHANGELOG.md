@@ -44,6 +44,11 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
+## Unreleased: Backups carry the command key
+
+### Fixed
+- **Backups now include `instance/command_key`** and a restore brings it back. Before, restoring onto a new machine made a new key and screens that had pinned the old one refused reboot, startup and update commands. The `downloads` folder is still not in a backup: upload the installers again.
+
 ## Unreleased: Android kiosk, install link and app versions 3.0.0 to 3.0.3
 
 ### Added

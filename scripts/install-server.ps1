@@ -214,7 +214,7 @@ Do-It "copy the server to $App" {
     $new = "$App.new"
     if (Test-Path $new) { Remove-Item $new -Recurse -Force }
     # robocopy exit codes below 8 are success.
-    & robocopy.exe $serverSrc $new /E /NFL /NDL /NJH /NJS /NP /XD .venv instance uploads backups logs plugin-cache __pycache__ tests .pytest_cache /XF *.pyc *.db *.db-* .env | Out-Null
+    & robocopy.exe $serverSrc $new /E /NFL /NDL /NJH /NJS /NP /XD .venv instance uploads backups downloads logs plugin-cache __pycache__ tests .pytest_cache /XF *.pyc *.db *.db-* .env | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "Copying the program failed (robocopy exit code $LASTEXITCODE)." }
     if (Test-Path "$App.prev") { Remove-Item "$App.prev" -Recurse -Force }
     if (Test-Path $App) { Rename-Item $App "$App.prev" }
