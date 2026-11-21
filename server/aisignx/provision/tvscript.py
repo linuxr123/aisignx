@@ -91,6 +91,15 @@ if (-not $adb) {
     if (-not (Test-Path $adb)) { Fail 'adb was not found after unpacking the download.' }
 }
 Write-Host "    using $adb"
+$script:AdbPath = $adb
+
+# adb writes progress messages (for example "daemon not running; starting now") to its error stream. With strict error
+# handling PowerShell would treat those as failures, so every adb call goes through here and only its text is used.
+function Adb {
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { (& $script:AdbPath @args 2>&1 | ForEach-Object { "$_" }) -join "`n" } finally { $ErrorActionPreference = $old }
+}
 
 # --- the app -------------------------------------------------------------------------------------------------------
 Step 'Downloading the app from your server'
@@ -102,24 +111,24 @@ Write-Host "    ok, $([math]::Round((Get-Item $apk).Length / 1MB, 1)) MB, checks
 
 # --- connect -------------------------------------------------------------------------------------------------------
 Step "Connecting to the device at $Serial"
-& $adb start-server 2>&1 | Out-Null
-$out = (& $adb connect $Serial 2>&1 | Out-String).Trim()
+Adb start-server | Out-Null
+$out = (Adb connect $Serial).Trim()
 Write-Host "    $out"
 if ($out -match 'refused|failed|cannot|unable|timed out') { Fail "could not connect. Is 'Network debugging' (or 'USB debugging') switched on, and is the address right? The device and this PC must be on the same network." }
 Start-Sleep -Seconds 1
-$state = (& $adb -s $Serial get-state 2>&1 | Out-String).Trim()
+$state = (Adb -s $Serial get-state).Trim()
 if ($state -match 'unauthorized') { Fail "the device has not allowed this computer yet. Look at the TV: choose 'Always allow' on the 'Allow USB debugging?' question, then run this again." }
 if ($state -ne 'device') { Fail "the device answered '$state', not 'device'." }
 
 # --- install -------------------------------------------------------------------------------------------------------
 Step 'Installing the app'
-$res = (& $adb -s $Serial install -r -g $apk 2>&1 | Out-String).Trim()
+$res = (Adb -s $Serial install -r -g $apk).Trim()
 Write-Host "    $res"
 if ($res -notmatch 'Success') { Fail 'the install did not succeed (see the line above). A different version signed with another key must be uninstalled first.' }
 
 if ($DeviceOwner) {
     Step 'Making the app the Device Owner'
-    $o = (& $adb -s $Serial shell dpm set-device-owner "$Package/$Receiver" 2>&1 | Out-String).Trim()
+    $o = (Adb -s $Serial shell dpm set-device-owner "$Package/$Receiver").Trim()
     Write-Host "    $o"
     if ($o -match 'Success') { Write-Host '    done: the app now has full control of this device' -ForegroundColor Green }
     else { Write-Host "    not possible: $o" -ForegroundColor Yellow; Write-Host '    (It needs a device with no accounts signed in. The app works without it, with fewer rights.)' -ForegroundColor Yellow }
@@ -127,9 +136,9 @@ if ($DeviceOwner) {
 
 # --- start it with the server filled in ----------------------------------------------------------------------------
 Step 'Opening the app with your server address'
-& $adb -s $Serial shell am start -n "$Package/$Activity" --es $ExtraKey $Server 2>&1 | Out-Null
+Adb -s $Serial shell am start -n "$Package/$Activity" --es $ExtraKey $Server | Out-Null
 Remove-Item $apk -Force -ErrorAction SilentlyContinue
-& $adb disconnect $Serial 2>&1 | Out-Null
+Adb disconnect $Serial | Out-Null
 
 Write-Host ''
 Write-Host 'Done. On the device:' -ForegroundColor Green

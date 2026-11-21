@@ -240,3 +240,15 @@ def test_tv_script_refuses_unsafe_values():
             tvscript.build(**{**ok, **bad})
     text = tvscript.build(**{**ok, "version": "3.0.5'; calc"})                       # the version is reduced to safe characters
     assert "'; calc" not in text and "3.0.5calc" in text
+
+
+def test_tv_script_only_calls_adb_through_its_wrapper():
+    """adb prints progress ("daemon not running; starting now") on stderr; strict error handling in PowerShell 5.1
+    turns that into a failure, which is how the first real run of this script broke. Every call goes through Adb()."""
+    from aisignx.provision import tvscript
+    text = tvscript.build(server="http://192.168.1.19:5000", apk_url="http://192.168.1.19:5000/provision/apk/a.b.c",
+                          apk_sha256="a" * 64, package="com.aisignx.player", version="3.0.5")
+    direct = [ln for ln in text.splitlines() if "& $adb" in ln or "& $script:AdbPath" in ln]
+    assert len(direct) == 1 and "ForEach-Object" in direct[0], direct          # only inside the Adb function
+    assert "function Adb" in text and "$ErrorActionPreference = 'Continue'" in text
+    assert text.count("Adb ") >= 6                                              # and it is what the steps call
