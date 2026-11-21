@@ -49,8 +49,9 @@ certificate that PC must trust it first, or use the plain `http://` address on a
 
 **What has and has not been tested.** The certificate code, the configuration text, the checks and the admin page are unit tested.
 The two scripts are tested for syntax and their dry-run output, and the nginx.org download page parsing was checked against the live page.
-They have **not** been run on a real PC or server, and the generated configuration has **not** yet been run through `nginx -t` here
-(`docs/testing-checklist.md`, section N). Linux is best effort.
+The generated configuration was run with the real **nginx 1.30.7 for Windows**: `nginx -t` accepts it, and with a self-signed certificate nginx
+answered `https://` pages from a running AiSignX, redirected port 80 to https, and passed the live-update path through (401 without a login, as it should).
+The scripts themselves have **not** been run on a real PC or server (`docs/testing-checklist.md`, section N). Linux is best effort.
 
 ## Why HTTPS matters
 

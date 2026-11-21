@@ -51,7 +51,7 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 - `flask https self-signed | import | config | status` (new `aisignx.https` package: `certs.py`, `nginx.py`). The nginx text is built only from checked values (no quotes, braces, semicolons or `$` can get into a directive), passes uploads through, never buffers the live-update stream, and refuses HSTS with a self-signed certificate.
 - **`scripts/setup-nginx.ps1`** (Windows) and **`scripts/setup-nginx.sh`** (Linux): install nginx, get the certificate, write and check the configuration, turn on `AISIGNX_PROXY_HOPS` and `AISIGNX_SECURE_COOKIES`, start nginx with the machine, open the firewall, close the plain port, and reload nginx when the certificate file changes. Windows: `-Update` moves to the newest stable nginx with automatic roll-back, `-AutoUpdate` does it weekly. Linux: nginx from the distribution, `--update`, and `--letsencrypt` with automatic renewal.
 - New setting `AISIGNX_TLS_DIR` (default `<data>/tls`).
-- Tested: certificate and configuration code, the CLI and the admin page (unit tests); both scripts for syntax and dry-run output; the nginx.org page parsing against the live page. **Not tested:** running the scripts on a real PC or server, and `nginx -t` on the generated file.
+- Tested: certificate and configuration code, the CLI and the admin page (unit tests); both scripts for syntax and dry-run output; the nginx.org page parsing against the live page. The generated file was also run with the real nginx 1.30.7 for Windows (`nginx -t` ok; https, http-to-https redirect and the live-update path proxied to a running server). **Not tested:** running the scripts themselves on a real PC or server.
 
 ## Unreleased: Player controls
 
