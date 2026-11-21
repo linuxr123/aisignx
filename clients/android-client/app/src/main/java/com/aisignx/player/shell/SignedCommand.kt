@@ -117,7 +117,7 @@ object SignedCommand {
             SET_STARTUP -> {
                 val a = startupParams(params) ?: return fail(BAD_PARAMS)
                 when {
-                    !env.caps.canSetStartup || a.mode == "shell" -> fail(UNSUPPORTED)
+                    !env.caps.canSetStartup -> fail(UNSUPPORTED)
                     !env.settings.startup -> fail(NOT_ALLOWED)
                     else -> Result.Accept(id, seq, a)
                 }

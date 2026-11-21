@@ -7,7 +7,7 @@ adb, no cable, no typing on the tablet.
 This is the managed route. The older manual route (adb) is in
 [kiosk-lockdown.md](kiosk-lockdown.md); both end in the same state, the app as **Device Owner**.
 
-This page describes the app version 3.0.3 (`versionCode` 303). Only one device has run it: the
+This page describes the app version 3.0.4 (`versionCode` 304). Only one device has run it: the
 owner's Samsung Galaxy tablet (SM-X210, Android 16). Other tablets, other Android versions and
 other makers are untested; the notes below say what is confirmed and what is not.
 
@@ -157,7 +157,29 @@ On the display page (Device agent switches must be on, and the app must be able 
 |---|---|
 | Reboot | Only as Device Owner. Acknowledged first, then `DevicePolicyManager.reboot`. At most once per 10 minutes on the device. |
 | Update app | The app downloads the installer from the server with its display credential, checks the **signed** size and SHA-256 while saving it, then installs it with the system installer: **silent as Device Owner**, otherwise the system asks someone to confirm. It only installs a package with its own application ID signed by the same key as the installed app. The app restarts itself afterwards. |
-| Startup | `autostart` on or off (enables or disables the boot receiver). `shell` mode is Windows only and is refused. The Device Owner Home role is separate: with the lockdown on the app is Home and starts anyway. |
+| Startup | `autostart` on or off (enables or disables the boot receiver), and the run mode (see **Run modes** below). |
+
+### Run modes
+
+The display page offers the same three run modes on Windows and Android:
+
+| Run mode | On Android |
+|---|---|
+| Application | Starts when someone opens it. Auto-start off, **Use as Home app** off. |
+| Application with auto-start | Starts by itself after a reboot (the boot receiver is on). |
+| Shell | The player takes over the device: it is the **Home app**, so the tablet boots into it and the Home button returns to it. |
+
+Shell is the **Use as Home app** checkbox of the Setup screen: the web page and the checkbox read and write the same
+setting, through the same code (the Home alias is enabled or disabled, and a Device Owner's persistent Home
+preference is removed when it is switched off). The tablet reports the run mode in `diag.agent.startup`: `mode`
+is `shell` while the app is the Home app (Use as Home app on, or the lockdown engaged), else `app`;
+`shell_capable` is always `true`.
+
+**Lock player decides.** With Lock player on (Device Owner), the lockdown always keeps the app as the Home app.
+Asking for Application mode then is **refused** (the command fails with "Lock player is on: it keeps this app as
+the Home app. Turn Lock player off first") and nothing is changed, not even the auto-start part of that command.
+Asking for Shell is accepted. Not verified on a device: the Home button and the reboot behaviour of each mode on
+the Galaxy tablet (only the decision logic has unit tests).
 
 Each command carries the server's signature; the tablet pins the server's command key the
 first time it sees it (trust on first use, per server address). If the key later changes the

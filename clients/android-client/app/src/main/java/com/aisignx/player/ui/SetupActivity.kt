@@ -305,10 +305,9 @@ class SetupActivity : AppCompatActivity() {
     }
 
     private fun applyHomeMode(enabled: Boolean) {
-        config.homeMode = enabled
-        // As Device Owner with Lock player on, the alias stays enabled as the persistent
-        // Home; the player sets it again on its next start.
-        LockTask.trySetHomeAlias(this, enabled)
+        // Same code path as the set_startup command (mode shell/app). As Device Owner with Lock player on,
+        // the alias stays enabled as the persistent Home; the player sets it again on its next start.
+        HomeMode.apply(this, enabled)
     }
 
     /** Reached only through the PIN-gated exit, so a viewer cannot do this. */

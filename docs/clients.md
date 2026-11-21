@@ -5,7 +5,7 @@ AiSignX has two player apps for screens that should run unattended:
 - **AiSignX Player for Windows** (Electron, `clients/electron-client`, version 3.1.0). Windows
   10 and 11 are the supported platform. A Linux build target exists (AppImage and deb) but has
   never been run; Linux is best effort. macOS is not supported and has no build.
-- **AiSignX Player for Android** (`clients/android-client`, version 3.0.3): phones, tablets and
+- **AiSignX Player for Android** (`clients/android-client`, version 3.0.4): phones, tablets and
   Android TV boxes, Android 8.0 or newer.
 
 A third kind of screen needs no app: any browser on `/player/` (see
@@ -29,7 +29,7 @@ behaves the same in a browser and in an app. The apps add what a browser can't d
 | Full screen, blocked keys, keep-awake | yes | yes (immersive mode, remote keys blocked) |
 | Starts by itself | Windows login item, XDG autostart for the Linux AppImage | Home-app mode, or a boot receiver |
 | Restarts after a crash | renderer crash and hang watchdogs | WebView renderer crash handler |
-| Reported to the admin as | `electron-3.1.0` and the PC name | `android-3.0.3` and the device model |
+| Reported to the admin as | `electron-3.1.0` and the PC name | `android-3.0.4` and the device model |
 | Unlock PIN to leave the player | all Ctrl+Alt shortcuts | the hidden exit gesture |
 | Screen rotation | page (CSS) | the device itself; page (CSS) on TV boxes |
 | Screenshot of the real screen | yes | yes |
@@ -113,7 +113,7 @@ Pairing is the same as in a browser:
    a default playlist.
 
 The screen starts playing within a few seconds. The admin shows the player version
-(`electron-3.1.0` or `android-3.0.3`) and the device name. The credential is an HttpOnly cookie;
+(`electron-3.1.0` or `android-3.0.4`) and the device name. The credential is an HttpOnly cookie;
 the apps write it to disk right after pairing, so a power cut does not lose it.
 
 A screen asks for a new code only when the server rejects its credential (the display was

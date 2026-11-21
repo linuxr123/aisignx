@@ -44,6 +44,11 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
+## Unreleased: Android 3.0.4, run modes on Android
+
+### Changed
+- **Android 3.0.4:** the three "How the player runs" choices from the display page now work on Android too. **Shell** means the app is the **Home app** (the device boots into it and the Home button returns to it), **Application** turns Home mode off, **Application with auto-start** starts it at boot. With Lock player on the app is always the Home app, so switching to Application is refused with a clear message. The Setup screen's "Use as Home app" tick and the command now share one code path. Not verified on a device.
+
 ## Unreleased: Emergency page redesign
 
 ### Changed

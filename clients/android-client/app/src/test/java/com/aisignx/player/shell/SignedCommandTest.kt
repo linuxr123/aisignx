@@ -173,7 +173,7 @@ class SignedCommandTest {
         assertEquals(Result.Accept(ID, 412, Action.Startup(true, "app")), run("""{"autostart":true,"mode":"app"}"""))
         assertEquals(Result.Accept(ID, 412, Action.Startup(false, null)), run("""{"autostart":false}"""))
         assertEquals(Result.Accept(ID, 412, Action.Startup(null, null)), run("{}"))
-        assertEquals("unsupported", reason(run("""{"mode":"shell"}""")))
+        assertEquals(Result.Accept(ID, 412, Action.Startup(null, "shell")), run("""{"mode":"shell"}"""))
         assertEquals("bad_params", reason(run("""{"autostart":"yes"}""")))
         assertEquals("bad_params", reason(run("""{"autostart":1}""")))
         assertEquals("bad_params", reason(run("""{"mode":"kiosk"}""")))

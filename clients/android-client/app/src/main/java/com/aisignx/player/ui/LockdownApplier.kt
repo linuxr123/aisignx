@@ -56,6 +56,23 @@ object LockdownApplier {
         report(ctx, r.effective(mode), failed)
     }
 
+    /** The lockdown was engaged and has not been fully released since. */
+    @Synchronized
+    fun engaged(ctx: Context): Boolean {
+        runner(ctx) // makes sure the stored state is attached
+        return prefsState.engaged
+    }
+
+    /** Removes the persistent Home preference (Home mode switched off). Device Owner only; false when it failed. */
+    @Synchronized
+    fun clearPersistentHome(ctx: Context): Boolean = try {
+        if (LockTask.isDeviceOwner(ctx)) DpmOps(ctx.applicationContext).setPersistentHome(false)
+        true
+    } catch (e: Exception) {
+        FileLog.w(TAG, "clearing the persistent Home failed: ${e.message}")
+        false
+    }
+
     /** Boot, update, provisioning: apply what the last manifest said, without the player running. */
     fun syncStored(ctx: Context) {
         val config = AiSignXApp.from(ctx).config

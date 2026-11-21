@@ -87,7 +87,7 @@ reboot per 10 minutes (the device enforces the same gap for reboots). A display 
 | action | params | notes |
 |---|---|---|
 | `reboot_device` | `{}` | Windows: `shutdown /r /t 30` after acking (so the ack gets out); Android: Device Owner only (`DevicePolicyManager.reboot`). Not more than once per 10 minutes (device-side too). |
-| `set_startup` | `{"autostart": bool, "mode": "app"\|"shell"}` | `autostart`: start the player at sign-in (Windows player app: its login item; privileged agent: a machine Run entry for the kiosk account; Android: enables or disables the boot receiver). `mode`: `app` = normal program; `shell` = the player replaces the Windows shell for that user (Windows only; Android answers `unsupported`). Both optional; omitted keys are left alone. At least one must be given. |
+| `set_startup` | `{"autostart": bool, "mode": "app"\|"shell"}` | `autostart`: start the player at sign-in (Windows player app: its login item; privileged agent: a machine Run entry for the kiosk account; Android: enables or disables the boot receiver). `mode`: `app` = normal program; `shell` = the player takes over the device: on Windows it replaces the shell for that user; on Android (3.0.4 and later) it is the Home app (the Setup screen's "Use as Home app"), so the device boots into it. Android refuses `app` with ack `failed` ("Lock player is on: it keeps this app as the Home app. Turn Lock player off first") while Lock player is on, and changes nothing in that command. Both optional; omitted keys are left alone. At least one must be given. |
 | `update_app` | `{"version": "3.1.1", "sha256": "<64 hex>", "size": 120158154}` | The device downloads the package from `GET /api/player/v1/commands/<request id>/package` (display token, only while the command is open), checks size and sha256 against the **signed** values, then installs: the Windows player app runs the installer silently (`/S`), the privileged agent runs it with `/S /allusers` after checking its Authenticode signature, Android installs with `PackageInstaller` (silent for Device Owner, otherwise the system asks the user; the package must have the app's own ID and the installed app's signing key; at most 500 MB). The server offers the newest installer of the screen's kind on the Downloads page. |
 
 Acknowledge with `POST /api/player/v1/commands/<id>/ack` `{"state": "done"|"failed", "result": "<=200 chars"}`
@@ -97,7 +97,7 @@ as for Tier A. For `reboot_device` and `update_app`, ack `done` **before** the r
 ## Capabilities and settings
 
 The device reports in `diag.agent`: `can_reboot`, `can_set_startup`, `can_update` (booleans), plus
-`startup` = `{"autostart": bool, "mode": "app"|"shell", "shell_capable": bool}` so the admin page shows what is
+`startup` = `{"autostart": bool, "mode": "app"|"shell", "shell_capable": bool}` (Android: `mode` is `shell` while the app is the Home app, `shell_capable` is true) so the admin page shows what is
 set now. The admin enables each ability per display (Edit > Device agent); the manifest's `settings.agent`
 carries `reboot`, `startup`, `update` booleans.
 

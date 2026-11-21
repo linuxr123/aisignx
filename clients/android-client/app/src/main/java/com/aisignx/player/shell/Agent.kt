@@ -11,7 +11,9 @@ import com.aisignx.player.AiSignXApp
 import com.aisignx.player.BuildConfig
 import com.aisignx.player.FileLog
 import com.aisignx.player.net.Http
+import com.aisignx.player.ui.HomeMode
 import com.aisignx.player.ui.LockTask
+import com.aisignx.player.ui.LockdownApplier
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -150,7 +152,8 @@ class Agent(
             .put("can_reboot", caps().canReboot)
             .put("can_update", caps().canUpdate)
             .put("can_set_startup", caps().canSetStartup)
-            .put("startup", JSONObject().put("autostart", Installer.autostart(ctx)).put("mode", "app").put("shell_capable", false))
+            .put("startup", JSONObject().put("autostart", Installer.autostart(ctx))
+                .put("mode", StartupRules.reportedMode(app.config.homeMode, LockdownApplier.engaged(ctx))).put("shell_capable", true))
             .put("watchdog", settings.watchdog)
             .put("restarts_1h", AgentRates.recent(store.restartTimes(), wall))
             .put("gave_up", gaveUp)
@@ -311,8 +314,19 @@ class Agent(
 
     private fun setStartup(base: String, token: String, id: String, a: SignedCommand.Action.Startup) {
         try {
+            // Decide first: a refused mode changes nothing (not even autostart).
+            val d = StartupRules.decide(a.mode, HomeMode.lockKeepsHome(ctx))
+            if (d is StartupRules.Decision.Refuse) {
+                ack(base, token, id, "failed", d.result)
+                FileLog.w(TAG, "set_startup refused: ${d.result}")
+                return
+            }
             a.autostart?.let { Installer.setAutostart(ctx, it) }
-            ack(base, token, id, "done", "autostart ${if (Installer.autostart(ctx)) "on" else "off"}")
+            (d as StartupRules.Decision.Apply).homeMode?.let { on ->
+                if (!HomeMode.apply(ctx, on)) { ack(base, token, id, "failed", "could not change the Home app setting"); return }
+            }
+            val mode = StartupRules.reportedMode(app.config.homeMode, LockdownApplier.engaged(ctx))
+            ack(base, token, id, "done", StartupRules.doneText(Installer.autostart(ctx), mode))
         } catch (e: Exception) {
             FileLog.w(TAG, "set_startup failed: ${e.javaClass.simpleName}")
             ack(base, token, id, "failed", "failed")
