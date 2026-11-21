@@ -1,7 +1,7 @@
 {
   "name": "aisignx-player",
   "productName": "AiSignX Player",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "description": "AiSignX v3 display client",
   "license": "AGPL-3.0-or-later",
   "private": true,

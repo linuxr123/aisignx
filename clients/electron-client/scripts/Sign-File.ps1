@@ -18,6 +18,12 @@ $cert = Get-Item -LiteralPath ('Cert:\CurrentUser\My\' + $Thumbprint) -ErrorActi
 if (-not $cert) { throw 'The certificate is not in Cert:\CurrentUser\My on this PC.' }
 if (-not $cert.HasPrivateKey) { throw 'The certificate has no private key here.' }
 if (($cert.EnhancedKeyUsageList | ForEach-Object { $_.ObjectId }) -notcontains '1.3.6.1.5.5.7.3.3') { throw 'The certificate is not a code-signing certificate.' }
+# Already signed with this certificate (electron-builder can ask for the same helper file twice at the same moment): nothing to do.
+$existing = Get-AuthenticodeSignature -LiteralPath $Path
+if ($existing.Status -eq 'Valid' -and $existing.SignerCertificate -and $existing.SignerCertificate.Thumbprint -eq $Thumbprint -and $existing.TimeStamperCertificate) {
+    Write-Host ('Signed ' + (Split-Path -Leaf $Path) + ' (already signed and timestamped)')
+    return
+}
 $before = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
 $args2 = @{ FilePath = $Path; Certificate = $cert; HashAlgorithm = 'SHA256' }
 if ($TimestampUrl) { $args2.TimestampServer = $TimestampUrl }
