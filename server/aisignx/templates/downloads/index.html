@@ -42,7 +42,8 @@
 {% endfor %}
 
 {% if can_manage %}
-<p class="mb-3"><a class="btn btn-outline-primary" href="{{ url_for('provision.android') }}">Set up an Android tablet as a kiosk (QR code)</a></p>
+<p class="mb-3 d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{{ url_for('provision.android') }}">Set up an Android tablet as a kiosk (QR code)</a>
+  <a class="btn btn-outline-primary" href="{{ url_for('provision.windows') }}">Set up a Windows PC (one script)</a></p>
 <div class="card">
   <div class="card-header fw-semibold">Add a file</div>
   <div class="card-body">

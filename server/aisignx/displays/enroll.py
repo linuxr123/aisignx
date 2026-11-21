@@ -57,12 +57,13 @@ def format_code(code: str) -> str:
     return "-".join(code[i:i + 4] for i in range(0, CODE_LENGTH, 4))
 
 
-def new_code(display: Display, now: datetime | None = None) -> str:
-    """A fresh one-time code for `display` (it replaces an earlier unused one). Returned once, stored hashed."""
+def new_code(display: Display, now: datetime | None = None, ttl: timedelta | None = None) -> str:
+    """A fresh one-time code for `display` (it replaces an earlier unused one). Returned once, stored hashed.
+    ttl: how long it works (default CODE_TTL; the Windows set-up script, which is run a little later, asks for more)."""
     now = now or utcnow()
     code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
     db.session.execute(update(Display).where(Display.id == display.id).values(
-        agent_enroll_hash=_hash_code(code), agent_enroll_expires=now + CODE_TTL, agent_enroll_fails=0)
+        agent_enroll_hash=_hash_code(code), agent_enroll_expires=now + (ttl or CODE_TTL), agent_enroll_fails=0)
         .execution_options(synchronize_session=False))
     return format_code(code)
 

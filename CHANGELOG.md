@@ -44,6 +44,30 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
+## Unreleased: HTTPS with nginx
+
+### Added
+- **Admin > System > HTTPS:** shows the certificate (names, expiry, SHA-256), makes a self-signed one, checks and stores one you bought (PEM chain and key, key passphrase accepted), downloads the nginx configuration. Private keys are never shown again and are not in backups.
+- `flask https self-signed | import | config | status` (new `aisignx.https` package: `certs.py`, `nginx.py`). The nginx text is built only from checked values (no quotes, braces, semicolons or `$` can get into a directive), passes uploads through, never buffers the live-update stream, and refuses HSTS with a self-signed certificate.
+- **`scripts/setup-nginx.ps1`** (Windows) and **`scripts/setup-nginx.sh`** (Linux): install nginx, get the certificate, write and check the configuration, turn on `AISIGNX_PROXY_HOPS` and `AISIGNX_SECURE_COOKIES`, start nginx with the machine, open the firewall, close the plain port, and reload nginx when the certificate file changes. Windows: `-Update` moves to the newest stable nginx with automatic roll-back, `-AutoUpdate` does it weekly. Linux: nginx from the distribution, `--update`, and `--letsencrypt` with automatic renewal.
+- New setting `AISIGNX_TLS_DIR` (default `<data>/tls`).
+- Tested: certificate and configuration code, the CLI and the admin page (unit tests); both scripts for syntax and dry-run output; the nginx.org page parsing against the live page. **Not tested:** running the scripts on a real PC or server, and `nginx -t` on the generated file.
+
+## Unreleased: Player controls
+
+### Changed
+- **Fast forward never skips to the next slide**, not even at the end of a video: it stops 2 s before the end and the video finishes by itself. Next and previous (keys, swipes, channel keys) still skip. All clients (the player page is shared).
+- **Controls work on screens in synchronized playback.** Using next, previous, fast forward, rewind or pause leaves the shared timeline; the player rejoins the group by itself after the display's *Resume after* time. The server no longer forces `allow_input` off for synced screens. Unit-tested only (simulated clocks), not on real screens.
+- Android: **Lock player without Device Owner** (a TV box such as an NVIDIA Shield, or a phone) now makes the app the Home app, so the Home button returns to the player instead of leaving it. Unit-tested rules only; not confirmed on the Shield.
+
+## Unreleased: One-step Windows set-up
+
+### Added
+- **Downloads > Set up a Windows PC (one script):** the admin names the screen, picks the player's Windows account, how the player runs and what the web page may do, and gets one `Setup-AiSignX-Windows-PC.ps1` for that PC. Run elevated, it downloads the signed player installer and the agent files from the server and checks every file's SHA-256 (and that the installer is signed by the admin's certificate), installs the player for all users, **pairs the PC with the screen without a code**, installs and enrolls the privileged agent, and starts the player. Run modes go out as a signed command once the agent is online (new `pending_run_as`, migration 0021). One-time secrets, valid 2 hours; `-DryRun` and `-DownloadOnly` modes.
+- **Windows player 3.3.0:** on its first start the player takes a pairing prepared by the script (`ProgramData\AiSignX\setup.json`, administrators and the player's own account only), stores it as its login and deletes the file.
+- New download kind **Windows agent** (agent zip, `Install-Agent.ps1`, public `.cer`); `.cer` files are accepted.
+- Tested for real: the script's downloads and checks against signed 3.2.0 files, a tampered file and a wrong certificate being refused. Found and fixed by that run: the work folder was locked so tightly that an unelevated `-DownloadOnly` could not write to it. **Not tested:** the elevated install on a real PC.
+
 ## Unreleased: Android TV install from a PC
 
 ### Added

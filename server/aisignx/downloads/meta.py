@@ -98,6 +98,8 @@ def guess(filename: str, path: Path | None = None) -> tuple[str, str]:
     if ext == "apk":
         info = apk_info(path) if path is not None else None
         return "android-player", (info or {}).get("version") or version_from_name(filename)
+    if ext == "cer" or (ext in ("zip", "ps1") and "agent" in name):  # setup files of the privileged Windows agent
+        return "windows-agent", version_from_name(filename)
     if ext in ("exe", "msi"):
         return ("windows-player" if "player" in name or "aisignx" in name else "other"), version_from_name(filename)
     if ext == "zip" and ("powerpoint" in name or "addin" in name or "add-in" in name):

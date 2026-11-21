@@ -147,6 +147,10 @@ def agent_diagnostics():
     if body is None:
         return _bad("Expected a JSON object.")
     enroll.store_diag(g.display, agent_diag.clean(body.get("diag", body)))
+    db.session.flush()
+    db.session.refresh(g.display)
+    if g.display.pending_run_as:   # a PC set up from the admin: its run mode goes out as soon as the agent can do it
+        agent.apply_pending_run_mode(g.display)
     db.session.commit()
     return jsonify(ok=True, server_time_ms=int(utcnow().timestamp() * 1000))
 

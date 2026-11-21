@@ -8,6 +8,39 @@ administrator. Design and reasoning: [windows-agent-service.md](windows-agent-se
 **Status: built and unit-tested, never run on a real PC.** Treat everything below as what the scripts and code do, not
 as something a device has confirmed. The open questions are listed at the end.
 
+## One-step set-up of a PC (recommended)
+
+Instead of installing the player, pairing it and running `Install-Agent.ps1` by hand, the admin can make **one script for
+one PC**:
+
+1. **Once**, put these on the **Downloads** page: the signed player installer (`AiSignX Player Setup <version>.exe`), the
+   agent bundle (`AiSignX-Agent-<version>.zip`), `Install-Agent.ps1`, and your **public** signing certificate
+   (`AiSignX-signing.cer`, exported without the private key: `Export-Certificate -Cert Cert:\CurrentUser\My\<thumbprint>
+   -FilePath AiSignX-signing.cer`). They are recognised by name (kind *Windows agent*).
+2. **Downloads > Set up a Windows PC (one script)**: name the screen, pick a playlist, the Windows account the player runs
+   as (it must exist on the PC; a standard account is best), how the player runs (see below), the address the PC uses to
+   reach the server, and what the web page may do to the PC (reboot, change how the player runs, install updates,
+   automatic sign-in over https). **Make the setup script** downloads `Setup-AiSignX-Windows-PC.ps1`.
+3. Copy it to the PC and run `powershell -ExecutionPolicy Bypass -File .\Setup-AiSignX-Windows-PC.ps1`. It asks Windows
+   for administrator permission, then: downloads the four files from your server and **checks each against its SHA-256**
+   (and that the installer is signed by your certificate), installs the player for all users, **pairs the PC with the
+   new screen** (no code to type), installs and enrolls the privileged agent, and starts the player. It deletes itself
+   when it succeeds.
+4. Within a minute of the agent coming online, the server sends the **run mode you chose** as the usual signed
+   `set_startup` command; **Displays > the screen** shows the agent as running.
+
+The script holds a one-time pairing secret and an enrollment code and works for **2 hours**: treat it like the Android
+QR code, do not share it. `-DryRun` shows the plan and changes nothing; `-DownloadOnly` (no administrator needed) downloads
+and checks the files and installs nothing. Over plain `http` the script says so; automatic sign-in is left off then.
+
+How the player picks up its pairing: the script claims the pairing itself and writes the credential to
+`C:\ProgramData\AiSignX\setup.json` (administrators and the player's account only). On its first start the player stores
+it as its display login, **deletes the file**, and plays; a file older than 24 hours is ignored.
+
+Tested for real: the page, the script's parsing, the downloads and checksum checks (with your signed 3.2.0 files), and a
+tampered file and a wrong signing certificate being refused. **Not tested yet:** the elevated install itself on a real PC
+(installer, pairing hand-off, agent enrollment, the run mode arriving).
+
 ## What it is, and why it is elevated
 
 A small program (the player's own Electron binary run in node mode, so no second runtime) started at boot by a

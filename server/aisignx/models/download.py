@@ -6,6 +6,7 @@ from ..timeutil import utcnow
 KINDS = {
     "windows-player": "Windows player app",
     "android-player": "Android player app (APK)",
+    "windows-agent": "Windows agent (setup files)",
     "powerpoint-addin": "PowerPoint add-in",
     "other": "Other",
 }

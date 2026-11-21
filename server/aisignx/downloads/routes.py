@@ -18,7 +18,7 @@ from ..models import DOWNLOAD_KINDS, Download
 from . import bp, meta
 from .forms import ActionForm, UploadForm
 
-ALLOWED = {"exe", "msi", "zip", "apk", "vsto", "pdf", "dmg", "pkg", "deb", "rpm", "sh", "ps1", "txt", "md"}
+ALLOWED = {"exe", "msi", "zip", "apk", "vsto", "pdf", "dmg", "pkg", "deb", "rpm", "sh", "ps1", "txt", "md", "cer"}
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._ ()+-]")
 
 

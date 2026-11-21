@@ -56,6 +56,10 @@ _CAP = {ACTION_RESTART_PLAYER: "can_restart", ACTION_COLLECT_LOGS: "can_collect_
         ACTION_REBOOT: "can_reboot", ACTION_SET_STARTUP: "can_set_startup", ACTION_UPDATE_APP: "can_update",
         ACTION_SET_AUTOLOGIN: "can_autologin"}
 MODES = ("app", "shell")
+# "How the player runs": one choice, the same on Windows and Android (display page). Each sets both settings.
+RUN_MODES = {"app": {"autostart": False, "mode": "app"},
+             "autostart": {"autostart": True, "mode": "app"},
+             "shell": {"autostart": True, "mode": "shell"}}
 
 
 # What only the privileged agent can vouch for (an unprivileged player's claims are not evidence).
@@ -372,3 +376,19 @@ def scrub_delivered(cmd: DeviceCommand) -> None:
     the database and its backups hold the ciphertext only until the agent has fetched it."""
     if cmd.action == ACTION_SET_AUTOLOGIN and isinstance(cmd.params, dict) and cmd.params.get("enabled"):
         cmd.params = {"enabled": True, "user": cmd.params.get("user"), "delivered": True}
+
+
+def apply_pending_run_mode(display: Display, now: datetime | None = None) -> DeviceCommand | None:
+    """A PC set up from the admin ("Set up a Windows PC") chose how the player runs before the agent existed. The first
+    time the privileged agent can do it, send that choice as the usual signed set_startup command, then forget it.
+    Returns the command, or None (nothing pending, or not possible yet: tried again at the agent's next report)."""
+    run_as = display.pending_run_as
+    if run_as not in RUN_MODES:
+        if run_as:
+            display.pending_run_as = None
+        return None
+    cmd, _reason = create(display, ACTION_SET_STARTUP, None, now, params=dict(RUN_MODES[run_as]))
+    if cmd is None:
+        return None
+    display.pending_run_as = None
+    return cmd

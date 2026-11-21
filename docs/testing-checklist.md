@@ -205,6 +205,25 @@ Only the NVIDIA Shield has been tried. Upload the newest Android APK on Download
 | M4 | In the app: server address, **Test**, **Save and start**, then pair the code under Displays > Pair a display | The screen plays its playlist | |
 | M5 | Open the install link with a wrong or expired code, or while signed out | A 404 page for a wrong or expired code; no login needed for a valid one | |
 | M6 | Chromecast with Google TV, Fire TV (if you have one) | Same route as M3; note what differs | |
+| M7 | Downloads > Set up an Android tablet: fill in a name, press **Make a QR code to install as an app (no reset)**; scan it with a phone, install, press **Open AiSignX and pair**, confirm | The screen appears under Displays already paired and plays; a second scan of the same code fails after pairing | |
+| M8 | NVIDIA Shield (not Device Owner): turn **Lock player** on, then press the mouse's Home button and the remote's Home | The player stays or comes straight back; the hidden exit with the PIN is the only way out | |
+| M9 | Tablet (Device Owner): Setup > **Factory reset this device**, type RESET, Erase | The tablet erases and restarts. If not: a message box says why, and Collect logs shows the `factory reset` lines | |
+| M10 | A video playing: press fast forward repeatedly, also past the end | It never jumps to the next item (stops 2 s before the end); Next/Previous still skip | |
+| M11 | Two screens in synchronized playback with player controls on: press Next on one | Only that screen moves; after the display's *Resume after* time it rejoins the group on the shared slide | |
+
+## N. HTTPS with nginx (docs/https.md)
+
+| # | Do this | Expected | Result |
+|---|---|---|---|
+| N1 | Admin > System > **HTTPS**: enter the server's name and IP, **Make a self-signed certificate** | Names, expiry in about 3 years and a SHA-256 appear; no private key is shown anywhere | |
+| N2 | Windows: `scripts\setup-nginx.ps1 -Hostname <name>,<ip>` from an elevated PowerShell | It downloads nginx, writes the configuration, `nginx -t` says valid, and `https://<name>/` opens (with a browser warning for a self-signed certificate) | |
+| N3 | After N2: sign in, open a screen's player page over https, watch a live change (SSE) and upload a video above 100 MB | Sign-in works (secure cookie), the screen updates within a second or two, the upload finishes | |
+| N4 | After N2: from another PC open `http://<ip>:5000/` and `http://<ip>/` | Port 5000 does not answer; port 80 redirects to https | |
+| N5 | On the HTTPS page, make a new self-signed certificate (or import a bought one) and wait 5 minutes | The browser shows the new certificate's fingerprint without restarting anything | |
+| N6 | Import a certificate with the wrong key, an expired one, and a certificate without its intermediates | The first two are refused with a clear message; the third is accepted with a warning | |
+| N7 | `scripts\setup-nginx.ps1 -Update` (when a newer stable exists) and then with a deliberately broken `nginx\app\conf\mime.types` | The update installs and nginx answers; the broken one goes back to the old nginx by itself | |
+| N8 | A screen (Android and Windows) paired over `https://`, with a bought certificate and then with the self-signed one | The bought certificate just works; the self-signed one asks to pin (compare the SHA-256) or must be installed as trusted first | |
+| N9 | Linux (if you use it): `sudo scripts/setup-nginx.sh --host <name>`, then `--letsencrypt` on a public name | The same as N2/N5; the certificate renews itself | |
 
 ---
 

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Set up a Windows PC{% endblock %}
+{% block content %}
+<h1 class="h3 mb-2">Set up a Windows PC as a screen</h1>
+<p class="text-secondary">One script does the whole set-up on the PC: it installs the player and the privileged agent, pairs the PC with a new screen, and sets how the player runs. You run it once, as administrator, on the PC. Everything it installs is checked against your own signing certificate and checksums.</p>
+
+{% if problem %}
+<div class="alert alert-warning">{{ problem }} <a href="{{ url_for('downloads.index') }}">Downloads</a></div>
+{% endif %}
+
+<div class="card mb-4" style="max-width: 44rem"><div class="card-body">
+  <h2 class="h6">What the script uses from the Downloads page</h2>
+  <ul class="list-unstyled small mb-0">
+    {% for label, row in [("Player installer (.exe)", files.player), ("Agent bundle (.zip)", files.zip), ("Agent script (Install-Agent.ps1)", files.script), ("Public signing certificate (.cer)", files.cert)] %}
+    <li class="py-1">{% if row %}<span class="text-success">&#10003;</span> {{ label }}: <strong>{{ row.filename }}</strong>{% if row.version %} {{ row.version }}{% endif %}
+      {% else %}<span class="text-danger">&#10007;</span> {{ label }}: <span class="text-danger">missing</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% if thumbprint %}<p class="small text-secondary mt-2 mb-0">The agent will accept updates only from the certificate with thumbprint <code>{{ thumbprint }}</code>.</p>{% endif %}
+</div></div>
+
+{% if not problem %}
+<div class="card" style="max-width: 44rem"><div class="card-body">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {{ field(form.name) }}
+    {{ field(form.playlist) }}
+    {{ field(form.kiosk_user) }}
+    {{ field(form.run_as) }}
+    {{ field(form.server_url) }}
+    <h2 class="h6 mt-3">What the web page may do to this PC</h2>
+    {{ field(form.allow_reboot) }}
+    {{ field(form.allow_startup) }}
+    {{ field(form.allow_update) }}
+    {{ field(form.allow_autologin) }}
+    <button class="btn btn-primary" type="submit">Make the setup script</button>
+  </form>
+  <div class="small text-secondary mt-3">
+    <strong>Then:</strong> copy the downloaded <code>Setup-AiSignX-Windows-PC.ps1</code> to the PC and run it:
+    <code>powershell -ExecutionPolicy Bypass -File .\Setup-AiSignX-Windows-PC.ps1</code> (it asks Windows for administrator permission).
+    The script holds one-time secrets and works for 2 hours: do not share it. It deletes itself after a successful run.
+    Add <code>-DownloadOnly</code> to check the downloads without installing anything.
+  </div>
+</div></div>
+{% endif %}
+{% endblock %}

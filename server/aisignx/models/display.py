@@ -86,6 +86,9 @@ class Display(db.Model):
     agent_allow_reboot = db.Column(db.Boolean, nullable=False, default=False, server_default=sa.false())
     agent_allow_startup = db.Column(db.Boolean, nullable=False, default=False, server_default=sa.false())
     agent_allow_update = db.Column(db.Boolean, nullable=False, default=False, server_default=sa.false())
+    # "How the player runs" chosen when a PC was set up from the admin (app | autostart | shell): applied as a signed
+    # set_startup command the first time the privileged agent reports it can (then cleared).
+    pending_run_as = db.Column(db.String(12), nullable=True)
 
     # Privileged (SYSTEM) Windows agent (docs/windows-agent-service.md). It has its own credential, separate
     # from the display token. Only sha256 of the token and of the one-time enrollment code is stored.

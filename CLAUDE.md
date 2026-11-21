@@ -46,8 +46,9 @@ server/
     updates/          # update check and release-signature verification
     provision/        # Android QR provisioning and the install link (blueprint install_link, /get/<code>)
     alerts/  audit/  backup/  pop/  system/
+    https/            # TLS certificate (self-signed or bought), nginx configuration, System > HTTPS page
     templates/  static/
-  migrations/         # Alembic, 0001 to 0020
+  migrations/         # Alembic, 0001 to 0021
   tests/
   requirements.txt
   wsgi.py

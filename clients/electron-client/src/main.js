@@ -14,7 +14,7 @@ const { createPageCache } = require('./proxy/page-cache');
 const { createMediaCache, COOKIE_NAME } = require('./proxy/media-cache');
 const { createProxy, sendOffline } = require('./proxy/server');
 const { createPlayerWindow } = require('./window');
-const { createSetup } = require('./setup');
+const { createSetup, firstFreePort } = require('./setup');
 const { runSmoke, tempProfile } = require('./smoke');
 const unlock = require('./unlock');
 const { createUnlockWindow } = require('./unlock-window');
@@ -22,6 +22,7 @@ const { createLock, parseCommand } = require('./lock');
 const { createAgent } = require('./agent');
 const systemOps = require('./agent/system');
 const delegate = require('./agent/delegate');
+const firstrun = require('./firstrun');
 
 function argValue(name) {
   const hit = process.argv.find((a) => a.startsWith('--' + name + '='));
@@ -50,6 +51,7 @@ log.init(path.join(DATA, 'aisignx-player.log'));
 
 const S = {
   cfg: config.defaults(),
+  firstRun: null,
   clientId: '',
   proxy: null, upstream: null, pageCache: null, mediaCache: null,
   player: null, setup: null, cookie: '', retryTimer: null, quitting: false,
@@ -91,6 +93,22 @@ async function stopProxy() {
   S.proxy = S.upstream = S.pageCache = S.mediaCache = null;
 }
 
+// A PC set up by the admin's "Set up a Windows PC" script is already paired: take the credential once (see firstrun.js).
+async function applyFirstRun() {
+  if (!S.firstRun) return;
+  const pre = S.firstRun;
+  S.firstRun = null;
+  try {
+    await session.defaultSession.cookies.set(firstrun.displayCookie(origin(), pre.token));
+    await session.defaultSession.cookies.flushStore();
+    if (!firstrun.consume(pre.file)) log.warn('could not delete the set-up file', pre.file);
+    log.info('paired by the set-up script:', pre.server);
+  } catch (e) {
+    log.error('could not take the set-up pairing', e.message);
+    firstrun.consume(pre.file);
+  }
+}
+
 async function startProxy() {
   await stopProxy();
   const wiring = { port: S.cfg.port };
@@ -126,6 +144,7 @@ async function startPlayer() {
     S.retryTimer = setTimeout(startPlayer, 10000);
     return;
   }
+  await applyFirstRun();
   S.player.loadPlayer();
 }
 
@@ -370,6 +389,19 @@ async function main() {
   S.cfg = loaded.config;
   S.lock.configure({ kioskLock: S.cfg.kioskLock });
   log.info('AiSignX Player', app.getVersion(), 'starting; config', loaded.status);
+  if (!S.cfg.serverUrl) {
+    // Set up by the admin's script: already paired, no setup window and no code to type.
+    const file = firstrun.setupFile();
+    const pre = firstrun.readSetup(file);
+    if (pre) {
+      try {
+        S.cfg = config.saveConfig(DATA, Object.assign({}, S.cfg, { serverUrl: pre.server, port: await firstFreePort() }));
+        S.firstRun = { server: pre.server, token: pre.token, file };
+      } catch (e) {
+        log.error('could not use the set-up file', e.message);
+      }
+    }
+  }
   if (!S.cfg.serverUrl || !S.cfg.port) {
     openSetup();
     return;

@@ -17,6 +17,7 @@ from ..pop import service as pop_service
 from ..schedules.resolve import load_context, resolve, split_by_day, week_segments
 from ..downloads.service import app_update, fleet_updates
 from . import agent, bp, enroll, options, pairing, screenshots, service
+from .agent import RUN_MODES  # noqa: F401  (tests also import it from here)
 from .agent_admin_forms import AutologinForm
 from .forms import ActionForm, DisplayForm, PairForm, UnlockForm
 
@@ -190,10 +191,6 @@ def edit(display_id: int):
     return render_template("displays/form.html", form=form, display=display,
                            pin_set=bool(display.unlock_pin_hash))
 
-
-RUN_MODES = {"app": {"autostart": False, "mode": "app"},
-             "autostart": {"autostart": True, "mode": "app"},
-             "shell": {"autostart": True, "mode": "shell"}}
 
 _AUDITED_FIELDS = ("name", "playlist_id", "group_id", "location", "description", "orientation",
                    "fit_override", "volume", "show_offline_banner", "allow_input",

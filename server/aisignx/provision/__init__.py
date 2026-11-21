@@ -5,4 +5,4 @@ bp = Blueprint("provision", __name__, url_prefix="/provision")
 # A short public address for the install page, so it can be typed on a TV remote: /get/<code>.
 get_bp = Blueprint("install_link", __name__, url_prefix="/get")
 
-from . import routes  # noqa: E402,F401
+from . import routes, windows  # noqa: E402,F401

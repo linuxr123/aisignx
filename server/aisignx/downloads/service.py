@@ -23,13 +23,18 @@ def latest_version(kind: str) -> str | None:
     return best[1] if best else None
 
 
-def latest_download(kind: str):
-    """The Download row with the highest version of this kind (versions compared as versions), or None."""
+def latest_download(kind: str, ext: str | None = None):
+    """The Download row with the highest version of this kind (versions compared as versions), or None. Files without
+    a version (the agent script, a certificate) count as the lowest; among equals the newest upload wins.
+    ext: only files with this extension (a kind can hold several files, for example the agent zip and its script)."""
     best = None
+    zero = Version("0")
     for row in Download.query.filter_by(kind=kind).all():
-        parsed = _parse(row.version)
-        if parsed and (best is None or parsed > best[0]):
-            best = (parsed, row)
+        if ext and not row.filename.lower().endswith("." + ext.lower()):
+            continue
+        key = (_parse(row.version) or zero, row.id)
+        if best is None or key > best[0]:
+            best = (key, row)
     return best[1] if best else None
 
 

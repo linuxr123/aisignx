@@ -6,6 +6,12 @@ files. The page is also where the server gets the installers it hands to screens
 and install link use the newest Android app listed here, and **Push the update** on a screen uses the newest
 installer of its kind ([updates.md](updates.md)).
 
+## Files for the Windows set-up script
+
+The **Set up a Windows PC** page needs four files here: the player installer (kind *Windows player app*) and, as kind
+*Windows agent*, `AiSignX-Agent-<version>.zip`, `Install-Agent.ps1` and your public certificate `*.cer`. Upload them as
+usual: the kind is detected from the file name. See [windows-agent.md](windows-agent.md).
+
 ## Put a file there
 
 - **In the browser (admin):** Downloads > *Add a file*, choose the file. The default, *Detect automatically*,
