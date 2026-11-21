@@ -44,6 +44,11 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
+## Unreleased: One "Run as" choice for every screen
+
+### Changed
+- **Display page: "How the player runs"** is now one clear choice, the same on Windows and Android: **Application** (starts when someone opens it), **Application with auto-start** (starts by itself at sign-in or boot), or **Shell** (takes over the device: on Windows the player replaces the desktop for the kiosk user, with a fallback to the normal desktop; on Android it is the Home app). It shows the current mode and greys out what a screen cannot do. It sends the same signed `set_startup` command as before.
+
 ## Unreleased: Backups carry the command key
 
 ### Fixed

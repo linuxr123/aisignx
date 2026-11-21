@@ -191,6 +191,10 @@ def edit(display_id: int):
                            pin_set=bool(display.unlock_pin_hash))
 
 
+RUN_MODES = {"app": {"autostart": False, "mode": "app"},
+             "autostart": {"autostart": True, "mode": "app"},
+             "shell": {"autostart": True, "mode": "shell"}}
+
 _AUDITED_FIELDS = ("name", "playlist_id", "group_id", "location", "description", "orientation",
                    "fit_override", "volume", "show_offline_banner", "allow_input",
                    "kiosk_lock", "resume_after_s", "agent_watchdog", "agent_allow_restart",
@@ -255,10 +259,16 @@ def agent_command(display_id: int, action: str):
     params = None
     if action == "set_startup":  # the only command that takes choices from the admin
         params = {}
-        if request.form.get("autostart") in ("on", "off"):
-            params["autostart"] = request.form["autostart"] == "on"
-        if request.form.get("mode") in ("app", "shell"):
-            params["mode"] = request.form["mode"]
+        # One choice, the same on Windows and Android: an application, an application that starts by itself, or
+        # the shell (Windows: replaces the desktop; Android: the Home app). It always includes both settings.
+        run_as = request.form.get("run_as")
+        if run_as in RUN_MODES:
+            params = dict(RUN_MODES[run_as])
+        else:  # the older two-field form (kept for scripts and tests)
+            if request.form.get("autostart") in ("on", "off"):
+                params["autostart"] = request.form["autostart"] == "on"
+            if request.form.get("mode") in ("app", "shell"):
+                params["mode"] = request.form["mode"]
     cmd, reason = agent.create(display, action, current_user, params=params)
     if cmd is None:
         flash(reason, "warning")

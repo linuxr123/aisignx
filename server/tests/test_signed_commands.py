@@ -187,7 +187,7 @@ def test_display_page_offers_the_push_when_the_installer_is_newer(app, paired_di
         db.session.commit()
     page = admin.get(f"/displays/{did}").get_data(as_text=True)
     assert "Push the update" in page and "Update available: 3.1.1" in page
-    assert "Reboot the device" in page and "Start the player at sign-in" in page
+    assert "Reboot the device" in page and "How the player runs" in page
 
 
 def test_displays_list_asks_about_pushing_and_about_a_missing_installer(app, configured, paired_display, admin):
@@ -225,3 +225,34 @@ def test_seq_is_time_based_and_strictly_increasing_even_if_ids_restart(app, conf
         db.session.commit()
     items = client.get(f"{API}/commands", headers=bearer(DISPLAY_TOKEN)).get_json()["commands"]
     assert sorted(_verify(client, i)["seq"] for i in items) == [5_000_000_000_000, 5_000_000_000_001]
+
+
+def test_run_as_choice_maps_to_both_settings(app, configured, client, paired_display, admin):
+    from aisignx.displays.routes import RUN_MODES
+    assert RUN_MODES == {"app": {"autostart": False, "mode": "app"},
+                         "autostart": {"autostart": True, "mode": "app"},
+                         "shell": {"autostart": True, "mode": "shell"}}
+    did = _setup(app, paired_display)
+    for choice, want in RUN_MODES.items():
+        with app.app_context():
+            DeviceCommand.query.delete()
+            db.session.commit()
+        _post(admin, did, "set_startup", run_as=choice)
+        item, = client.get(f"{API}/commands", headers=bearer(DISPLAY_TOKEN)).get_json()["commands"]
+        assert _verify(client, item)["params"] == want
+
+
+def test_display_page_offers_the_three_run_modes_with_platform_wording(app, paired_display, admin):
+    did = _setup(app, paired_display)
+    page = admin.get(f"/displays/{did}").get_data(as_text=True)
+    assert "How the player runs on this computer" in page                       # Windows app (shell name electron)
+    for word in ("Application", "Application with auto-start", "Shell: takes over the computer"):
+        assert word in page
+    assert 'value="shell"' in page and "replaces the Windows desktop" in page
+    caps = json.loads(json.dumps(CAPS))
+    caps["shell"]["name"] = "android"
+    caps["agent"]["startup"]["shell_capable"] = False
+    _setup(app, paired_display, caps=caps)
+    page = admin.get(f"/displays/{did}").get_data(as_text=True)
+    assert "How the player runs on this device" in page and "becomes the Home app" in page.replace("The player becomes", "becomes")
+    assert "Not available on this screen." in page                              # shell not offered when it cannot be done

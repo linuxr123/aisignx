@@ -88,6 +88,19 @@ Re-running the script repairs or upgrades the program files. It always enrolls a
 code each time; use that to change the switches or the kiosk account. The agent does not update itself: a new agent version means running the new signed
 script again.
 
+## How the player runs (set from the display page)
+
+On the display page, **How the player runs** offers three choices, the same as on the Android app:
+
+| Choice | On Windows | Sent as |
+|---|---|---|
+| **Application** | A normal program; it starts when someone opens it. | `autostart: false, mode: app` |
+| **Application with auto-start** | Starts by itself when the kiosk user signs in. | `autostart: true, mode: app` |
+| **Shell** | The player replaces the Windows desktop for the kiosk user (no taskbar or Start menu). If the player stops, Windows falls back to its normal desktop. | `autostart: true, mode: shell` |
+
+The privileged agent carries the change out, so it works with nobody signed in as an administrator. Without the agent
+the player app does the same itself with fewer rights (see the Electron README). Not yet tested on a real PC.
+
 ## Automatic Windows sign-in
 
 Display page > Privileged agent > **Turn on automatic sign-in**: the Windows account (it must be the kiosk account from

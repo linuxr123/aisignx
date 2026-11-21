@@ -93,7 +93,7 @@
 {% endif %}
 {% endmacro %}
 
-{% macro agent_card(display, caps, cmds, is_admin, action_form, app_update=none) %}
+{% macro agent_card(display, caps, cmds, is_admin, action_form, app_update=none, platform='') %}
 {# The device agent: what this screen's app reports, buttons for admins, the last commands. #}
 {% if display.is_paired and (display.agent_watchdog or display.agent_allow_restart or display.agent_allow_logs or display.agent_allow_reboot or display.agent_allow_startup or display.agent_allow_update or caps) %}
 <div class="card mb-4"><div class="card-body">
@@ -118,20 +118,27 @@
   </div>
   {% if display.agent_allow_startup or caps.can_set_startup %}
   {% set su = caps.startup if caps.startup is mapping else {} %}
+  {% set win = platform == "electron" %}
+  {% set now = "shell" if su.mode == "shell" else ("autostart" if su.autostart else ("app" if su.mode == "app" else "")) %}
+  {% set can = display.agent_allow_startup and caps.can_set_startup %}
   <form method="post" action="{{ url_for('displays.agent_command', display_id=display.id, action='set_startup') }}"
-        class="row g-2 align-items-end mb-3" data-confirm="Change this device's startup settings?">
+        class="mb-3" data-confirm="Change how this screen runs the player?">
     {{ action_form.hidden_tag() }}
-    <div class="col-auto"><label class="form-label small mb-0">Start the player at sign-in</label>
-      <select class="form-select form-select-sm" name="autostart">
-        <option value="">Leave as is{% if su.autostart is not none %} ({{ "on" if su.autostart else "off" }}){% endif %}</option>
-        <option value="on">On</option><option value="off">Off</option></select></div>
-    <div class="col-auto"><label class="form-label small mb-0">Run as</label>
-      <select class="form-select form-select-sm" name="mode">
-        <option value="">Leave as is{% if su.mode %} ({{ "the shell" if su.mode == "shell" else "an app" }}){% endif %}</option>
-        <option value="app">An app</option>
-        <option value="shell" {% if not su.shell_capable %}disabled{% endif %}>The Windows shell (replaces the desktop){% if not su.shell_capable %} - not available{% endif %}</option></select></div>
-    <div class="col-auto"><button class="btn btn-sm btn-outline-secondary" type="submit"
-        {% if not (display.agent_allow_startup and caps.can_set_startup) %}disabled title="{% if not display.agent_allow_startup %}Switched off for this display (Edit > Device agent){% else %}This screen's app cannot do this{% endif %}"{% endif %}>Apply</button></div>
+    <h3 class="h6 mb-2 d-flex flex-wrap align-items-center gap-2">How the player runs on this {{ "computer" if win else "device" }}
+      {% if now %}<span class="badge text-bg-secondary">Now: {{ {"app": "Application", "autostart": "Application with auto-start", "shell": ("Shell" if win else "Home app")}[now] }}</span>{% endif %}</h3>
+    {% for val, title, text in [
+        ("app", "Application", "A normal " ~ ("program" if win else "app") ~ ". It starts when someone opens it."),
+        ("autostart", "Application with auto-start", "A normal " ~ ("program" if win else "app") ~ " that starts by itself " ~ ("when the kiosk user signs in." if win else "when the device boots.")),
+        ("shell", "Shell: takes over the " ~ ("computer" if win else "device"), ("The player replaces the Windows desktop for the kiosk user: no taskbar, no Start menu, it starts at sign-in. If the player stops, Windows falls back to its normal desktop." if win else "The player becomes the Home app: the device boots into it and the Home button returns to it. With Lock player on, this is always the case."))] %}
+    {% set blocked = val == "shell" and not su.shell_capable %}
+    <div class="form-check mb-1">
+      <input class="form-check-input" type="radio" name="run_as" id="run-as-{{ val }}" value="{{ val }}" {% if now == val %}checked{% endif %} {% if blocked or not can %}disabled{% endif %}>
+      <label class="form-check-label" for="run-as-{{ val }}"><strong>{{ title }}</strong>
+        <span class="d-block small text-body-secondary">{{ text }}{% if blocked %} Not available on this screen.{% endif %}</span></label>
+    </div>
+    {% endfor %}
+    <button class="btn btn-sm btn-outline-secondary mt-1" type="submit"
+        {% if not can %}disabled title="{% if not display.agent_allow_startup %}Switched off for this display (Edit > Device agent){% else %}This screen's app cannot do this{% endif %}"{% endif %}>Apply</button>
   </form>
   {% endif %}
   {% if app_update or display.agent_allow_update %}
