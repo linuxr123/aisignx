@@ -17,6 +17,20 @@
 
 {% if result %}
 <div class="card mb-4"><div class="card-body">
+  {% if result.app %}
+  <h2 class="h5">Scan this with the phone's camera</h2>
+  <div class="d-flex flex-wrap gap-4 align-items-start">
+    <div class="qr-box">{{ result.svg|safe }}</div>
+    <ol class="mb-0">
+      <li>Point the phone's camera at the code and open the link.</li>
+      <li>Download the app and install it (Android asks once to allow installs from the browser).</li>
+      <li>Tap <strong>Open AiSignX and pair</strong>, then <strong>Pair</strong>. The screen <strong>{{ result.display.name }}</strong> then appears under <a href="{{ url_for('displays.detail', display_id=result.display.id) }}">Displays</a>, already paired.</li>
+    </ol>
+  </div>
+  <div class="alert alert-secondary mt-3 mb-0 small">
+    The phone keeps working as a phone: the app is a normal app, not a managed kiosk (no silent updates or reboots from the web page). The link works for 24 hours and for <strong>one</strong> device; do not share a screenshot of the code.
+  </div>
+  {% else %}
   <h2 class="h5">Scan this on the tablet</h2>
   <div class="d-flex flex-wrap gap-4 align-items-start">
     <div class="qr-box">{{ result.svg|safe }}</div>
@@ -31,6 +45,7 @@
     This code works for 24 hours and for <strong>one</strong> device. It contains the pairing secret{% if form.wifi_password.data %} and the Wi-Fi password{% endif %}: do not share a screenshot of it.
     {% if result.http %}The address is plain http (the usual setup on a LAN). Setup downloads the app over it, and the device checks it against a checksum in this code.{% endif %}
   </div>
+  {% endif %}
 </div></div>
 {% endif %}
 
@@ -75,7 +90,9 @@
       <div class="col-md-3">{{ field(form.wifi_security) }}</div>
       <div class="col-md-4">{{ field(form.wifi_password) }}</div>
     </div>
-    <button class="btn btn-primary" type="submit">Make the QR code</button>
+    <button class="btn btn-primary" type="submit" name="mode" value="kiosk">Make the QR code (factory reset tablet)</button>
+    <button class="btn btn-outline-primary" type="submit" name="mode" value="app">Make a QR code to install as an app (no reset)</button>
+    <p class="small text-secondary mt-2 mb-0">The second one is for a phone or tablet you keep using as it is: it installs the app normally and pairs it, with no Device Owner (so no silent updates, reboots or full lock-down; the Wi-Fi fields are not used).</p>
   </form>
 </div></div>
 {% endif %}

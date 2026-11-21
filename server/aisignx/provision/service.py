@@ -51,6 +51,33 @@ def apk_token(download_id: int, sha256: str | None = None) -> str:
     return _serializer().dumps({"d": int(download_id)})
 
 
+def _pair_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(current_app.config["SECRET_KEY"], salt="provision-pair-link")
+
+
+def pair_token(pairing_secret: str, download_id: int) -> str:
+    """The link token of the "install as an app" QR code (a phone that is not factory reset): it names the pairing
+    secret and the app file. Signed and time-limited, like the app download link."""
+    return _pair_serializer().dumps({"s": pairing_secret, "d": int(download_id)})
+
+
+def read_pair_token(token: str, max_age: int):
+    try:
+        data = _pair_serializer().loads(token, max_age=max_age)
+    except BadData:
+        return None
+    ok = isinstance(data, dict) and isinstance(data.get("s"), str) and isinstance(data.get("d"), int)
+    return data if ok else None
+
+
+def app_link(base_url: str, pairing_secret: str) -> str:
+    """The link the landing page's button opens in the app (scheme registered by the Android app)."""
+    from urllib.parse import urlencode
+
+    return "aisignx://pair?" + urlencode({"server": base_url, "secret": pairing_secret,
+                                          "key": signing.public_key_b64()})
+
+
 def read_token(token: str):
     """{"d": id, "h": sha256} or None when the link is bad or expired."""
     try:

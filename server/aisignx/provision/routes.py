@@ -1,5 +1,5 @@
 """Provisioning page (admin) and the time-limited link the tablet downloads the app from."""
-from flask import abort, current_app, flash, redirect, render_template, request, send_file, url_for
+from flask import abort, current_app, flash, make_response, redirect, render_template, request, send_file, url_for
 from flask_login import current_user
 from flask_wtf import FlaskForm
 from wtforms import BooleanField, PasswordField, SelectField, StringField
@@ -71,13 +71,21 @@ def android():
             display.agent_allow_reboot = display.agent_allow_startup = display.agent_allow_update = True
         wifi = {"ssid": form.wifi_ssid.data, "security": form.wifi_security.data,
                 "password": form.wifi_password.data} if form.wifi_ssid.data else None
-        payload = service.build_payload(base_url=base, download=download, package=package, pairing_secret=secret,
-                                        wifi=wifi, timezone=org_tz().key)
+        as_app = request.form.get("mode") == "app"
         audit.record("display.provision", display, detail={"package": package, "lock": bool(form.lock.data),
-                                                           "managed": bool(form.manage.data)})
+                                                           "managed": bool(form.manage.data), "as_app": as_app})
         db.session.commit()
-        result = {"svg": service.qr_svg(payload), "display": display, "base": base,
-                  "http": base.startswith("http://")}
+        if as_app:
+            # A device that is not factory reset: the QR code opens a page on this server that gives the app and a
+            # button that opens it already paired. No Device Owner, so no silent installs or reboots.
+            link = f"{base}/get/p/{service.pair_token(secret, download.id)}"
+            result = {"svg": service.qr_svg_text(link), "display": display, "base": base, "http": base.startswith("http://"),
+                      "app": True, "link": link}
+        else:
+            payload = service.build_payload(base_url=base, download=download, package=package, pairing_secret=secret,
+                                            wifi=wifi, timezone=org_tz().key)
+            result = {"svg": service.qr_svg(payload), "display": display, "base": base,
+                      "http": base.startswith("http://"), "app": False}
         current_app.logger.info("provisioning QR made for display %s by user %s", display.id, current_user.id)
         return render_template("provision/android.html", form=form, download=download, package=package,
                                problem=None, result=result, link=install_link_info(), link_form=FlaskForm())
@@ -151,6 +159,24 @@ def get(code: str):
 
     return render_template("provision/get.html", download=download, link=link,
                            base=request.host_url.rstrip("/"), org=Setting.get("org_name"))
+
+
+@get_bp.route("/p/<token>")
+def pair_page(token: str):
+    """Landing page of the "install as an app" QR code: the app, then a button that opens it already paired."""
+    data = service.read_pair_token(token, SECRET_TTL_S)
+    if data is None:
+        abort(404)
+    download = db.session.get(Download, data["d"])
+    if download is None or not (downloads_dir() / download.stored_name).is_file():
+        abort(404)
+    base = _base_url()
+    resp = make_response(render_template("provision/phone.html", download=download, base=base,
+                                         apk=url_for("provision.apk", token=service.apk_token(download.id)),
+                                         open_link=service.app_link(base, data["s"])))
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
 
 
 @get_bp.route("/<code>/tv.ps1")

@@ -146,6 +146,11 @@ normal set-up wizard.
    factory reset blocks the Settings button, not the recovery menu. After a wipe the tablet asks
    for the previous Google account only if one was added (none was).
 
+If **Factory reset this device** appears to do nothing: from 3.0.6 every outcome shows a message box (wrong word, not Device Owner,
+Android refused, or "Android did not start erasing" after 20 seconds), the button clears the factory-reset restriction itself, and
+the steps are written to the app log (Displays > the screen > Collect logs: look for `factory reset`). If Android refuses, use
+**Remove Device Owner** and Settings > Reset.
+
 After a reset the tablet is back at the Welcome screen: scan a new QR code (a code is single
 use; make another one).
 

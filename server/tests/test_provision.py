@@ -252,3 +252,36 @@ def test_tv_script_only_calls_adb_through_its_wrapper():
     assert len(direct) == 1 and "ForEach-Object" in direct[0], direct          # only inside the Adb function
     assert "function Adb" in text and "$ErrorActionPreference = 'Continue'" in text
     assert text.count("Adb ") >= 6                                              # and it is what the steps call
+
+
+def test_qr_to_install_as_an_app_opens_a_page_that_pairs_a_phone_that_is_not_reset(app, configured, admin, client):
+    from urllib.parse import parse_qs, urlsplit
+
+    _download(app)
+    r = admin.post("/provision/android", data={
+        "csrf_token": _csrf(admin), "name": "My phone", "playlist": "0", "server_url": "http://192.168.1.50:5000",
+        "wifi_security": "WPA", "mode": "app"})
+    assert r.status_code == 200 and b"<svg" in r.data and b"Scan this with the phone" in r.data
+    assert b"Scan this on the tablet" not in r.data
+    with app.app_context():
+        d = Display.query.filter_by(name="My phone").one()
+        assert PairingCode.query.filter_by(display_id=d.id).count() == 1
+    import re
+    with app.app_context():
+        from aisignx.models import Download
+        dl = Download.query.first()
+        from aisignx.provision import service as svc
+        # the link itself is only inside the QR drawing: make a token for a real secret, as the route does
+        from aisignx.displays import pairing
+        disp, secret = pairing.preapprove("Landing", None, 3600)
+        db.session.commit()
+        token = svc.pair_token(secret, dl.id)
+    page = client.get(f"/get/p/{token}", base_url="http://192.168.1.50:5000")
+    assert page.status_code == 200 and b"Open AiSignX and pair" in page.data
+    assert page.headers["Cache-Control"] == "no-store" and page.headers["Referrer-Policy"] == "no-referrer"
+    href = re.search(rb'href="(aisignx://pair\?[^"]+)"', page.data).group(1).decode().replace("&amp;", "&")
+    q = parse_qs(urlsplit(href).query)
+    assert q["server"] == ["http://192.168.1.50:5000"] and q["secret"] == [secret] and len(q["key"][0]) == 44
+    assert b"/provision/apk/" in page.data
+    assert client.get("/get/p/not-a-token").status_code == 404
+    assert client.get("/get/p/" + token[:-3] + "xxx").status_code == 404                 # tampered

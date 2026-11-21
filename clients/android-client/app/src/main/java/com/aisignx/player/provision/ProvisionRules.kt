@@ -35,6 +35,32 @@ object ProvisionRules {
         return Extras(url, secret, parseCommandKey(commandKey))
     }
 
+    /**
+     * The install page of the admin ("install as an app on a phone", no factory reset) opens the app with a server address
+     * and a pairing secret. Only a device that has neither a server nor a set-up in progress takes it, and a person
+     * still has to confirm; a device that is already set up never changes servers this way.
+     */
+    fun canPairFromLink(alreadyConfigured: Boolean, setupPending: Boolean, extras: Extras?): Boolean =
+        !alreadyConfigured && !setupPending && extras != null
+
+    /** What aisignx://pair?server=..&secret=..&key=.. carries; each part is checked again by [parseExtras]. */
+    class PairLink(val server: String?, val secret: String?, val key: String?)
+
+    /** Parses the link of the admin's "install as an app" page. Null for anything that is not that link. */
+    fun parsePairLink(text: String?): PairLink? {
+        val prefix = "aisignx://pair?"
+        if (text == null || text.length > 1000 || !text.startsWith(prefix)) return null
+        val q = HashMap<String, String>()
+        for (part in text.substring(prefix.length).split('&')) {
+            val i = part.indexOf('=')
+            if (i <= 0) continue
+            val name = part.substring(0, i)
+            val value = try { java.net.URLDecoder.decode(part.substring(i + 1), "UTF-8") } catch (_: Exception) { return null }
+            if (name !in q) q[name] = value   // the first one wins: a repeated name cannot override it
+        }
+        return PairLink(q["server"], q["secret"], q["key"])
+    }
+
     /** Base64 of exactly 32 raw bytes (a public Ed25519 key), else null. */
     fun parseCommandKey(text: String?): ByteArray? {
         if (text == null || text.length > 64) return null

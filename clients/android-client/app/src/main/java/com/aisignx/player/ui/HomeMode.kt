@@ -7,6 +7,15 @@ import com.aisignx.player.AiSignXApp
  * "Use as Home app": one code path for the Setup checkbox and the set_startup command (mode shell/app).
  */
 object HomeMode {
+    /**
+     * Lock player on a device that is NOT Device Owner is only Android's screen pinning, which on a TV box or a phone
+     * does not reliably stop the Home button. The dependable way is for this app to be the Home app: Home then returns to
+     * the player, and leaving needs the unlock PIN. So Lock player turns Home mode on there (once; not during the
+     * PIN unlock window, and never against the user's own later choice while the window is open).
+     */
+    fun lockNeedsHome(owner: Boolean, kioskLock: Boolean, unlockHold: Boolean, homeMode: Boolean): Boolean =
+        !owner && kioskLock && !unlockHold && !homeMode
+
     /** Device Owner with Lock player on: the lockdown keeps this app as the persistent Home app. */
     fun lockKeepsHome(ctx: Context): Boolean =
         LockTask.isDeviceOwner(ctx) && AiSignXApp.from(ctx).config.kioskLock

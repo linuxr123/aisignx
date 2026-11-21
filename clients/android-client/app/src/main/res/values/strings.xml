@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AiSignX Player</string>
+    <string name="pair_link_title">Pair this device?</string>
+    <string name="pair_link_message">Connect this device to the AiSignX server at %1$s and show its content here? Only continue if you started this from the install page of your own server.</string>
+    <string name="pair_link_yes">Pair</string>
+    <string name="pair_link_failed">Could not start the pairing. Make a new install link in the admin and try again.</string>
     <string name="setup_title">AiSignX Player setup</string>
     <string name="setup_intro">Enter the address of your AiSignX server, then press Test. Pair this screen in the admin under Displays after saving.</string>
     <string name="server_hint">192.168.1.20:5000 or https://signage.example.lan</string>
@@ -59,7 +63,10 @@
     <string name="reset_type_hint">RESET</string>
     <string name="reset_erase">Erase everything</string>
     <string name="reset_wrong">Not erased: the word did not match.</string>
-    <string name="reset_failed">Android refused the factory reset. See the log.</string>
+    <string name="reset_failed">Android refused the factory reset. Press Collect logs on the web page (Displays > this screen) and look at the log, or use Remove Device Owner below and reset from Android Settings.</string>
+    <string name="reset_started">Android is erasing this device and will restart. This can take a minute.</string>
+    <string name="reset_silent">Android did not start erasing. Use Remove Device Owner below, then Settings &gt; General management &gt; Reset &gt; Factory data reset.</string>
+    <string name="reset_not_owner">This device is not managed by AiSignX (no Device Owner), so the app cannot erase it. Use Android Settings &gt; Reset instead.</string>
     <string name="home_hint">To use this device normally again: untick "Use as Home app", press Save, then press the Home button. To start over, use Remove Device Owner below (then factory reset).</string>
     <string name="owner_removed">Device Owner removed. Lock player now uses screen pinning.</string>
     <string name="owner_remove_failed">Android refused to remove Device Owner. See the log.</string>

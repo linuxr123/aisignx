@@ -233,6 +233,10 @@ class PlayerActivity : AppCompatActivity() {
         // remote unlock or the PIN exit). Idempotent; a no-op when nothing changed.
         val hold = LocalUnlockWindow.hold(this)
         lock.hold(hold)
+        if (HomeMode.lockNeedsHome(owner, lock.kioskLock, hold, AiSignXApp.from(this).config.homeMode)) {
+            FileLog.i(TAG, "Lock player without Device Owner: this app becomes the Home app so the Home button returns to it")
+            HomeMode.apply(this, true)
+        }
         if (hold) { // the window ends by itself: look again right after it
             main.removeCallbacks(windowRunnable)
             val left = LocalUnlockWindow.remainingMs(this)

@@ -72,12 +72,20 @@ object LockTask {
         val dpm = dpm(activity) ?: return false
         try { activity.stopLockTask() } catch (_: Exception) { }
         LockdownApplier.releaseNow(activity, homeMode, full = true)
+        // The lockdown's DISALLOW_FACTORY_RESET must be gone: clear it here too, whatever the release did.
+        try {
+            dpm.clearUserRestriction(admin(activity), android.os.UserManager.DISALLOW_FACTORY_RESET)
+            FileLog.i(TAG, "factory reset restriction cleared")
+        } catch (e: Exception) {
+            FileLog.w(TAG, "could not clear the factory reset restriction: ${e.message}")
+        }
         return try {
-            FileLog.w(TAG, "factory reset requested from the setup screen")
+            FileLog.w(TAG, "factory reset requested from the setup screen: calling wipeData")
             dpm.wipeData(0)
+            FileLog.w(TAG, "wipeData returned without an error; Android should now erase and restart the device")
             true
         } catch (e: Exception) {
-            FileLog.w(TAG, "factory reset refused: ${e.message}")
+            FileLog.w(TAG, "factory reset refused: ${e::class.java.simpleName}: ${e.message}")
             false
         }
     }

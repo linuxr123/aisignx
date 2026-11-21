@@ -36,6 +36,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <!-- The admin's "install as an app" page opens aisignx://pair?server=..&secret=..&key=.. ; a person confirms. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="aisignx" android:host="pair" />
+            </intent-filter>
         </activity>
 
         <!-- Optional Home app role, switched on from setup ("Use as Home app"). -->

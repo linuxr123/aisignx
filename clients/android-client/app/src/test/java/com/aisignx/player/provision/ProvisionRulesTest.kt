@@ -138,4 +138,37 @@ class ProvisionRulesTest {
         assertEquals("http://192.168.1.19:5000/api/player/", ProvisionRules.cookieUrl("http://192.168.1.19:5000"))
         assertEquals("https://signs.example.com/api/player/", ProvisionRules.cookieUrl("https://signs.example.com/"))
     }
+
+    private val goodSecret = "a".repeat(30)
+
+    @Test
+    fun `the install page link carries the server, the secret and the key`() {
+        val l = ProvisionRules.parsePairLink(
+            "aisignx://pair?server=http%3A%2F%2F192.168.1.19%3A5000&secret=$goodSecret&key=abc%2Bdef%3D")!!
+        assertEquals("http://192.168.1.19:5000", l.server)
+        assertEquals(goodSecret, l.secret)
+        assertEquals("abc+def=", l.key)
+    }
+
+    @Test
+    fun `anything that is not that link is refused`() {
+        for (bad in listOf(null, "", "http://pair?server=x", "aisignx://other?server=x", "aisignx://pair", "intent://pair?x",
+            "aisignx://pair?" + "a=".repeat(600))) assertNull(bad, ProvisionRules.parsePairLink(bad))
+    }
+
+    @Test
+    fun `a repeated name cannot override the first value`() {
+        val l = ProvisionRules.parsePairLink("aisignx://pair?server=http%3A%2F%2Fgood.example&server=http%3A%2F%2Fevil.example")!!
+        assertEquals("http://good.example", l.server)
+    }
+
+    @Test
+    fun `a link only pairs a device that has no server and no set-up in progress`() {
+        val ok = ProvisionRules.parseExtras("http://192.168.1.19:5000", goodSecret)
+        assertTrue(ProvisionRules.canPairFromLink(false, false, ok))
+        assertFalse(ProvisionRules.canPairFromLink(true, false, ok))    // already set up: never switches server this way
+        assertFalse(ProvisionRules.canPairFromLink(false, true, ok))    // a set-up is already running
+        assertFalse(ProvisionRules.canPairFromLink(false, false, ProvisionRules.parseExtras("ftp://192.168.1.19", goodSecret)))
+        assertFalse(ProvisionRules.canPairFromLink(false, false, ProvisionRules.parseExtras("http://192.168.1.19:5000", "has a space")))
+    }
 }

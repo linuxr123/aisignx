@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Install AiSignX</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}">
+</head>
+<body class="bg-body-tertiary">
+<main class="container py-4" style="max-width: 36rem">
+  <h1 class="h3">Install AiSignX on this device</h1>
+  <p class="text-secondary">It becomes a signage screen for this server (<code>{{ base }}</code>). The device keeps working as it does now.</p>
+  <div class="card mb-3"><div class="card-body">
+    <h2 class="h6">1. Download and install the app</h2>
+    <a class="btn btn-primary btn-lg w-100" href="{{ apk }}">Download the app ({{ download.version or "latest" }})</a>
+    <p class="small text-secondary mt-2 mb-0">Android asks once to allow installs from this browser: allow it, open the file, press Install.</p>
+  </div></div>
+  <div class="card mb-3"><div class="card-body">
+    <h2 class="h6">2. Open it, already paired</h2>
+    <a class="btn btn-success btn-lg w-100" href="{{ open_link }}">Open AiSignX and pair</a>
+    <p class="small text-secondary mt-2 mb-0">The app asks you to confirm before it connects to this server. If nothing happens, install the app first (step 1).</p>
+  </div></div>
+</main>
+</body>
+</html>

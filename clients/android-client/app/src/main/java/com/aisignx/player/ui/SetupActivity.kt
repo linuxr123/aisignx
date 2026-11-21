@@ -25,6 +25,7 @@ import com.aisignx.player.databinding.ActivitySetupBinding
 import com.aisignx.player.net.Http
 import com.aisignx.player.net.Tls
 import com.aisignx.player.provision.ProvisionActivity
+import com.aisignx.player.provision.ProvisionRules
 import com.aisignx.player.provision.Provisioning
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -67,8 +68,11 @@ class SetupActivity : AppCompatActivity() {
 
         b.serverInput.setText(config.serverUrl.orEmpty())
         // Started with an address (adb from the PC install script): fill it in and test it, Save stays a person's choice.
-        val prefilled = ServerUrl.prefill(config.isConfigured, intent.getStringExtra(EXTRA_SERVER))
+        val link = ProvisionRules.parsePairLink(intent.dataString)
+        val prefilled = ServerUrl.prefill(config.isConfigured, intent.getStringExtra(EXTRA_SERVER) ?: link?.server)
         if (prefilled != null) b.serverInput.setText(prefilled)
+        val pairSecret = intent.getStringExtra(EXTRA_PAIR_SECRET) ?: link?.secret
+        val pairKey = intent.getStringExtra(EXTRA_COMMAND_KEY) ?: link?.key
         b.homeCheck.isChecked = config.homeMode
         b.deviceInfo.text = getString(R.string.device_info, BuildConfig.VERSION_NAME, config.clientId)
         b.serverInput.addTextChangedListener(object : TextWatcher {
@@ -105,6 +109,29 @@ class SetupActivity : AppCompatActivity() {
         onAddressEdited()
         b.serverInput.requestFocus()
         if (prefilled != null) runTest()
+        if (prefilled != null && pairSecret != null) offerPairing(prefilled, pairSecret, pairKey)
+    }
+
+    /**
+     * The install page of the admin opened the app with a server and a pairing secret ("install as an app", a phone that
+     * is not factory reset). A person confirms, then the app claims the pairing like the managed tablets do.
+     */
+    private fun offerPairing(server: String, secret: String, commandKey: String?) {
+        val extras = ProvisionRules.parseExtras(server, secret, commandKey)
+        if (!ProvisionRules.canPairFromLink(config.isConfigured, Provisioning.pending(this), extras)) return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.pair_link_title)
+            .setMessage(getString(R.string.pair_link_message, server))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.pair_link_yes) { _, _ ->
+                if (Provisioning.accept(this, server, secret, commandKey, homeMode = false)) {
+                    startActivity(Intent(this, ProvisionActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    finish()
+                } else {
+                    showResult(getString(R.string.pair_link_failed), R.color.warn)
+                }
+            }
+            .show()
     }
 
     override fun onResume() {
@@ -280,7 +307,11 @@ class SetupActivity : AppCompatActivity() {
 
     /** Two steps: a warning, then the word RESET typed. Device Owner only (the button is hidden otherwise). */
     private fun confirmFactoryReset() {
-        if (!FactoryReset.offered(LockTask.isDeviceOwner(this))) return
+        FileLog.i(TAG, "factory reset button pressed (owner=${LockTask.isDeviceOwner(this)})")
+        if (!FactoryReset.offered(LockTask.isDeviceOwner(this))) {
+            notice(R.string.reset_not_owner)
+            return
+        }
         AlertDialog.Builder(this)
             .setTitle(R.string.reset_title)
             .setMessage(R.string.reset_message)
@@ -300,12 +331,30 @@ class SetupActivity : AppCompatActivity() {
             .setNegativeButton(R.string.reset_cancel, null)
             .setPositiveButton(R.string.reset_erase) { _, _ ->
                 if (!FactoryReset.confirmed(field.text.toString())) {
-                    showResult(getString(R.string.reset_wrong), R.color.warn)
+                    FileLog.i(TAG, "factory reset: the word did not match")
+                    notice(R.string.reset_wrong)
                 } else if (!LockTask.wipeDevice(this, config.homeMode)) {
-                    showResult(getString(R.string.reset_failed), R.color.error)
+                    notice(R.string.reset_failed)
+                } else {
+                    // Android erases and restarts by itself. If that has not started after a while, say so.
+                    val waiting = AlertDialog.Builder(this).setTitle(R.string.reset_title)
+                        .setMessage(R.string.reset_started).setCancelable(false).show()
+                    b.root.postDelayed({
+                        if (!isFinishing && !isDestroyed) {
+                            waiting.dismiss()
+                            FileLog.w(TAG, "factory reset: Android did not start erasing within 20 s")
+                            notice(R.string.reset_silent)
+                        }
+                    }, 20_000)
                 }
             }
             .show()
+    }
+
+    /** A message that cannot be missed (the result line at the top of this screen is out of sight when scrolled down). */
+    private fun notice(message: Int) {
+        showResult(getString(message), R.color.warn)
+        AlertDialog.Builder(this).setMessage(message).setPositiveButton(android.R.string.ok, null).show()
     }
 
     private fun applyHomeMode(enabled: Boolean) {
@@ -331,5 +380,8 @@ class SetupActivity : AppCompatActivity() {
         const val EXTRA_RECONFIGURE = "com.aisignx.player.RECONFIGURE"
         /** A server address to prefill on a first set-up (see ServerUrl.prefill). */
         const val EXTRA_SERVER = "com.aisignx.player.SERVER"
+        /** With EXTRA_SERVER: a pairing secret from the admin's install page (confirmed by a person, first set-up only). */
+        const val EXTRA_PAIR_SECRET = "com.aisignx.player.PAIR_SECRET"
+        const val EXTRA_COMMAND_KEY = "com.aisignx.player.COMMAND_KEY"
     }
 }

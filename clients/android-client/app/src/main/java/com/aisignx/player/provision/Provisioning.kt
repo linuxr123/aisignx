@@ -52,7 +52,7 @@ object Provisioning {
      * signage tablet should boot into it); the Lock player switch from the web page decides the rest.
      */
     @Synchronized
-    fun accept(ctx: Context, serverUrl: String?, secret: String?, commandKey: String? = null): Boolean {
+    fun accept(ctx: Context, serverUrl: String?, secret: String?, commandKey: String? = null, homeMode: Boolean = true): Boolean {
         val config = AiSignXApp.from(ctx).config
         if (pending(ctx) || config.isConfigured) return false
         val extras = ProvisionRules.parseExtras(serverUrl, secret)
@@ -61,8 +61,9 @@ object Provisioning {
             return false
         }
         config.saveServer(extras.serverUrl, null)
-        config.homeMode = true
-        LockTask.trySetHomeAlias(ctx, true)
+        // A managed tablet boots into the player (Home app); a phone installed as an app keeps its own launcher.
+        config.homeMode = homeMode
+        LockTask.trySetHomeAlias(ctx, homeMode)
         // The QR code carries the server's command key: pin it now, so there is no first-contact window.
         extras.commandKey?.let {
             AgentStore(ctx).apply { forgetKeyPins(); pinKey(extras.serverUrl, it) }

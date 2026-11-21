@@ -42,6 +42,25 @@ If you cannot use a PC: the same **install link** page opens on the TV or a phon
 The free "Downloader by AFTVnews" app (package `com.esaba.downloader`, official page https://aftvnews.com/downloader) is one
 such app, but the PC script above is more reliable.
 
+## A phone or tablet you keep using: QR code, no factory reset
+
+**Downloads > Set up an Android tablet as a kiosk**, fill in the name and playlist, and press **Make a QR code to install as an app (no reset)**
+(the other button is the factory-reset kiosk code). Scan the code with the phone's camera: a page opens on your server with the app
+download and an **Open AiSignX and pair** button. After installing, that button opens the app, which asks you to confirm
+**Pair this device?** and then pairs itself (no code to type). The screen appears under Displays already paired.
+
+- It is a normal app, not a managed device: no silent updates or reboots from the web page, and the Wi-Fi fields are not used.
+- The QR code works for 24 hours and for one device; it holds the pairing secret, so do not share a screenshot.
+- Only a device with **no server set up yet** takes the link, and only after you confirm: an installed player never changes server this way.
+- Unit-tested (link parsing and the rules), not yet tried on a phone (testing checklist M7).
+
+## Lock player on a TV box or phone (not Device Owner)
+
+Without Device Owner, Android only offers *screen pinning*, which a TV box does not enforce reliably: on the NVIDIA Shield the Home button of a
+mouse still left the player. From app 3.0.6, turning **Lock player** on in such a device **also makes AiSignX the Home app**, so the
+Home button comes back to the player; leaving needs the hidden exit and the unlock PIN (below). The first time, Android may ask which Home
+app to use: choose AiSignX and **Always**. This is covered by unit tests only; it has not been confirmed on a Shield (checklist M8).
+
 ## Leaving the player (the hidden exit)
 
 The player hides its way out so a passer-by cannot leave it. Use whichever your device has:
