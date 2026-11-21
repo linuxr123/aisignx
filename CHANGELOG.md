@@ -44,6 +44,11 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
+## Unreleased: Emergency page redesign
+
+### Changed
+- **The Emergency page is rebuilt:** a status line ("All clear" or "N live now") and a large banner per live message with a big **Clear it** button; your saved messages as one-click cards colour-coded by level (with the screens they go to and the API id); a compact **Scheduled** panel (upcoming sends, a small form, earlier plans folded away); a **New message** composer with level buttons and a **live preview** of how it will look on a screen; and a tidier history with **Send again**. Same features and routes as before.
+
 ## Unreleased: One "Run as" choice for every screen
 
 ### Changed

@@ -349,7 +349,7 @@ def test_send_again_prefills_form(admin_client, configured, paired_display):
     html = admin_client.get(f"/emergency/?from={msg_id}").get_data(as_text=True)
     assert 'value="Drill"' in html and "Line one" in html
     assert f'selected value="d:{paired_display[0]}"' in html
-    assert 'selected value="info"' in html
+    assert re.search(r'id="level-info"\s+value="info"\s+checked', html)          # the level buttons: Info is chosen
 
 
 def test_send_again_never_widens_a_deleted_target(admin_client, configured):

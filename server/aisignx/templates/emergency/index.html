@@ -1,167 +1,248 @@
 {% extends "base.html" %}
-{% from "_form.html" import field %}
+{% from "_icons.html" import icon %}
 {% block title %}Emergency{% endblock %}
 {% block content %}
-{% set level_badge = {"info": "text-bg-primary", "warning": "text-bg-warning", "critical": "text-bg-danger"} %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h1 class="h3 mb-0">Emergency</h1>
-  {% if current_user.can_edit and live|length > 1 %}
-  <form method="post" action="{{ url_for('emergency.clear_all') }}"
-        data-confirm="Clear all {{ live|length }} live emergency messages? Screens go back to their normal content.">
-    {{ action_form.hidden_tag() }}<button class="btn btn-outline-danger" type="submit">Clear all</button>
-  </form>
-  {% endif %}
+{# Level colours match the on-screen colours (models/emergency.py LEVEL_COLORS). #}
+{% set level_color = {"info": "#1565c0", "warning": "#e65100", "critical": "#b71c1c"} %}
+{% macro err(f) %}{% for e in f.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}{% endmacro %}
+
+<div class="em-head">
+  <div>
+    <h1 class="h3 mb-0">Emergency</h1>
+    <p class="text-secondary">Put a message on every screen, a group or one display. It replaces normal content until you clear it.</p>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    {% if live %}
+    <span class="em-status is-live">{{ icon("alert", 16) }} {{ live|length }} live now</span>
+    {% else %}
+    <span class="em-status is-calm">{{ icon("check-circle", 16) }} All clear</span>
+    {% endif %}
+    {% if current_user.can_edit and live|length > 1 %}
+    <form method="post" action="{{ url_for('emergency.clear_all') }}"
+          data-confirm="Clear all {{ live|length }} live emergency messages? Screens go back to their normal content.">
+      {{ action_form.hidden_tag() }}<button class="btn btn-outline-danger btn-sm" type="submit">Clear all</button>
+    </form>
+    {% endif %}
+  </div>
 </div>
 
-<h2 class="h5 mb-3">Live now</h2>
-{% if live %}
-<div class="row g-3 mb-4">
-  {% for m in live %}
-  {% set bg, fg = m.colors %}
-  <div class="col-md-6">
-    <div class="card h-100 border-0" style="background-color: {{ bg }}; color: {{ fg }}">
-      <div class="card-body">
+{# ---- Live now ------------------------------------------------------------------------------------------- #}
+{% for m in live %}
+{% set bg, fg = m.colors %}
+<section class="em-live" style="--em-bg: {{ bg }}; --em-fg: {{ fg }}" aria-label="Live emergency: {{ m.title }}">
+  <div class="em-live-icon">{{ icon("alert", 26) }}</div>
+  <div class="em-live-body">
+    <h2>{{ m.title }}</h2>
+    {% if m.message %}<p>{{ m.message }}</p>{% endif %}
+    <div class="em-chips">
+      <span class="em-chip">{{ m.level|upper }}</span>
+      <span class="em-chip">{{ icon("monitor", 13) }} {{ m.target_label }}</span>
+      {% if m.playlist %}<span class="em-chip">{{ icon("list", 13) }} {{ m.playlist.name }}{% if not m.show_text %} (no text){% endif %}</span>{% endif %}
+      <span class="em-chip">{{ icon("clock", 13) }} since {{ m.created_at|localtime }}{% if m.created_by %} by {{ m.created_by.username }}{% endif %}</span>
+      {% if m.ends_at %}<span class="em-chip">clears itself at {{ m.ends_at|localtime }}</span>{% endif %}
+    </div>
+  </div>
+  {% if current_user.can_edit %}
+  <form method="post" action="{{ url_for('emergency.clear', message_id=m.id) }}"
+        data-confirm="Clear {{ m.title }}? Screens go back to their normal content.">
+    {{ action_form.hidden_tag() }}<button class="btn btn-light btn-lg fw-semibold" type="submit">Clear it</button>
+  </form>
+  {% endif %}
+</section>
+{% else %}
+<section class="em-calm">
+  <div class="em-live-icon">{{ icon("check-circle", 24) }}</div>
+  <div><strong>No emergency message is live.</strong><div class="text-secondary small">Screens are showing their normal content.</div></div>
+</section>
+{% endfor %}
+
+<div class="row g-4">
+  {# ---- Saved messages: one click ------------------------------------------------------------------------- #}
+  <div class="col-xl-8">
+    <div class="em-section"><h2>Saved messages</h2><small>One click sends it. API ids are for buttons and scripts.</small></div>
+    <div class="em-tpls">
+      {% for t in templates %}
+      {% set tname = target_names.get(t.target) %}
+      <article class="em-tpl{% if not tname %} is-broken{% endif %}" style="--em-c: {{ level_color.get(t.level, '#b71c1c') }}">
         <div class="d-flex justify-content-between align-items-start gap-2">
-          <div>
-            <span class="badge bg-light text-dark text-uppercase">{{ m.level }}</span>
-            <h3 class="h5 mt-2 mb-1">{{ m.title }}</h3>
-          </div>
+          <h3>{{ t.name }}</h3>
+          <span class="badge rounded-pill text-uppercase" style="background: {{ level_color.get(t.level, '#b71c1c') }}">{{ t.level }}</span>
+        </div>
+        <div class="em-title">{{ t.title }}</div>
+        <div class="em-text">{{ t.message or "No message text" }}</div>
+        <div class="em-chips"><span class="em-chip" style="background: var(--bs-secondary-bg); color: var(--bs-body-color)">{{ icon("monitor", 12) }} {{ tname or "Screens were removed" }}</span></div>
+        <div class="em-foot">
           {% if current_user.can_edit %}
-          <form method="post" action="{{ url_for('emergency.clear', message_id=m.id) }}"
-                data-confirm="Clear {{ m.title }}? Screens go back to their normal content.">
-            {{ action_form.hidden_tag() }}<button class="btn btn-light btn-sm" type="submit">Clear</button>
+          <form method="post" action="{{ url_for('emergency.send_template', template_id=t.id) }}" class="d-flex flex-grow-1"
+                data-confirm="Send {{ t.name }} now? It appears on the chosen screens immediately.">
+            {{ action_form.hidden_tag() }}<button class="btn btn-send w-100" type="submit" {% if not tname %}disabled title="Its screens no longer exist"{% endif %}>{{ icon("send", 15) }} Send now</button>
+          </form>
+          <form method="post" action="{{ url_for('emergency.delete_template', template_id=t.id) }}"
+                data-confirm="Remove the saved message {{ t.name }}?">
+            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-link text-secondary" type="submit">Remove</button>
           </form>
           {% endif %}
+          <span class="em-meta ms-auto">API id {{ t.id }}</span>
         </div>
-        {% if m.message %}<p class="mb-2" style="white-space: pre-wrap">{{ m.message }}</p>{% endif %}
-        <div class="small">
-          {{ m.target_label }}
-          {% if m.playlist %} · playlist {{ m.playlist.name }}{% if not m.show_text %} (no text){% endif %}{% endif %}
-          · since {{ m.created_at|localtime }}{% if m.created_by %} by {{ m.created_by.username }}{% endif %}
+      </article>
+      {% endfor %}
+      {% if form %}
+      <a class="em-new" href="#compose">
+        <span>{{ icon("plus", 22) }}</span>
+        <strong>{{ "New message" if templates else "Write your first message" }}</strong>
+        <span class="small">Write it below, then save it as a template</span>
+      </a>
+      {% elif not templates %}
+      <p class="text-secondary">No saved messages yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ---- Scheduled ----------------------------------------------------------------------------------------- #}
+  <div class="col-xl-4">
+    <div class="em-section"><h2>Scheduled</h2><small>Sent by the server, then cleared</small></div>
+    {% set upcoming = plans|selectattr("state", "equalto", "pending")|list %}
+    {% set earlier = plans|rejectattr("state", "equalto", "pending")|list %}
+    <div class="em-plans mb-3">
+      {% for p in upcoming|sort(attribute="starts_at") %}
+      <div class="em-plan">
+        {% set when = (p.starts_at|localtime).split(" ") %}
+        <div class="em-when"><b>{{ when[1] if when|length > 1 else when[0] }}</b><span>{{ when[0] if when|length > 1 else "" }}{{ " " ~ when[2] if when|length > 2 else "" }}</span></div>
+        <div class="em-what">{{ p.template.name }}<small>{{ ("stays up " ~ p.duration_min ~ " min") if p.duration_min else "stays up until cleared" }}</small></div>
+        {% if current_user.can_edit %}
+        <form method="post" action="{{ url_for('emergency.cancel_plan', plan_id=p.id) }}" data-confirm="Cancel this scheduled message?">
+          {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit">Cancel</button></form>
+        {% endif %}
+      </div>
+      {% else %}
+      <p class="text-secondary small mb-0">Nothing scheduled.</p>
+      {% endfor %}
+    </div>
+    {% if templates and current_user.can_edit %}
+    <form method="post" action="{{ url_for('emergency.add_plan') }}" class="em-card">
+      {{ action_form.hidden_tag() }}
+      <h3 class="h6 mb-3">{{ icon("clock", 15) }} Schedule a saved message</h3>
+      <label class="form-label small mb-1" for="plan-template">Message</label>
+      <select class="form-select mb-2" id="plan-template" name="template_id" required>
+        {% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+      </select>
+      <label class="form-label small mb-1" for="plan-start">Starts <span class="text-secondary">(organization time)</span></label>
+      <input class="form-control mb-2" type="datetime-local" id="plan-start" name="starts_at" required>
+      <label class="form-label small mb-1" for="plan-dur">Stays up <span class="text-secondary">(minutes, optional)</span></label>
+      <input class="form-control mb-3" type="number" id="plan-dur" name="duration_min" min="1" max="1440" placeholder="until cleared">
+      <button class="btn btn-outline-danger w-100" type="submit">Schedule</button>
+    </form>
+    {% endif %}
+    {% if earlier %}
+    <details class="mt-3 small">
+      <summary class="text-secondary">Earlier plans ({{ earlier|length }})</summary>
+      <ul class="list-unstyled mt-2 mb-0">
+        {% for p in earlier %}
+        <li class="py-1 border-bottom">{{ p.template.name }} · {{ p.starts_at|localtime }} ·
+          <span class="{{ 'text-success' if p.state == 'fired' else 'text-danger' if p.state in ('failed', 'missed') else 'text-secondary' }}">{{ p.state }}</span>{% if p.note %}<div class="text-secondary">{{ p.note }}</div>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+  </div>
+</div>
+
+{# ---- Compose: form and a live preview ------------------------------------------------------------------ #}
+{% if form %}
+<div class="em-section" id="compose"><h2>New message</h2><small>Fill it in, send it now, or save it to reuse</small></div>
+<form method="post" action="{{ url_for('emergency.send') }}" novalidate id="em-form"
+      data-confirm="Send this emergency message now? It appears on the chosen screens immediately.">
+  {{ form.hidden_tag() }}
+  <div class="row g-4">
+    <div class="col-lg-7">
+      <div class="em-card">
+        <div class="mb-3">
+          <label class="form-label fw-semibold" for="{{ form.title.id }}">Title</label>
+          {{ form.title(class_="form-control form-control-lg" ~ (" is-invalid" if form.title.errors else ""), maxlength=120, **{"data-pv": "title"}) }}
+          {{ err(form.title) }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold" for="{{ form.message.id }}">Message <span class="text-secondary fw-normal">(optional)</span></label>
+          {{ form.message(class_="form-control" ~ (" is-invalid" if form.message.errors else ""), rows=3, **{"data-pv": "message"}) }}
+          {{ err(form.message) }}
+        </div>
+        <div class="mb-3">
+          <div class="form-label fw-semibold">How serious is it?</div>
+          <div class="em-levels" role="radiogroup" aria-label="Level">
+            {% for value, label in [("info", "Info"), ("warning", "Warning"), ("critical", "Critical")] %}
+            <div style="--em-c: {{ level_color[value] }}; position: relative">
+              <input type="radio" name="{{ form.level.name }}" id="level-{{ value }}" value="{{ value }}"
+                     {% if (form.level.data or "critical") == value %}checked{% endif %} data-color="{{ level_color[value] }}">
+              <label for="level-{{ value }}">{{ label }}</label>
+            </div>
+            {% endfor %}
+          </div>
+          {{ err(form.level) }}
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold" for="{{ form.target.id }}">Show on</label>
+            {{ form.target(class_="form-select" ~ (" is-invalid" if form.target.errors else "")) }}
+            {{ err(form.target) }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold" for="{{ form.playlist.id }}">Playlist <span class="text-secondary fw-normal">(optional)</span></label>
+            {{ form.playlist(class_="form-select" ~ (" is-invalid" if form.playlist.errors else "")) }}
+            {{ err(form.playlist) }}
+          </div>
+        </div>
+        <p class="form-text mt-n2">A playlist plays instead of normal content. Without one the text fills the screen.</p>
+        <div class="form-check form-switch mb-3">
+          {{ form.show_text(class_="form-check-input", role="switch") }}
+          <label class="form-check-label" for="{{ form.show_text.id }}">Show the title and message</label>
+          {{ err(form.show_text) }}
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2 pt-3 border-top">
+          <button class="btn btn-danger btn-lg" type="submit">{{ icon("send", 17) }} Send emergency message</button>
+          <div class="input-group" style="max-width: 24rem; width: auto; flex: 1 1 16rem">
+            <input class="form-control" type="text" name="template_name" maxlength="80" placeholder="Template name" aria-label="Template name">
+            <button class="btn btn-outline-secondary" type="submit" formaction="{{ url_for('emergency.save_template') }}" data-confirm-button="" title="Save this message to reuse, without sending it">Save as template</button>
+          </div>
         </div>
       </div>
     </div>
+    <div class="col-lg-5">
+      <div class="em-card">
+        <div class="small text-secondary mb-2">Preview: how it looks on a screen</div>
+        <div class="em-preview" id="em-preview" style="background: #b71c1c">
+          <div class="pv-title" id="pv-title">Title</div>
+          <div class="pv-msg" id="pv-msg">Your message appears here.</div>
+        </div>
+        <p class="small text-secondary mt-2 mb-0">The real screens use the same colours and fill the whole screen. A playlist, if you pick one, plays with the text over it.</p>
+      </div>
+    </div>
   </div>
-  {% endfor %}
-</div>
-{% else %}
-<p class="text-secondary mb-4">No emergency message is live. Screens show their normal content.</p>
+</form>
+<script src="{{ url_for('static', filename='js/emergency.js') }}" defer></script>
 {% endif %}
 
-{% if templates %}
-<h2 class="h5 mb-3">Saved messages</h2>
-<div class="card mb-4"><div class="table-responsive">
-  <table class="table table-sm align-middle mb-0">
-    <thead><tr><th>Name</th><th>Message</th><th>Level</th><th>Shown on</th><th></th></tr></thead>
-    <tbody>
-    {% for t in templates %}
-      <tr>
-        <td class="fw-semibold">{{ t.name }}<div class="small text-secondary text-nowrap">API id {{ t.id }}</div></td>
-        <td class="small">{{ t.title }}{% if t.message %}<div class="text-secondary">{{ t.message|truncate(80) }}</div>{% endif %}</td>
-        <td><span class="badge {{ level_badge.get(t.level, 'text-bg-secondary') }}">{{ t.level }}</span></td>
-        <td class="small">{{ t.target }}</td>
-        <td class="text-end text-nowrap">
-          {% if current_user.can_edit %}
-          <form method="post" action="{{ url_for('emergency.send_template', template_id=t.id) }}" class="d-inline"
-                data-confirm="Send {{ t.name }} now? It appears on the chosen screens immediately.">
-            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-danger" type="submit">Send now</button>
-          </form>
-          <form method="post" action="{{ url_for('emergency.delete_template', template_id=t.id) }}" class="d-inline"
-                data-confirm="Remove the saved message {{ t.name }}?">
-            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit">Remove</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div></div>
-{% endif %}
-
-{% if templates and current_user.can_edit or plans %}
-<h2 class="h5 mb-3">Scheduled</h2>
-<div class="card mb-4"><div class="card-body">
-  {% if templates and current_user.can_edit %}
-  <form method="post" action="{{ url_for('emergency.add_plan') }}" class="row g-2 align-items-end mb-3">
-    {{ action_form.hidden_tag() }}
-    <div class="col-md-4"><label class="form-label small mb-0" for="plan-template">Saved message</label>
-      <select class="form-select" id="plan-template" name="template_id" required>
-        {% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
-      </select></div>
-    <div class="col-md-3"><label class="form-label small mb-0" for="plan-start">Starts (organization time)</label>
-      <input class="form-control" type="datetime-local" id="plan-start" name="starts_at" required></div>
-    <div class="col-md-3"><label class="form-label small mb-0" for="plan-dur">Stays up (minutes, optional)</label>
-      <input class="form-control" type="number" id="plan-dur" name="duration_min" min="1" max="1440" placeholder="until cleared"></div>
-    <div class="col-md-2"><button class="btn btn-outline-danger w-100" type="submit">Schedule</button></div>
-  </form>
-  {% endif %}
-  {% if plans %}
-  <table class="table table-sm align-middle mb-0">
-    <thead><tr><th>Message</th><th>Starts</th><th>Stays up</th><th>Status</th><th></th></tr></thead>
-    <tbody>
-    {% for p in plans %}
-      <tr>
-        <td>{{ p.template.name }}</td>
-        <td class="small text-nowrap">{{ p.starts_at|localtime }}</td>
-        <td class="small">{{ p.duration_min ~ " min" if p.duration_min else "until cleared" }}</td>
-        <td class="small">{{ p.state }}{% if p.note %}<div class="text-secondary">{{ p.note }}</div>{% endif %}</td>
-        <td class="text-end">{% if p.state == "pending" and current_user.can_edit %}
-          <form method="post" action="{{ url_for('emergency.cancel_plan', plan_id=p.id) }}" class="d-inline" data-confirm="Cancel this scheduled message?">
-            {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit">Cancel</button></form>{% endif %}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}<p class="text-secondary small mb-0">Nothing scheduled.</p>{% endif %}
-</div></div>
-{% endif %}
-
-{% if form %}
-<h2 class="h5 mb-3">Send a message</h2>
-<div class="card mb-4" style="max-width: 40rem"><div class="card-body">
-  <form method="post" action="{{ url_for('emergency.send') }}" novalidate
-        data-confirm="Send this emergency message now? It appears on the chosen screens immediately.">
-    {{ form.hidden_tag() }}
-    {{ field(form.title) }}
-    {{ field(form.message) }}
-    <div class="row g-3">
-      <div class="col-sm-5">{{ field(form.level) }}</div>
-      <div class="col-sm-7">{{ field(form.target) }}</div>
-    </div>
-    {{ field(form.playlist) }}
-    <p class="form-text mt-n2">A playlist plays instead of normal content. Without one the text fills the screen.</p>
-    {{ field(form.show_text) }}
-    <button class="btn btn-danger" type="submit">Send emergency message</button>
-    <div class="input-group mt-3">
-      <input class="form-control" type="text" name="template_name" maxlength="80" placeholder="Save as a template, name it (e.g. Fire drill)">
-      <button class="btn btn-outline-secondary" type="submit" formaction="{{ url_for('emergency.save_template') }}" data-confirm-button="">Save as template</button>
-    </div>
-  </form>
-</div></div>
-{% endif %}
-
-<h2 class="h5 mb-3">History</h2>
+{# ---- History -------------------------------------------------------------------------------------------- #}
+<div class="em-section"><h2>History</h2><small>The last {{ history|length }} messages</small></div>
 {% if history %}
-<div class="card"><div class="table-responsive">
+<div class="em-card p-0 em-hist"><div class="table-responsive">
   <table class="table table-sm align-middle mb-0">
-    <thead><tr><th>Title</th><th>Level</th><th>Shown on</th><th>Sent</th><th>Cleared</th>{% if form %}<th></th>{% endif %}</tr></thead>
+    <thead><tr><th class="ps-3">Message</th><th>Shown on</th><th>Sent</th><th>Cleared</th>{% if form %}<th></th>{% endif %}</tr></thead>
     <tbody>
     {% for m in history %}
       <tr>
-        <td class="fw-semibold">{{ m.title }}</td>
-        <td><span class="badge {{ level_badge.get(m.level, 'text-bg-secondary') }}">{{ m.level }}</span></td>
-        <td class="small">{{ m.target_label }}</td>
-        <td class="small text-nowrap">{{ m.created_at|localtime }}{% if m.created_by %}<div class="text-secondary">{{ m.created_by.username }}</div>{% endif %}</td>
-        <td class="small text-nowrap">
+        <td class="ps-3 fw-semibold"><span class="em-dot" style="--em-c: {{ level_color.get(m.level, '#6c757d') }}"></span>{{ m.title }}
+          <span class="text-secondary fw-normal text-uppercase small ms-1">{{ m.level }}</span></td>
+        <td>{{ m.target_label }}</td>
+        <td class="text-nowrap">{{ m.created_at|localtime }}{% if m.created_by %}<div class="text-secondary small">{{ m.created_by.username }}</div>{% endif %}</td>
+        <td class="text-nowrap">
           {% if m.live %}<span class="badge text-bg-danger">Live</span>
           {% else %}{{ m.cleared_at|localtime }}
-            <div class="text-secondary">
-              {% if m.clear_reason == "target_deleted" %}target deleted{% elif m.cleared_by %}{{ m.cleared_by.username }}{% else %}{{ m.clear_reason or "" }}{% endif %}
+            <div class="text-secondary small">
+              {% if m.clear_reason == "target_deleted" %}target deleted{% elif m.clear_reason == "expired" %}ended by schedule{% elif m.cleared_by %}{{ m.cleared_by.username }}{% else %}{{ m.clear_reason or "" }}{% endif %}
             </div>
           {% endif %}
         </td>
-        {% if form %}<td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('emergency.index') ~ '?from=' ~ m.id }}">Send again</a></td>{% endif %}
+        {% if form %}<td class="text-end pe-3"><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('emergency.index') ~ '?from=' ~ m.id }}#compose">Send again</a></td>{% endif %}
       </tr>
     {% endfor %}
     </tbody>

@@ -60,8 +60,9 @@ def _render(form: EmergencyForm | None, status: int = 200):
                .limit(HISTORY_LIMIT).all())
     templates = EmergencyTemplate.query.order_by(EmergencyTemplate.name).all()
     plans = (EmergencyPlan.query.order_by(EmergencyPlan.starts_at.desc()).limit(20).all())
+    target_names = {str(c.value): c.label for c in targets.choices()}
     return render_template("emergency/index.html", live=service.live(), history=history,
-                           templates=templates, plans=plans, form=form, action_form=ActionForm()), status
+                           templates=templates, plans=plans, form=form, target_names=target_names, action_form=ActionForm()), status
 
 
 @bp.route("/")
