@@ -41,7 +41,7 @@ def test_synced_group_gets_a_sync_block_and_controls_off(app, configured, client
     gid = _setup(app, paired_display)
     m = _manifest(client)
     assert m["sync"] == {"group_id": gid, "anchor_ms": 0, "cycle_ms": 15000}
-    assert m["settings"]["allow_input"] is False        # one screen going its own way would break it
+    assert m["settings"]["allow_input"] is True         # controls follow the display's setting; the player rejoins after resume_after_s
 
 
 def test_no_sync_block_without_the_group_option_or_a_group(app, configured, client, paired_display):

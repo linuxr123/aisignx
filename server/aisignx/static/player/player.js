@@ -37,6 +37,7 @@
     forceSwap: false, failures: 0, live: false, fetching: false, refetch: false, retryTimer: null,
     pairing: null, countdown: null, reloadPending: false, reloadBusy: false, reloadTriedAt: 0, note: "",
     paused: null,  // {resumeAt, remaining, video}: the viewer paused the slide on screen
+    detached: null, // {until}: in sync, the viewer used a control: this screen plays on its own until then
     scrub: null,   // {slide, t0, target, duration, wasPaused, timer}: a drag-scrub in progress
     skipTo: null,  // index a skip asked for while its slide is still loading
     manualDir: 0,  // +1/-1 while a hand-made next/previous is on its way (its slide moves left/right)
@@ -58,12 +59,15 @@
   function pop(fn, arg) { if (POP) { try { POP[fn](arg); } catch (e) { if (window.console) console.error(e); } } }
   function durationOf(item) { var d = Number(item.duration_ms); return d > 0 ? Math.max(1000, d) : DEFAULT_DURATION_MS; }
 
-  // ---- Synchronized playback. The slide that should be on screen is a function of the shared
+  // ---- Synchronized playback. A viewer who uses a control (next, previous, fast forward, rewind, pause) leaves the
+  // shared timeline for `resume_after_s`; then the screen rejoins the group (see detach() and tick()).
+  // The slide that should be on screen is a function of the shared
   // server clock, the playlist's durations and the anchor, so the group needs no coordination.
+  function syncOn() { return !!S.sync && !S.detached; }
   function serverNow() { return SY ? SY.clock.now() : Date.now(); }
   // The schedule at server time `at` (default: now): {index, elapsedMs, remainingMs} or null.
   function syncAt(at) {
-    if (!S.sync || !SY) return null;
+    if (!syncOn() || !SY) return null;
     return SY.position(S.items.map(durationOf), S.sync.anchor, at === undefined ? serverNow() : at);
   }
   // Index of the slide that plays right after the one on screen ends (or now, if none is shown).
@@ -263,6 +267,7 @@
   function stopPlayback() {
     pop("end", true); S.gen++; clearSlideTimers(); dropNext(); R.clear(); S.cur = null; S.forceSwap = false;
     S.skipTo = null;
+    S.detached = null;
     clearControls();
   }
   function showNoContent(failed) {
@@ -299,6 +304,8 @@
   // Absolute deadlines checked by a 250 ms ticker survive timer throttling.
   function tick() {
     if (S.state !== "PLAYING") return;
+    // The reset time after a viewer's control is over: rejoin the group (a fullscreen emergency waits for its end).
+    if (S.detached && now() >= S.detached.until && EM.shownId === null) { note("back in sync with the group"); startPlaying(); return; }
     if (S.paused) {  // paused: no preload and no boundary until it resumes
       if (EM.shownId !== null || now() >= S.paused.resumeAt) doResume(); else return;
     }
@@ -309,7 +316,7 @@
   function boundary() {
     if (S.reloadPending) guardedReload();
     if (singleRepeat()) {
-      var again = S.sync ? syncAt() : null;  // in sync: the cycle restarts on the shared clock
+      var again = syncOn() ? syncAt() : null;  // in sync: the cycle restarts on the shared clock
       S.cur.deadline = now() + (again ? again.remainingMs : durationOf(S.cur.item));
       pop("end", true); pop("begin", S.cur.item);  // each repeat counts as a play
       return;
@@ -318,7 +325,7 @@
     else if (S.nxt.state === "ready") {
       // In sync, a slide that was prepared for a moment that has passed (a slow load) is dropped
       // for the one that should be on screen now.
-      var due = S.sync ? syncAt() : null;
+      var due = syncOn() ? syncAt() : null;
       if (due && due.index !== S.nxt.index && due.index !== (S.nxt.index + S.items.length - 1) % S.items.length) {
         dropNext(); prepareNext();
       } else swapTo(S.nxt);
@@ -327,7 +334,7 @@
   }
   function prepareNext() {
     if (S.nxt || !S.items.length || singleRepeat()) return;
-    var index = S.sync ? syncNextIndex() : (S.pos + 1) % S.items.length;
+    var index = syncOn() ? syncNextIndex() : (S.pos + 1) % S.items.length;
     var n = { index: index, item: S.items[index], state: "loading", slide: null };
     S.nxt = n;
     var pending = R.prepare(n.item, S.gen);
@@ -357,7 +364,7 @@
     var trans = S.manualDir ? (S.manualDir > 0 ? "slide-left" : "slide-right") : item.transition;
     S.manualDir = 0;
     var elapsed = 0;  // in sync: how far into this slide the shared clock says we already are
-    var sp = S.sync ? syncAt() : null;
+    var sp = syncOn() ? syncAt() : null;
     if (sp) elapsed = sp.index === n.index ? sp.elapsedMs : -sp.remainingMs;  // a hair early: start at the boundary
     if (sp && elapsed > 500 && R.isVideo(n.slide)) syncSeekWhenReady(n.slide, item, elapsed);
     R.swap(n.slide, trans);
@@ -372,17 +379,17 @@
         // In sync: how far into this slide the shared clock says we are (ms), else null. A plugin
         // that plays something with its own timeline (YouTube) uses it to stay in step.
         syncElapsed: function () {
-          var p = S.sync ? syncAt() : null;
+          var p = syncOn() ? syncAt() : null;
           return p && S.cur && S.cur.item === item && p.index === S.pos ? p.elapsedMs : null;
         },
         // In sync: the shared-clock time this slide started (server ms), else null. A plugin that rotates
         // its own pages uses it to start on its first page and change pages in step with the others.
         syncStart: function () {
-          var p = S.sync ? syncAt() : null;
+          var p = syncOn() ? syncAt() : null;
           return p && S.cur && S.cur.item === item && p.index === S.pos ? serverNow() - p.elapsedMs : null;
         },
         // A plugin that ends itself while the viewer has it paused waits for the resume.
-        done: guard(function () { if (S.paused || S.sync) return; S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
+        done: guard(function () { if (S.paused || syncOn()) return; S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
         fail: guard(slideFailed),
         note: note,
         every: every,
@@ -394,7 +401,7 @@
     R.runVideo(n.slide, {
       isHeld: function () { return !!S.paused; },  // the viewer paused it on purpose
       loop: function () { return loops(item); },
-      done: guard(function () { if (S.sync) return; S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
+      done: guard(function () { if (syncOn()) return; S.cur.deadline = Math.min(S.cur.deadline, now()); tick(); }),
       fail: guard(slideFailed),
       note: note,
       every: every,
@@ -435,7 +442,7 @@
     var once = function () {
       v.removeEventListener("canplay", once);
       var cur = S.cur, p = syncAt();
-      if (!S.sync || !cur || cur.slide !== slide || cur.failed || !p || p.index !== S.pos) return;
+      if (!syncOn() || !cur || cur.slide !== slide || cur.failed || !p || p.index !== S.pos) return;
       R.setVideoTime(slide, syncWant(slide, item, p.elapsedMs));
     };
     v.addEventListener("canplay", once);
@@ -450,7 +457,7 @@
   // Every few seconds a synced video is pulled back to the shared timeline if it has drifted.
   function syncDrift(slide, item) {
     var cur = S.cur;
-    if (!S.sync || !cur || cur.slide !== slide || cur.failed || S.paused || (R.isSeeking && R.isSeeking(slide))) return;
+    if (!syncOn() || !cur || cur.slide !== slide || cur.failed || S.paused || (R.isSeeking && R.isSeeking(slide))) return;
     var p = syncAt(), v = R.videoOf(slide);
     if (!p || !v || p.index !== S.pos) return;
     // A video that is still loading (the first showing, before it is cached) cannot be corrected: seeking
@@ -475,7 +482,13 @@
   }
 
   // ---- Controls: pause, skip, seek and scrub (controls.js turns input into these calls).
-  function canControl() { return S.state === "PLAYING" && !!S.cur && EM.shownId === null && !S.sync; }
+  function canControl() { return S.state === "PLAYING" && !!S.cur && EM.shownId === null; }
+  // Called by every control before it acts. In sync, the screen leaves the shared timeline for the reset time
+  // (the display's "resume after"); each further use starts that time again.
+  function detach() {
+    if (!S.sync) return;
+    S.detached = { until: now() + D.config().resume_after_s * 1000 };
+  }
   function curVideo() { var c = S.cur; return !!(c && !c.failed && R.isVideo(c.slide)); }
   // Plays the on-screen video again; a refused unmuted play() falls back to muted, as runVideo does.
   function playCur() {
@@ -492,6 +505,7 @@
   function doPause() {
     var cur = S.cur;
     if (S.paused || !canControl() || cur.failed) return null;
+    detach();
     var t = now();
     S.paused = { resumeAt: t + D.config().resume_after_s * 1000, remaining: Math.max(0, cur.deadline - t), video: curVideo() };
     if (S.paused.video) R.pauseVideo(cur.slide);
@@ -532,6 +546,7 @@
   function skip(dir) {
     var cur = S.cur, n = S.items.length;
     if (!canControl() || !n) return false;
+    detach();
     unpause(false);
     if (n === 1 && !S.forceSwap && !cur.failed && cur.item.id === S.items[0].id) {
       // Restart in place; it counts as a new play.
@@ -566,18 +581,20 @@
     var v = R.videoOf(slide), d = v ? Number(v.duration) : 0;
     return d > 0 && isFinite(d) ? Math.max(2, Math.min(SEEK_S, d / 3)) : SEEK_S;
   }
-  // seek(+1 | -1): fast forward or rewind a video (forward past the end goes to the next item);
-  // on anything else the arrows change the slide.
+  // seek(+1 | -1): fast forward or rewind a video. Fast forward never skips to the next slide, not even at the end (it
+  // stops a moment before the end and the video finishes by itself); the Next keys, swipes and channel keys still skip.
+  // On anything else (images, web pages) the arrows change the slide.
   function seek(sign) {
     if (!canControl()) return null;
     if (!curVideo()) return skip(sign) ? (sign > 0 ? "next" : "prev") : null;
+    detach();
     var cur = S.cur, r = R.seekVideo(cur.slide, sign * seekStep(cur.slide));
-    if (r.atEnd && sign > 0) return skip(1) ? "next" : null;
     shiftDeadline(cur, r.applied);
     return r.applied;
   }
   function scrubBegin() {
     if (S.scrub || !canControl() || !curVideo()) return null;
+    detach();
     var cur = S.cur, v = R.videoOf(cur.slide), d = Number(v.duration);
     if (!(d > 0) || !isFinite(d)) return null;
     var t0 = Number(v.currentTime) || 0;

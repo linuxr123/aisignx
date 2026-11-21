@@ -218,10 +218,10 @@ def build_manifest(display: Display, now: datetime | None = None, ctx=None) -> d
         # Synchronized playback: every screen of the group works out the current slide from the
         # shared server clock and the item durations, so no chatter is needed (static/player/
         # sync.js). The anchor is the Unix epoch: the same for every screen and every restart,
-        # with nothing to store. Controls are off: one screen going its own way would break it.
+        # with nothing to store. Player controls follow the display's own setting: a viewer who uses one leaves the
+        # shared timeline, and the player rejoins it by itself after `settings.resume_after_s`.
         body["sync"] = {"group_id": group.id, "anchor_ms": 0,
                         "cycle_ms": sum(max(1000, int(e["duration_ms"])) for e in items)}
-        body["settings"] = {**body["settings"], "allow_input": False}
     body["version"] = manifest_version(body)
     body["server_time_ms"] = int(time.time() * 1000)
     return body

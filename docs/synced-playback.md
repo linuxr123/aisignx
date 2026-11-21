@@ -38,7 +38,7 @@ this watchdog, and the drift check takes over again when it plays.
 
 ## What changes on a synced screen
 
-- **Player controls are off** (pause, next, seek): one screen going its own way would break the sync.
+- **Player controls work as on any screen** (if the display has them on): pause, next, previous, fast forward, rewind. A screen whose viewer uses one **leaves the shared timeline** (the others do not move) and **rejoins the group by itself** after the display's *Resume after* time (Displays > the screen > Edit > Device agent / controls, default 5 min); every further use starts that time again. A fullscreen emergency waits to be shown first.
   The display page says so.
 - **Slides always run for their set duration.** A video that is shorter than its slide plays again
   (a single-item playlist loops); a plugin cannot end its slide early. A YouTube video therefore

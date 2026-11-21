@@ -110,13 +110,15 @@ def test_video_seek_and_scrub(harness):
     assert harness["videoSeek"] == {"t": 12, "hint": "Fast forward +10 s", "at19": 1, "at21": 2}
     assert harness["videoBack"] == {"t": 0, "hint": "Rewind −4 s"}
     assert harness["loopSeek"] == {"at57": 1, "at61": 2}  # looping: deadline unchanged
-    assert harness["forwardAtEnd"] == 2
+    assert harness["forwardAtEnd"] == 1   # fast forward never skips to the next slide, even at the end of the video
     assert harness["pausedSeek"] == {"videoPausedWhilePaused": True, "at19": 1, "at21": 2}
     assert harness["scrub"] == {"t": 130, "playing": True, "hintScrub": True}
     r = harness["render"]
-    assert r["a"] == {"applied": 0, "atEnd": True}
-    assert r["b"] == {"applied": -50, "atEnd": False}
-    assert r["c"] == {"applied": 0, "atEnd": True}
+    # a fast forward past the end stops 2 s before it (never ends the video), and nothing moves when already that close
+    assert r["a"] == {"applied": 8, "atEnd": False}      # 50 s of 60 s, +10 s: stops at 58 s
+    assert r["b"] == {"applied": -58, "atEnd": False}     # back from 58 s (where a stopped) to the start
+    assert r["c"] == {"applied": 3, "atEnd": False}      # 55 s: stops at 58 s
+    assert r["e"] == {"applied": 0, "atEnd": True}       # 59 s: already in the last 2 s
     assert r["d"] == 59.75
     assert r["img"] == {"applied": 0, "atEnd": False}
 
@@ -155,7 +157,8 @@ def test_seeks_are_coalesced_while_the_video_is_still_seeking(harness):
     assert c["r"] == [10, 10, 10, -5]          # each press still reports its own jump
     assert c["duringSeek"] == [110]            # one write; the rest wait for 'seeked'
     assert c["afterSeeked"] == [110, 125]      # then one write with the net result
-    assert c["end"]["atEnd"] is True
+    # past the end: it stops END_HOLD_S (2 s) before the end instead of ending the video; the video finishes by itself
+    assert c["end"] == {"applied": 473, "atEnd": False}
 
 
 @needs_node
@@ -181,6 +184,15 @@ def test_sync_position_math_and_the_clock_estimate(harness):
     assert u["slowOnly"] == 150 and u["best"] == 0 and u["rtt"] == 20   # the fast answer wins
     assert u["ready"] is True and u["now"] == 5000
     assert u["junk"] == [False, False, False]                           # NaN, negative and 20 s round trips are ignored
+
+
+@needs_node
+def test_a_synced_screen_accepts_controls_and_rejoins_the_group_after_the_reset_time(harness):
+    r = harness["syncControls"]
+    assert r["afterNext"]["b"] == r["start"]                       # the other screen did not move
+    assert r["afterNext"]["a"] == r["start"] % 3 + 1               # this one went to the next slide
+    assert r["own"]["a"] != r["own"]["b"] and r["own"]["b"] == r["own"]["want"]   # still off the group inside the reset time
+    assert r["rejoined"]["a"] == r["rejoined"]["b"] == r["rejoined"]["want"], r
 
 
 @needs_node

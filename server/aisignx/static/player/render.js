@@ -14,6 +14,7 @@
   var WEB_SHOW_ANYWAY_MS = 8000;
   var TEARDOWN_SAFETY_MS = 1500;
   var STALL_MS = 10000;
+  var END_HOLD_S = 2;    // fast forward stops this far before the end of a video
   var NUDGE_MS = 3000;   // a video whose time stands still gets a play() nudge after this long
   var PAUSED_NUDGE_MS = 2000;  // a video that is paused when it should play gets one after this long
   var NUDGE_EVERY_MS = 2000;   // ... and another every so often
@@ -541,10 +542,15 @@
     var d = durationOfVideo(v), want = from + deltaS;
     var atEnd = deltaS > 0 && d > 0 && want > d - 0.25;
     if (atEnd) {
+      // A fast forward never ends the video: it stops END_HOLD_S before the end (never moving backwards), and the video
+      // finishes by itself. Already that close: nothing moves, and the caller must not go to the next slide either.
+      var stop = Math.max(from, d - END_HOLD_S);
       s.target = null;
       clearTimeout(s.timer);
       s.timer = null;
-      return { applied: 0, atEnd: true };
+      if (stop - from < 0.05) return { applied: 0, atEnd: true };
+      if (v.seeking === true) { s.target = stop; armSeek(v, s); } else writeTime(v, stop);
+      return { applied: stop - from, atEnd: false };
     }
     var max = d ? Math.max(0, d - 0.25) : Number.POSITIVE_INFINITY;
     var to = Math.max(0, Math.min(max, want));

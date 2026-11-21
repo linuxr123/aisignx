@@ -496,6 +496,28 @@ async function main() {
     out.noSync = { cur: none.cur() };
   }
 
+  // Controls on a synchronized screen: the viewer leaves the shared timeline, the others do not move, and after the
+  // reset time (resume_after_s) the screen is back on the slide the shared clock says.
+  {
+    const items = [IMG(1, 10000), IMG(2, 10000), IMG(3, 10000)];   // slide k plays at T % 30 s in [10(k-1), 10k) s
+    const at = (T) => 1 + Math.floor((T % 30000) / 10000);
+    const a = await make(items, { sync: true, resume_after_s: 60, t0: 3000 });
+    const b = await make(items, { sync: true, resume_after_s: 60, t0: 3000 });
+    await a.advance(1000); await b.advance(1000);
+    const start = a.cur();
+    a.key("ArrowDown");                                            // next
+    await a.advance(500); await b.advance(500);
+    const afterNext = { a: a.cur(), b: b.cur() };
+    a.key("ArrowUp"); await a.advance(500); await b.advance(500);  // previous: back where it was
+    a.key("ArrowDown"); await a.advance(500); await b.advance(500);
+    // Without further input it keeps its own slide cycle for the reset time, then joins the group again.
+    await a.advance(40000); await b.advance(40000);
+    const own = { a: a.cur(), b: b.cur(), want: at(a.clock.t) };
+    await a.advance(30000); await b.advance(30000);                // 60 s after the last control: rejoined
+    await a.advance(1500); await b.advance(1500);
+    out.syncControls = { start, afterNext, own, rejoined: { a: a.cur(), b: b.cur(), want: at(a.clock.t) } };
+  }
+
   // Hand-made next/previous slide left/right, automatic changes keep the playlist's transition;
   // short videos get smaller fast-forward steps; a mouse press-and-drag scrubs, a click still pauses.
   {
@@ -569,8 +591,10 @@ async function main() {
     const b = R.seekVideo(slide, -100);
     v.currentTime = 55;
     const c = R.seekVideo(slide, 10);
+    v.currentTime = 59;                      // already inside the last 2 s: a fast forward changes nothing
+    const e = R.seekVideo(slide, 10);
     const d = R.setVideoTime(slide, 999);
-    out.render = { a, b, c, d, img: R.seekVideo({ media: { tagName: "IMG" } }, 10) };
+    out.render = { a, b, c, d, e, img: R.seekVideo({ media: { tagName: "IMG" } }, 10) };
 
     // A video that is still seeking: presses only move the wanted position, and the browser is
     // asked once, when the seek in progress ends ("seeked").
