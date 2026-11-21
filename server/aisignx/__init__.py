@@ -52,12 +52,14 @@ def create_app(test_config: dict | None = None) -> Flask:
     from . import player, plugins, serve, system
     from .backup import cli as backup_cli
     from .downloads import cli as downloads_cli
+    from .https import cli as https_cli
     plugins.init_app(app)  # before the player: a bad plugin.json fails start-up here
     player.init_app(app)
     system.register(app)
     serve.register(app)
     backup_cli.register(app)
     downloads_cli.register(app)
+    https_cli.register(app)
     _register_setup_guard(app)
     _register_jobs_starter(app)
     _register_template_context(app)
@@ -75,6 +77,7 @@ def _register_blueprints(app: Flask) -> None:
     from .downloads import bp as downloads_bp
     from .emergency import bp as emergency_bp
     from .groups import bp as groups_bp
+    from .https import bp as https_bp
     from .main import bp as main_bp
     from .media import bp as media_bp
     from .player import api_bp as player_api_bp
@@ -98,7 +101,7 @@ def _register_blueprints(app: Flask) -> None:
     csrf.exempt(player_api_bp)
     csrf.exempt(api_bp)
     for bp in (alerts_bp, api_bp, audit_bp, auth_bp, backup_bp, displays_bp, downloads_bp, emergency_bp,
-               groups_bp, main_bp, media_bp, player_bp, player_api_bp, playlists_bp, plugins_bp,
+               groups_bp, https_bp, main_bp, media_bp, player_bp, player_api_bp, playlists_bp, plugins_bp,
                pop_bp, provision_bp, install_link_bp, schedules_bp, settings_bp, setup_bp, system_bp, tokens_bp, updates_bp, users_bp):
         app.register_blueprint(bp)
 

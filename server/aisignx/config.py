@@ -27,6 +27,7 @@ Operations (Phase 6). Everything below is per process: run one server process.
     AISIGNX_JOBS          "0" turns off the background jobs thread (alerts, backups,
                           retention, proof-of-play rollup) (default: on)
     AISIGNX_BACKUP_DIR    where backup archives are written (default: <instance parent>/backups)
+    AISIGNX_TLS_DIR       where the HTTPS certificate and key for nginx are kept (default: <instance parent>/tls)
     AISIGNX_SMTP_PASSWORD password for the alert mail server; never stored in the database
     AISIGNX_LOGIN_MAX_PER_IP    failed sign-ins per IP address per window (default: 20)
     AISIGNX_LOGIN_MAX_PER_USER  failed sign-ins per user name per window (default: 5)
@@ -123,6 +124,7 @@ def build_config(instance_path: str) -> dict:
         "LOG_TO_FILE": False,  # only consulted when TESTING (tests opt in)
         "JOBS_ENABLED": os.environ.get("AISIGNX_JOBS", "1").strip() != "0",
         "BACKUP_DIR": os.environ.get("AISIGNX_BACKUP_DIR") or str(data_root / "backups"),
+        "TLS_DIR": os.environ.get("AISIGNX_TLS_DIR") or str(data_root / "tls"),   # server.crt and server.key for nginx (never backed up)
         "SMTP_PASSWORD": os.environ.get("AISIGNX_SMTP_PASSWORD") or None,
         "LOGIN_MAX_PER_IP": _env_int("AISIGNX_LOGIN_MAX_PER_IP", 20),
         "LOGIN_MAX_PER_USER": _env_int("AISIGNX_LOGIN_MAX_PER_USER", 5),

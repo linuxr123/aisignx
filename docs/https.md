@@ -4,6 +4,54 @@ AiSignX itself speaks plain HTTP. For HTTPS, put a reverse proxy in front of it.
 the network is not fully trusted: guest Wi-Fi, shared offices, or anything reachable from the
 internet.
 
+## Quick set-up with nginx (recommended)
+
+The server comes with everything to put **nginx** in front of it with HTTPS. nginx is free and runs on Windows and Linux.
+
+1. Install the AiSignX server first (`scripts\install-server.ps1`, `scripts/install-server.sh`).
+2. Run the nginx script. It needs administrator rights (Windows asks; on Linux use `sudo`):
+
+   | You have | Windows (PowerShell) | Linux |
+   |---|---|---|
+   | Nothing yet (a home or office LAN) | `scripts\setup-nginx.ps1 -Hostname signs.lan,192.168.1.19` | `sudo scripts/setup-nginx.sh --host signs.lan --host 192.168.1.19` |
+   | A certificate you bought | `scripts\setup-nginx.ps1 -Cert C:\certs\fullchain.pem -Key C:\certs\key.pem` | `sudo scripts/setup-nginx.sh --cert fullchain.pem --key key.pem` |
+   | A public name, for a free Let's Encrypt certificate | (use the Linux box, or a certificate client of your choice and `-Cert`/`-Key`) | `sudo scripts/setup-nginx.sh --letsencrypt signs.example.com --email you@example.com` |
+
+   Without a certificate it makes a **self-signed** one for the names you give (3 years, ECDSA P-256).
+3. Open `https://<name>/`. Done: the script turned on `AISIGNX_PROXY_HOPS=1` and `AISIGNX_SECURE_COOKIES=1`, restarted AiSignX, started nginx with the
+   machine, opened ports 80 and 443 and closed the plain AiSignX port to other computers.
+
+**Admin > System > HTTPS** shows the certificate (names, expiry, SHA-256), makes a new self-signed one, checks and stores
+one you bought (PEM certificate chain and key; a key with a passphrase is accepted and stored without it for nginx), and
+downloads the `nginx.conf` if you run nginx your own way. When the certificate changes there, **nginx reloads it by itself**
+(Windows: within 5 minutes, a scheduled task; Linux: a systemd path unit).
+The files are in `ProgramData\AiSignX\tls` (Windows) or `/var/lib/aisignx/tls`: `server.crt` (certificate and chain) and
+`server.key`. **They are not part of backups**: keep your own copy of a certificate you bought. A `.pfx` file must be converted
+once: `openssl pkcs12 -in my.pfx -out all.pem -nodes`, then split the certificate(s) and the key into two files.
+
+**Updating nginx**
+
+- Windows: `scripts\setup-nginx.ps1 -Update` looks at nginx.org, and when the **stable** version is newer it installs it,
+  keeps your certificate and settings, checks the configuration with the new nginx, and **goes back to the old nginx by
+  itself** if the new one does not start (the old one stays in `ProgramData\AiSignX\nginx\app.old`). `-AutoUpdate` (with
+  the install) also registers a weekly task (Sunday 03:00) that does this unattended. The download is protected by HTTPS to
+  nginx.org only: nginx.org publishes PGP signatures but no checksums, and Windows cannot check PGP by itself. The SHA-256 of
+  what was installed is kept in `nginx\installed.json`. Leave `-AutoUpdate` off if you would rather update by hand.
+- Linux: nginx comes from your distribution, so security updates arrive with the system's own updates;
+  `sudo scripts/setup-nginx.sh --update` upgrades the package now and checks the configuration.
+
+**Self-signed certificates.** Browsers warn until the certificate is trusted: install `server.crt` (download it on the HTTPS page) as a
+trusted certificate on your PCs and phones. The Android and Windows player apps can **pin** a self-signed certificate instead
+(see [clients.md](clients.md#https-and-certificate-pinning)); compare the SHA-256 shown on the page with what the app shows. Do
+not turn on HSTS with a self-signed certificate (AiSignX refuses to write it): browsers would no longer let you click through.
+The one-script Windows set-up (**Downloads > Set up a Windows PC**) downloads over the address you give it: with a self-signed
+certificate that PC must trust it first, or use the plain `http://` address on a trusted LAN for that one step.
+
+**What has and has not been tested.** The certificate code, the configuration text, the checks and the admin page are unit tested.
+The two scripts are tested for syntax and their dry-run output, and the nginx.org download page parsing was checked against the live page.
+They have **not** been run on a real PC or server, and the generated configuration has **not** yet been run through `nginx -t` here
+(`docs/testing-checklist.md`, section N). Linux is best effort.
+
 ## Why HTTPS matters
 
 On plain HTTP anyone on the network path can read what is sent. With the device features that
@@ -30,7 +78,7 @@ now exist, that is more than a sign-in:
 For a small network you fully control, HTTP is workable. Anything shared, wireless for guests, or reachable from the internet
 should use HTTPS. None of this has been tested on a hostile network.
 
-This page covers Caddy, nginx, IIS and Cloudflare. For Docker, the compose file has a ready-made
+This page covers the quick nginx set-up above, and by hand: Caddy, nginx, IIS and Cloudflare. For Docker, the compose file has a ready-made
 Caddy profile (see [docker.md](docker.md#https-with-caddy)).
 
 ## The three steps for every proxy

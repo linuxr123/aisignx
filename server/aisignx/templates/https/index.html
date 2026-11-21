@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}HTTPS{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+  <h1 class="h3 mb-0">HTTPS with nginx</h1>
+  <a class="btn btn-outline-secondary" href="{{ url_for('system.index') }}">System</a>
+</div>
+<p class="text-secondary">The web page and the screens should be reached over HTTPS: sign-in, pairing and the commands sent to the screens then cannot be read or changed on the network. AiSignX itself speaks plain HTTP; <strong>nginx</strong> sits in front, holds the certificate and passes the traffic on. Set it up with <code>scripts\setup-nginx.ps1</code> (Windows) or <code>scripts/setup-nginx.sh</code> (Linux); this page makes and checks the certificate and gives you the configuration. See <a href="https://github.com/linuxr123/aisignx/blob/v3/docs/https.md">docs/https.md</a>.</p>
+
+{% for level, text in notices %}<div class="alert alert-{{ level }}">{{ text }}</div>{% endfor %}
+
+<div class="card mb-4" style="max-width: 52rem"><div class="card-body">
+  <h2 class="h5">Certificate</h2>
+  {% if info %}
+  <dl class="row mb-2">
+    <dt class="col-sm-3">Names</dt><dd class="col-sm-9">{{ info.names|join(", ") }}</dd>
+    <dt class="col-sm-3">Kind</dt><dd class="col-sm-9">{% if info.self_signed %}Self-signed (browsers warn until it is trusted){% else %}Issued by {{ info.issuer or "a certificate authority" }}{% endif %}</dd>
+    <dt class="col-sm-3">Valid until</dt><dd class="col-sm-9">{{ info.not_after.strftime("%Y-%m-%d") }} ({{ info.days_left }} days left)</dd>
+    <dt class="col-sm-3">SHA-256</dt><dd class="col-sm-9"><code class="small text-break">{{ fingerprint }}</code></dd>
+    <dt class="col-sm-3">Files</dt><dd class="col-sm-9"><code class="small">{{ folder }}</code></dd>
+  </dl>
+  {% if info.self_signed %}<p class="small text-secondary mb-2">The Android and Windows players can pin a self-signed certificate: when a screen asks, compare the fingerprint above. To trust it on a PC or phone, install <a href="{{ url_for('https.certificate') }}">the certificate file</a> (not the key) as a trusted certificate.</p>{% endif %}
+  {% else %}
+  <p class="text-secondary mb-2">None yet.</p>
+  {% endif %}
+
+  <div class="row g-4 mt-1">
+    <div class="col-lg-6">
+      <h3 class="h6">Self-signed (free, for a LAN or a test)</h3>
+      <form method="post" action="{{ url_for('https.self_signed') }}">{{ form.hidden_tag() }}
+        <label class="form-label small" for="ss-names">Host names and IP addresses the screens use</label>
+        <input class="form-control mb-2" id="ss-names" name="names" value="{{ names }}" placeholder="signs.example.lan, 192.168.1.19" required>
+        <button class="btn btn-outline-primary" type="submit" {% if info %}onclick="return confirm('Replace the current certificate? Screens that pinned it must be told about the new one.')"{% endif %}>Make a self-signed certificate</button>
+      </form>
+    </div>
+    <div class="col-lg-6">
+      <h3 class="h6">One you bought, or from Let's Encrypt</h3>
+      <form method="post" action="{{ url_for('https.import_cert') }}" enctype="multipart/form-data">{{ form.hidden_tag() }}
+        <label class="form-label small" for="cert">Certificate (PEM; yours first, then the intermediate certificates)</label>
+        <input class="form-control form-control-sm mb-1" type="file" id="cert" name="cert" accept=".pem,.crt,.cer">
+        <textarea class="form-control form-control-sm mb-2" name="cert_text" rows="2" placeholder="...or paste -----BEGIN CERTIFICATE----- ..."></textarea>
+        <label class="form-label small" for="key">Private key (PEM)</label>
+        <input class="form-control form-control-sm mb-1" type="file" id="key" name="key" accept=".pem,.key">
+        <textarea class="form-control form-control-sm mb-2" name="key_text" rows="2" placeholder="...or paste -----BEGIN PRIVATE KEY----- ..." autocomplete="off"></textarea>
+        <input class="form-control form-control-sm mb-2" type="password" name="passphrase" placeholder="Key passphrase, if it has one" autocomplete="new-password">
+        <button class="btn btn-outline-primary" type="submit">Check and use this certificate</button>
+        <p class="small text-secondary mt-1 mb-0">The key is stored next to the certificate without its passphrase, for nginx. A .pfx file must be converted first (docs/https.md).</p>
+      </form>
+    </div>
+  </div>
+</div></div>
+
+{% if info %}
+<div class="card mb-4" style="max-width: 52rem"><div class="card-body">
+  <h2 class="h5">nginx configuration</h2>
+  <form method="post" action="{{ url_for('https.nginx_conf') }}">{{ form.hidden_tag() }}
+    <div class="row g-2">
+      <div class="col-md-8"><label class="form-label small" for="n-names">Names</label>
+        <input class="form-control" id="n-names" name="names" value="{{ info.names|join(', ') }}"></div>
+      <div class="col-md-4"><label class="form-label small" for="n-port">AiSignX listens on port</label>
+        <input class="form-control" id="n-port" name="port" type="number" value="5000" min="1" max="65535"></div>
+    </div>
+    <div class="form-check mt-2"><input class="form-check-input" type="checkbox" name="redirect" id="n-redirect" checked>
+      <label class="form-check-label" for="n-redirect">Redirect port 80 to HTTPS</label></div>
+    <div class="form-check"><input class="form-check-input" type="checkbox" name="hsts" id="n-hsts">
+      <label class="form-check-label" for="n-hsts">Tell browsers to use HTTPS only for a year (HSTS). Not with a self-signed certificate.</label></div>
+    <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="kind" value="standalone" id="n-kind">
+      <label class="form-check-label" for="n-kind">A whole nginx.conf (the nginx folder on Windows) instead of only the server blocks</label></div>
+    <button class="btn btn-primary" type="submit">Download nginx.conf</button>
+  </form>
+  <p class="small text-secondary mt-3 mb-0">The setup scripts write this file themselves, check it with <code>nginx -t</code> and reload nginx whenever the certificate here changes. Download it only if you run nginx your own way.</p>
+</div></div>
+{% endif %}
+
+<div class="card" style="max-width: 52rem"><div class="card-body">
+  <h2 class="h5">This connection</h2>
+  <ul class="mb-0">
+    <li>Reached over HTTPS: <strong>{{ "yes" if state.https else "no" }}</strong></li>
+    <li>Proxies in front (<code>AISIGNX_PROXY_HOPS</code>): <strong>{{ state.proxy_hops }}</strong> (set 1 behind nginx)</li>
+    <li>Secure cookies (<code>AISIGNX_SECURE_COOKIES</code>): <strong>{{ "on" if state.secure_cookies else "off" }}</strong> (set 1 once HTTPS works)</li>
+  </ul>
+</div></div>
+{% endblock %}
