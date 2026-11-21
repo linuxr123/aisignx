@@ -50,6 +50,8 @@ class PairForm(FlaskForm):
                        render_kw={"placeholder": "e.g. Lobby"})
     playlist = SelectField(DEFAULT_PLAYLIST_LABEL, coerce=int, default=0,
                            description=DEFAULT_PLAYLIST_HELP)
+    enable_agent = BooleanField("Also approve the privileged agent that the setup program installed on this PC (Windows, admins only)",
+                                default=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

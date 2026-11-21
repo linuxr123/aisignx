@@ -32,6 +32,9 @@ param(
     [switch]$AllowInsecureHttp,
     [switch]$Force,
     [switch]$SkipSelfCheck,
+    # Install WITHOUT a code: the agent asks this server for approval when it starts (the player tells the server which PC it
+    # is on; the admin approves, or ticked the box when pairing). Needs only -Server; -Code and -KeyFingerprint are not used.
+    [switch]$Pending,
     [switch]$Uninstall,
     [switch]$KeepData,
     [switch]$Yes,
@@ -82,8 +85,8 @@ function Get-Config {
     $errors = New-Object System.Collections.ArrayList
     if (-not $Uninstall) {
         if (-not (Test-ServerUrl $Server)) { [void]$errors.Add('-Server must look like https://host[:port] (a literal host, no path).') }
-        if (-not (Test-EnrollCode $Code)) { [void]$errors.Add('-Code is the 16-character one-time code from the display page.') }
-        if (-not (Test-Fingerprint $KeyFingerprint)) { [void]$errors.Add('-KeyFingerprint is the 16 hex characters shown on the display page (groups of four).') }
+        if (-not $Pending -and -not (Test-EnrollCode $Code)) { [void]$errors.Add('-Code is the 16-character one-time code from the display page.') }
+        if (-not $Pending -and -not (Test-Fingerprint $KeyFingerprint)) { [void]$errors.Add('-KeyFingerprint is the 16 hex characters shown on the display page (groups of four).') }
         if (-not (Test-Thumbprint $thumb)) { [void]$errors.Add('-Thumbprint: 40 hex characters of the code-signing certificate (or build the agent with one).') }
         if ($Server -match '^http://' -and -not (Test-LoopbackServer $Server) -and -not $AllowInsecureHttp) { [void]$errors.Add('-Server is plain http: use https, or pass -AllowInsecureHttp to accept that the one-time code travels unencrypted.') }
         if ($KioskUser -and -not (Test-AccountName $KioskUser)) { [void]$errors.Add('-KioskUser has characters that are not allowed in an account name.') }
@@ -325,9 +328,9 @@ function Invoke-Install($conf) {
             allowInsecureHttp = [bool]$AllowInsecureHttp; trustScope = $TrustScope; kioskUser = $KioskUser; kioskSid = $kioskSid; playerExe = $player }
         $pf = Join-Path $work 'enroll.json'
         [IO.File]::WriteAllText($pf, ($params | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding($false)))
-        $out = (& $exe $main --enroll $pf | Select-Object -Last 1)
+        $out = (& $exe $main $(if ($Pending) { '--prepare' } else { '--enroll' }) $pf | Select-Object -Last 1)
         $r = $null; try { $r = $out | ConvertFrom-Json } catch { $r = $null }
-        if (-not $r -or -not $r.ok) { throw ('Enrollment failed: ' + $(if ($r) { $r.reason } else { 'no answer from the agent' })) }
+        if (-not $r -or -not $r.ok) { throw ('Enrollment' + $(if ($Pending) { ' set-up' }) + ' failed: ' + $(if ($r) { $r.reason } else { 'no answer from the agent' })) }
     } finally { Remove-Item Env:\ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue; Remove-Item -LiteralPath (Join-Path $work 'enroll.json') -Force -ErrorAction SilentlyContinue }
     # 5. Tasks.
     $xmlA = New-AgentTaskXml (Join-Path $ProgramDir 'Run-Agent.cmd')
@@ -340,6 +343,9 @@ function Invoke-Install($conf) {
     for ($i = 0; $i -lt 30; $i++) {
         Start-Sleep -Seconds 1
         if ((Test-Path -LiteralPath $status) -and ((Get-Content -LiteralPath $status -Raw) -match '"state":"running"')) { Say 'The agent is running.'; return }
+        if ($Pending -and (Test-Path -LiteralPath $status) -and ((Get-Content -LiteralPath $status -Raw) -match '"state":"waiting"')) {
+            Say 'The agent is installed and waits for approval: pair the screen on the server (tick "approve the agent"), or approve it on the display page.'; return
+        }
     }
     throw ('The agent did not report "running" in 30 seconds. See ' + (Join-Path $DataDir 'logs\agent.log'))
 }

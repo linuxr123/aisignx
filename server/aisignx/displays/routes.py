@@ -4,7 +4,7 @@ from io import BytesIO
 from flask import (abort, current_app, flash, jsonify, redirect, render_template, request,
                    send_file, url_for)
 from flask_login import current_user, login_required
-from sqlalchemy import func
+from sqlalchemy import func, update
 
 from ..audit import service as audit
 from ..auth.decorators import admin_required, editor_required
@@ -16,7 +16,7 @@ from ..player.manifest import build_manifest
 from ..pop import service as pop_service
 from ..schedules.resolve import load_context, resolve, split_by_day, week_segments
 from ..downloads.service import app_update, fleet_updates
-from . import agent, bp, enroll, options, pairing, screenshots, service
+from . import agent, agent_request, bp, enroll, options, pairing, screenshots, service
 from .agent import RUN_MODES  # noqa: F401  (tests also import it from here)
 from .agent_admin_forms import AutologinForm
 from .forms import ActionForm, DisplayForm, PairForm, UnlockForm
@@ -95,6 +95,11 @@ def pair():
         if display is not None:
             audit.record("display.pair", display,
                          detail={"replaced": replace is not None, "playlist_id": playlist_id})
+            if form.enable_agent.data and current_user.is_admin:
+                # The agent on this PC asks within a minute or two; the first request this screen's player claims is approved.
+                db.session.execute(update(Display).where(Display.id == display.id).values(agent_auto_approve=True)
+                                   .execution_options(synchronize_session=False))
+                audit.record("display.agent_auto_approve", display)
             db.session.commit()
             if replace is not None:
                 _close_streams(display.id)
@@ -131,7 +136,7 @@ def detail(display_id: int):
                            diag=diag, support=_support_rows(diag),
                            app_update=app_update(diag.get("shell") if isinstance(diag, dict) else None),
                            agent_caps=agent.capabilities(display),
-                           priv=enroll.summary(display), autologin_form=AutologinForm(),
+                           priv=dict(enroll.summary(display), requests=agent_request.pending_for(display)), autologin_form=AutologinForm(),
                            agent_cmds=DeviceCommand.query.filter_by(display_id=display.id)
                            .order_by(DeviceCommand.id.desc()).limit(5).all(),
                            pin_set=bool(display.unlock_pin_hash),

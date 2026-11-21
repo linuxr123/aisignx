@@ -8,8 +8,9 @@ from ..audit import service as audit
 from ..auth import ratelimit
 from ..auth.decorators import admin_required
 from ..extensions import db
+from ..models import AgentRequest
 from ..models.device_command import ACTION_SET_AUTOLOGIN
-from . import agent, bp, ecies, enroll, signing
+from . import agent, agent_request, bp, ecies, enroll, signing
 from .agent_admin_forms import AutologinForm
 from .routes import _back, _get_display_or_404, _publish, _require_action_form
 
@@ -40,6 +41,27 @@ def agent_enroll_code(display_id: int):
                                          minutes=int(enroll.CODE_TTL.total_seconds() // 60)))
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+@bp.route("/<int:display_id>/agent-request/<int:req_id>/<decision>", methods=["POST"])
+@admin_required
+def agent_request_decide(display_id: int, req_id: int, decision: str):
+    """Approve (or reject) the agent that the player of this screen reported on its PC."""
+    _require_action_form()
+    display = _get_display_or_404(display_id)
+    req = db.session.get(AgentRequest, req_id)
+    if decision not in ("approve", "reject") or req is None or req.display_id != display.id or req.state != "pending":
+        abort(404)
+    if decision == "approve":
+        agent_request.approve(req)
+        audit.record("display.agent_approved", display, detail={"host": req.host, "by": current_user.username, "via": "admin"})
+        flash(f"The agent on {req.host or 'the PC'} is approved: it connects within a minute.", "success")
+    else:
+        agent_request.reject(req)
+        audit.record("display.agent_rejected", display, detail={"host": req.host, "by": current_user.username})
+        flash("Rejected.", "info")
+    db.session.commit()
+    return _back(display)
 
 
 @bp.route("/<int:display_id>/agent-enroll/remove", methods=["POST"])

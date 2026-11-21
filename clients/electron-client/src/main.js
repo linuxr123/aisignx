@@ -22,6 +22,9 @@ const { createLock, parseCommand } = require('./lock');
 const { createAgent } = require('./agent');
 const systemOps = require('./agent/system');
 const delegate = require('./agent/delegate');
+const { Readable } = require('stream');
+const agentClaim = require('./agent-claim');
+const { createClaimer } = agentClaim;
 const firstrun = require('./firstrun');
 
 function argValue(name) {
@@ -321,6 +324,27 @@ function startAgent() {
     spawnInstaller: (file, args) => systemOps.spawnInstaller(file, args, 2000),
   });
   S.agent.start();
+  startAgentClaims();
+}
+
+// A newly installed privileged agent asks the server for approval; tell the server which agent is on this PC (agent-claim.js).
+function startAgentClaims() {
+  if (process.platform !== 'win32' || S.claimTimer) return;
+  const claimer = createClaimer({
+    file: agentClaim.requestFile(process.env), now: () => Date.now(), getToken: () => S.cookie, log,
+    post: async (urlPath, obj) => {
+      const up = S.upstream;
+      if (!up || !S.cookie) return null;
+      const body = Buffer.from(JSON.stringify(obj));
+      const res = await up.request({ method: 'POST', path: '/api/player/v1' + urlPath, timeoutMs: 20000, body: Readable.from([body]),
+        headers: { authorization: 'Bearer ' + S.cookie, 'content-type': 'application/json', 'content-length': String(body.length), accept: 'application/json' } });
+      res.resume();
+      return { status: res.statusCode };
+    },
+  });
+  const look = () => claimer.tick().catch((e) => log.warn('agent claim', e.message));
+  S.claimTimer = setInterval(look, 30000);
+  setTimeout(look, 5000);
 }
 
 // ---- Startup.

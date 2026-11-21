@@ -44,6 +44,16 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
+## Unreleased: Agent approval instead of codes, playlist item switch
+
+### Changed
+- **The Windows agent is connected by approval, not by a typed code.** The setup .exe (administrator) installs the agent unconnected; the player shows its pairing code, you pair it and tick **"Also approve the privileged agent"** (or press **Approve** on the display page), and the server sends the agent its credential encrypted to the agent's own key. New `agent_requests` table and `displays.agent_auto_approve` (migration 0023), endpoints `/api/player/v1/agent/request`, `/claim`, `/poll`. The typed code and fingerprint remain as the strict option (`Install-Agent.ps1 -Pending` is the new no-code install).
+- The setup page asks for the Windows account from **a list of the PC's accounts** (or none: whoever signs in); the account is only needed for the shell and automatic sign-in. The generated PC script does the same on the PC, and no longer carries an enrollment code or key fingerprint (making the script is the approval).
+- Removed the old agent zip and `Install-Agent.ps1` from the Downloads page (the setup .exe has them inside).
+
+### Added
+- **Playlists: switch an item off** without removing it (Turn off / Turn on on each item): screens skip it, the total ignores it, copies keep it, an all-off playlist plays nothing (migration 0024).
+
 ## Unreleased: One Windows setup program, emergency schedules per message
 
 ### Changed

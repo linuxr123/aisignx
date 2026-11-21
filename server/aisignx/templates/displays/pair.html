@@ -13,6 +13,10 @@
     {{ field(form.name) }}
     {{ field(form.playlist) }}
     <p class="form-text mt-n2">{{ form.playlist.description }} Name and default playlist are used for a new display only.</p>
+    {% if current_user.is_admin %}
+    {{ field(form.enable_agent) }}
+    <p class="form-text mt-n2">Windows: the setup program installs a privileged agent next to the player. Tick this and the agent on this PC is connected as soon as it asks (about a minute), so the web page can restart, update and set up this PC. Leave it off to approve it later on the display page. Over plain <code>http://</code> the agent trusts this server's command key on first contact: prefer an <code>https://</code> address.</p>
+    {% endif %}
     <button class="btn btn-primary" type="submit">Pair</button>
     <a class="btn btn-link" href="{{ url_for('displays.index') }}">Cancel</a>
   </form>

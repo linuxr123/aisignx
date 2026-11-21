@@ -165,7 +165,9 @@ test('package.json: agent scripts ship, installer is assisted (/allusers), hook 
   assert.ok(p.build.extraResources.some((r) => r.from === 'resources/agent/ps'));
   assert.strictEqual(p.build.nsis.oneClick, false);
   assert.strictEqual(p.build.nsis.allowElevation, true);
-  assert.strictEqual(p.build.nsis.perMachine, false);
+  assert.strictEqual(p.build.nsis.perMachine, true);                     // one setup program for all users, with the agent inside
+  assert.ok(p.build.extraResources.some((r) => r.from === 'agent-pack' && r.to === 'agent-install'));
+  assert.strictEqual(p.build.nsis.include, 'assets/installer.nsh');
   assert.strictEqual(p.build.win.signtoolOptions.sign, 'scripts/sign-hook.js');
   assert.ok(!JSON.stringify(p).match(/[0-9A-F]{40}/i), 'no thumbprint in a tracked file');
   assert.ok(fs.existsSync(path.join(root, p.build.win.signtoolOptions.sign)));

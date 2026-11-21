@@ -101,6 +101,8 @@ class Display(db.Model):
     agent_diag = db.Column(db.Text, nullable=True)           # cleaned JSON the agent reported
     agent_seen_at = db.Column(db.DateTime(timezone=True), nullable=True)
     agent_enrolled_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    # The admin ticked "also enable the privileged agent" when pairing: the next agent request from this PC is approved by itself.
+    agent_auto_approve = db.Column(db.Boolean, nullable=False, default=False, server_default=sa.false())
 
     # Device-reported data and screenshot requests. These are written only with Core
     # UPDATE; an ORM write broadcasts a manifest hint to every screen.

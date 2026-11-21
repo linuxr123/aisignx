@@ -565,3 +565,109 @@ def test_overlong_utf8_password_gets_an_accurate_message(app, admin, enrolled):
     page = admin.post(f"/displays/{did}/autologin", follow_redirects=True, data={
         "user": "kiosk", "password": "€" * 127, "confirm": PASSWORD, "do": "set"}).get_data(as_text=True)
     assert "too long" in page
+
+
+# --- approval instead of a typed code ---------------------------------------------------------------
+
+CLAIM, POLL = "c" * 22 + "AB", "p" * 22 + "CD"
+
+
+def _request(client, pub, claim=CLAIM, poll=POLL):
+    return client.post(f"{API}/agent/request", json={"claim_id": claim, "poll_secret": poll, "public_key": pub,
+                                                     "host": "FRONTDESK", "version": "3.4.0"})
+
+
+def _open_envelope(priv, ciphertext, claim=CLAIM):
+    import hashlib
+    aad = b"aisignx-agent-approval|" + hashlib.sha256(f"aisignx-agent-claim|{claim}".encode()).hexdigest().encode()
+    return ecies.decrypt(priv, ciphertext, aad)
+
+
+def test_an_agent_is_approved_by_an_admin_and_collects_its_token_encrypted_to_itself(app, admin, display, client):
+    priv, pub = _keys()
+    assert _request(client, pub).get_json()["state"] == "pending"
+    assert client.post(f"{API}/agent/poll", json={"poll_secret": POLL}).get_json() == {"state": "pending", "claimed": False}
+    # the player of the display says "that agent is on my PC"
+    r = client.post(f"{API}/agent/claim", json={"claim_id": CLAIM}, headers=bearer(DISPLAY_TOKEN))
+    assert r.status_code == 200 and r.get_json()["state"] == "pending"
+    page = admin.get(f"/displays/{display}").get_data(as_text=True)
+    assert "FRONTDESK" in page and "is waiting for approval" in page
+    from aisignx.models import AgentRequest
+    with app.app_context():
+        rid = AgentRequest.query.one().id
+    assert admin.post(f"/displays/{display}/agent-request/{rid}/approve").status_code == 302
+    got = client.post(f"{API}/agent/poll", json={"poll_secret": POLL}).get_json()
+    assert got["state"] == "approved" and got["display_id"] == display and got["command_key"] and got["fingerprint"]
+    token = _open_envelope(priv, got["ciphertext"]).decode()
+    assert token.startswith("agt_")
+    assert client.get(f"{API}/agent/commands", headers=bearer(token)).status_code == 200     # a working agent credential
+    _p2, _pub2 = _keys()
+    assert _open_envelope(_p2, got["ciphertext"]) is None                                      # nobody else can read it
+    with app.app_context():
+        d = db.session.get(Display, display)
+        assert d.agent_token_hash == enroll.hash_token(token) and token not in json.dumps(
+            [r.ciphertext for r in AgentRequest.query.all()])
+
+
+def test_pairing_with_the_agent_box_ticked_approves_the_first_claim_by_itself(app, admin, display, client):
+    priv, pub = _keys()
+    with app.app_context():
+        db.session.get(Display, display).agent_auto_approve = True
+        db.session.commit()
+    _request(client, pub)
+    r = client.post(f"{API}/agent/claim", json={"claim_id": CLAIM}, headers=bearer(DISPLAY_TOKEN))
+    assert r.get_json()["state"] == "approved"
+    got = client.post(f"{API}/agent/poll", json={"poll_secret": POLL}).get_json()
+    assert _open_envelope(priv, got["ciphertext"]).decode().startswith("agt_")
+    with app.app_context():
+        assert db.session.get(Display, display).agent_auto_approve is False            # once only
+
+
+def test_claims_polls_and_decisions_are_guarded(app, admin, display, client):
+    _priv, pub = _keys()
+    _request(client, pub)
+    assert client.post(f"{API}/agent/claim", json={"claim_id": CLAIM}).status_code == 401           # needs the display's credential
+    assert client.post(f"{API}/agent/claim", json={"claim_id": "x" * 30}, headers=bearer(DISPLAY_TOKEN)).status_code == 404
+    assert client.post(f"{API}/agent/claim", json={"claim_id": "bad id"}, headers=bearer(DISPLAY_TOKEN)).status_code == 400
+    assert client.post(f"{API}/agent/poll", json={"poll_secret": CLAIM}).status_code == 404         # the claim id is not the poll secret
+    assert _request(client, pub, claim=CLAIM, poll="q" * 24).status_code == 400                         # a taken claim id cannot be re-used
+    assert _request(client, pub, claim=POLL, poll=POLL).status_code == 400
+    assert _request(client, "AAAA").status_code == 400
+    client.post(f"{API}/agent/claim", json={"claim_id": CLAIM}, headers=bearer(DISPLAY_TOKEN))
+    from aisignx.models import AgentRequest
+    with app.app_context():
+        rid = AgentRequest.query.one().id
+    make_user(app, "ed2", "editor")
+    ed = app.test_client()
+    login(ed, "ed2")
+    assert ed.post(f"/displays/{display}/agent-request/{rid}/approve").status_code == 403           # admins only
+    assert admin.post(f"/displays/{display}/agent-request/{rid}/maybe").status_code == 404
+    assert admin.post(f"/displays/{display}/agent-request/{rid}/reject").status_code == 302
+    assert client.post(f"{API}/agent/poll", json={"poll_secret": POLL}).get_json()["state"] == "rejected"
+    assert admin.post(f"/displays/{display}/agent-request/{rid}/approve").status_code == 404        # decided already
+
+
+def test_an_agent_request_cannot_be_claimed_by_two_displays_and_expires(app, admin, display, client):
+    from aisignx.models import AgentRequest, Display as D
+    from aisignx.player.auth import hash_token
+    _priv, pub = _keys()
+    _request(client, pub)
+    with app.app_context():
+        other = D(name="Other", token_hash=hash_token("o" * 40), paired_at=utcnow())
+        db.session.add(other)
+        db.session.commit()
+    assert client.post(f"{API}/agent/claim", json={"claim_id": CLAIM}, headers=bearer(DISPLAY_TOKEN)).status_code == 200
+    assert client.post(f"{API}/agent/claim", json={"claim_id": CLAIM}, headers=bearer("o" * 40)).status_code == 409
+    with app.app_context():
+        r = AgentRequest.query.one()
+        r.expires_at = utcnow() - timedelta(minutes=1)
+        db.session.commit()
+    assert client.post(f"{API}/agent/poll", json={"poll_secret": POLL}).status_code == 404
+
+
+def test_the_pair_form_offers_the_agent_box_to_admins_only(app, admin, client):
+    assert b"privileged agent that the setup program installed" in admin.get("/displays/pair").data
+    make_user(app, "ed3", "editor")
+    ed = app.test_client()
+    login(ed, "ed3")
+    assert b"privileged agent that the setup program installed" not in ed.get("/displays/pair").data

@@ -1,17 +1,16 @@
 """Admin page "Set up a Windows PC": makes the one-step setup script (see winscript.py) for one PC."""
 import hashlib
-from datetime import timedelta
 
 from flask import Response, abort, flash, render_template, request, send_file, url_for
 from flask_login import current_user
 from flask_wtf import FlaskForm
 from wtforms import BooleanField, SelectField, StringField
 from wtforms.fields.choices import SelectChoice
-from wtforms.validators import DataRequired, Length, Regexp
+from wtforms.validators import DataRequired, Length, Optional, Regexp
 
 from ..audit import service as audit
 from ..auth.decorators import admin_required
-from ..displays import enroll, pairing, signing
+from ..displays import pairing
 from ..displays.agent import RUN_MODES
 from ..downloads.routes import downloads_dir
 from ..downloads.service import latest_download
@@ -28,8 +27,8 @@ class WindowsForm(FlaskForm):
                        render_kw={"placeholder": "Front desk PC"})
     playlist = SelectField("Playlist", coerce=int, default=0)
     kiosk_user = StringField("Windows account the player runs as", validators=[
-        DataRequired(), Length(max=64), Regexp(r"^[A-Za-z0-9._ -]+$", message="Letters, digits, dot, dash, underscore and space only.")],
-        default="kiosk", description="It must already exist on the PC; a standard (non-administrator) account is best.")
+        Optional(), Length(max=64), Regexp(r"^[A-Za-z0-9._ -]*$", message="Letters, digits, dot, dash, underscore and space only.")],
+        description="Leave empty: the script lists the accounts of that PC and you pick one there. Only needed for the shell and automatic sign-in.")
     run_as = SelectField("How the player runs", default="autostart", choices=[
         SelectChoice("app", "Application: a normal program, started by hand"),
         SelectChoice("autostart", "Application with auto-start: starts when that account signs in"),
@@ -94,14 +93,13 @@ def windows():
             display.agent_allow_startup = bool(form.allow_startup.data)
             display.agent_allow_update = bool(form.allow_update.data)
             display.agent_watchdog = display.agent_allow_restart = display.agent_allow_logs = True
-            code = enroll.new_code(display, ttl=timedelta(seconds=SECRET_TTL_S))
+            display.agent_auto_approve = True      # making this script is the admin's approval: the agent on that PC is connected when it asks
             try:
                 text = winscript.build(
                     server=base, name=form.name.data, run_text=RUN_LABELS.get(form.run_as.data, "Application"),
                     kiosk_user=form.kiosk_user.data.strip(),
                     player=_link(files["player"]),
-                    cert=_link(files["cert"]), thumbprint=thumbprint, pair_secret=secret, enroll_code=code,
-                    key_fingerprint=signing.fingerprint(),
+                    cert=_link(files["cert"]), thumbprint=thumbprint, pair_secret=secret,
                     allow_reboot=display.agent_allow_reboot, allow_startup=display.agent_allow_startup,
                     allow_update=display.agent_allow_update, allow_autologin=bool(form.allow_autologin.data) and not http)
             except ValueError:

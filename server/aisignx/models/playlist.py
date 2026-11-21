@@ -36,7 +36,7 @@ class Playlist(db.Model):
 
     @property
     def total_duration(self) -> int:
-        return sum(item.effective_duration for item in self.items)
+        return sum(item.effective_duration for item in self.items if item.enabled)
 
     def __repr__(self) -> str:
         return f"<Playlist {self.id} {self.name!r}>"
@@ -51,6 +51,8 @@ class PlaylistItem(db.Model):
     media_id = db.Column(db.Integer, db.ForeignKey("media.id", ondelete="CASCADE"),
                          nullable=False, index=True)
     position = db.Column(db.Integer, nullable=False, default=0)
+    # Off: the item stays in the playlist but screens skip it (a seasonal slide, a menu item that is sold out).
+    enabled = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
 
     # Overrides; NULL means "use the media / playlist default".
     duration = db.Column(db.Integer, nullable=True)

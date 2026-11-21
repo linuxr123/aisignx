@@ -4,6 +4,7 @@
 //   (no argument)          the agent loop
 //   --init                 make the X25519 key pair; print the public key
 //   --enroll <params.json> enroll with the one-time code (the install script's job)
+//   --prepare <params.json> install WITHOUT a code: keep the settings, ask the server for approval when the agent starts
 //   --version
 // Reads configuration only from the protected data folder. No port, pipe or file drop is ever opened for input.
 const fs = require('fs');
@@ -19,6 +20,7 @@ const { makeRequester } = require('./http');
 const { createLog } = require('./log');
 const lock = require('./lock');
 const enrollment = require('./enrollment');
+const approval = require('./approval');
 
 const POLL_MS = 20000;
 const MAX_ERRORS = 10;
@@ -40,9 +42,18 @@ async function main(argv, env) {
     return r.ok ? 0 : 4;
   }
 
+  if (argv[0] === '--prepare') {
+    const params = task.readJson(argv[1]);
+    const r = enrollment.prepare(params, paths);
+    try { fs.rmSync(argv[1], { force: true }); } catch (e) { /* the install script removes the folder too */ }
+    process.stdout.write(JSON.stringify(r.ok ? { ok: true } : { ok: false, reason: r.reason }) + '\n');
+    return r.ok ? 0 : 4;
+  }
+
   const bad = cfgm.envProblems(env);
   if (bad.length) { log.error('agent: refusing to start, environment has', bad.join(', ')); return 2; }
-  const cfg = cfgm.sanitize(task.readJson(paths.config));
+  let cfg = cfgm.sanitize(task.readJson(paths.config));
+  if (!cfg && approval.readPending(paths)) cfg = await waitForApproval(paths, log, env);   // installed, not yet approved by the server
   if (!cfg) { log.error('agent: not configured (agent.json missing or invalid)'); return 3; }
   const stamp = Date.now();
   if (!lock.acquire(paths.lock, process.pid, stamp)) return 0;          // another copy is running: harmless
@@ -72,6 +83,25 @@ async function main(argv, env) {
   });
   lock.release(paths.lock, process.pid);
   return 1;       // non-zero: Task Scheduler starts a clean copy
+}
+
+// An agent that was installed without an enrollment code: ask the server for approval until it comes (or the admin rejects it).
+async function waitForApproval(paths, log, env) {
+  const pending = approval.readPending(paths);
+  if (!pending) return null;
+  const pubKey = enrollment.init(paths);
+  const request = makeRequester(pending.server);
+  fs.mkdirSync(paths.publicDir, { recursive: true });
+  let last = '';
+  for (;;) {
+    const r = await approval.step({ paths, request, now: Date.now(), host: os.hostname(), version, readKey: () => enrollment.readKey(paths), pubKey });
+    const line = r.state + (r.reason ? ': ' + r.reason : '') + (r.claimed ? ' (claimed by its player)' : '');
+    if (line !== last) { log.info('agent: approval', line); last = line; }
+    try { task.writeJsonAtomic(paths.status, { state: 'waiting', t: Date.now(), version }); } catch (e) { /* the player shows nothing */ }
+    if (r.state === 'enrolled') { log.info('agent: approved; server key', r.fingerprint); return r.cfg; }
+    if (r.state === 'rejected') { log.error('agent: the admin rejected this agent'); return null; }
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  }
 }
 
 process.on('unhandledRejection', (e) => { try { createLog(path.join(dataDirOf(process.env), 'logs', 'agent.log')).error('agent: unhandled rejection', e && e.message); } catch (x) { /* ignore */ } });

@@ -28,13 +28,13 @@
 <ol class="list-group playlist-items" id="playlistItems"
     {% if editable %}data-reorder-url="{{ url_for('playlists.reorder', playlist_id=playlist.id) }}"{% endif %}>
   {% for item in playlist.items %}
-  <li class="list-group-item" data-item-id="{{ item.id }}">
+  <li class="list-group-item{% if not item.enabled %} bg-body-tertiary{% endif %}" data-item-id="{{ item.id }}">
     <div class="d-flex flex-wrap gap-3 align-items-center">
       {% if editable %}<span class="drag-handle text-secondary" title="Drag to reorder" aria-hidden="true">⋮⋮</span>{% endif %}
       <span class="text-secondary item-number">{{ loop.index }}</span>
-      {{ thumb(item.media, "item-thumb") }}
-      <div class="flex-grow-1" style="min-width: 10rem">
-        <div class="fw-semibold">{{ item.media.name }}</div>
+      <span{% if not item.enabled %} style="opacity: .45"{% endif %}>{{ thumb(item.media, "item-thumb") }}</span>
+      <div class="flex-grow-1{% if not item.enabled %} text-secondary{% endif %}" style="min-width: 10rem">
+        <div class="fw-semibold">{{ item.media.name }}{% if not item.enabled %} <span class="badge text-bg-secondary">off</span>{% endif %}</div>
         <div class="small text-secondary d-flex gap-2 align-items-center">
           {{ type_badge(item.media) }}
           <span>{{ item.effective_duration|duration }}</span>
@@ -73,6 +73,11 @@
         <button class="btn btn-sm btn-outline-primary" type="submit">Save</button>
       </form>
       <div class="d-flex gap-1">
+        <form method="post" action="{{ url_for('playlists.toggle_item', playlist_id=playlist.id, item_id=item.id) }}">
+          {{ action_form.csrf_token }}
+          <button class="btn btn-sm {{ 'btn-outline-secondary' if item.enabled else 'btn-warning' }}" type="submit"
+                  title="{{ 'Screens skip this item while it is off' if item.enabled else 'Switch this item back on' }}">{{ "Turn off" if item.enabled else "Turn on" }}</button>
+        </form>
         {% for direction, label in [("up", "↑"), ("down", "↓")] %}
         <form method="post" action="{{ url_for('playlists.move_item', playlist_id=playlist.id, item_id=item.id) }}">
           {{ action_form.csrf_token }}<input type="hidden" name="direction" value="{{ direction }}">

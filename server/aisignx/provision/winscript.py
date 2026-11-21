@@ -21,9 +21,7 @@ _URL = re.compile(r"^https?://[A-Za-z0-9.\-\[\]:]+(/[A-Za-z0-9._~/%+=?&-]*)?$")
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 _THUMB = re.compile(r"^[0-9A-F]{40}$")
 _SECRET = re.compile(r"^[A-Za-z0-9_-]{20,128}$")
-_CODE = re.compile(r"^[A-HJ-NP-Z2-9-]{16,24}$")
-_FINGERPRINT = re.compile(r"^([0-9a-f]{4} ){3}[0-9a-f]{4}$")
-_ACCOUNT = re.compile(r"^[A-Za-z0-9._ -]{1,64}$")
+_ACCOUNT = re.compile(r"^[A-Za-z0-9._ -]{0,64}$")      # empty: the person at the PC picks from a list
 
 
 def _q(value: str) -> str:
@@ -72,8 +70,6 @@ $CertUrl      = @@CERT_URL@@
 $CertSha      = @@CERT_SHA@@
 $Thumbprint   = @@THUMBPRINT@@
 $PairSecret   = @@PAIR_SECRET@@
-$EnrollCode   = @@ENROLL_CODE@@
-$KeyPrint     = @@KEY_FINGERPRINT@@
 $KioskUser    = @@KIOSK_USER@@
 $AllowReboot  = @@ALLOW_REBOOT@@
 $AllowStartup = @@ALLOW_STARTUP@@
@@ -109,9 +105,22 @@ Write-Host "    The agent may : reboot=$AllowReboot startup=$AllowStartup update
 if ($Server -like 'http://*') { Warn 'The server address is plain http: the downloads are protected by their checksums, but the pairing secret travels unencrypted on your network. Use https if the network is not yours.' }
 if ($DryRun) { Ok 'Dry run: nothing was downloaded or changed.'; exit 0 }
 
-# --- the player's account must exist ------------------------------------------------------------------------------
-try { $kioskSid = (New-Object System.Security.Principal.NTAccount($KioskUser)).Translate([System.Security.Principal.SecurityIdentifier]).Value }
-catch { Fail "The Windows account '$KioskUser' does not exist on this PC. Create it (a standard account) or make the script again with another name." }
+# --- the player's account: asked from a list of this PC's accounts when the admin did not name one -------------------------
+if (-not $KioskUser) {
+    $admins = @(Get-LocalGroupMember -SID 'S-1-5-32-544' -ErrorAction SilentlyContinue | ForEach-Object { $_.SID.Value })
+    $accounts = @(Get-LocalUser -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -and $admins -notcontains $_.SID.Value } | ForEach-Object { $_.Name })
+    Write-Host ''
+    Write-Host 'Which Windows account runs the screen? (needed for "shell" and automatic sign-in)'
+    Write-Host '  0) none: whoever signs in'
+    for ($i = 0; $i -lt $accounts.Count; $i++) { Write-Host ('  {0}) {1}' -f ($i + 1), $accounts[$i]) }
+    $pick = Read-Host 'Number'
+    if ($pick -match '^\d+$' -and [int]$pick -ge 1 -and [int]$pick -le $accounts.Count) { $KioskUser = $accounts[[int]$pick - 1] }
+}
+$kioskSid = $null
+if ($KioskUser) {
+    try { $kioskSid = (New-Object System.Security.Principal.NTAccount($KioskUser)).Translate([System.Security.Principal.SecurityIdentifier]).Value }
+    catch { Fail "The Windows account '$KioskUser' does not exist on this PC. Pick one from the list, or make the script again." }
+}
 
 # --- a protected work folder -------------------------------------------------------------------------------------
 # Elevated: a folder only SYSTEM and administrators can use (what is downloaded here is run as administrator).
@@ -152,7 +161,9 @@ try {
     # The player (running as the player account) takes this once, on its first start, and deletes the file.
     $dataDir = Join-Path $env:ProgramData 'AiSignX'
     New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
-    & icacls.exe $dataDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' ('*' + $kioskSid + ':(OI)(CI)M') /Q 2>&1 | Out-Null
+    $grants = @('*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F')
+    if ($kioskSid) { $grants += ('*' + $kioskSid + ':(OI)(CI)M') } else { $grants += '*S-1-5-32-545:(OI)(CI)M' }   # no account named: whoever runs the player first takes the file
+    & icacls.exe $dataDir /inheritance:r /grant:r $grants /Q 2>&1 | Out-Null
     $setup = [ordered]@{ server = $Server.TrimEnd('/'); token = [string]$r.token; created = (Get-Date).ToUniversalTime().ToString('o') }
     [IO.File]::WriteAllText((Join-Path $dataDir 'setup.json'), ($setup | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     Ok "paired as $($r.display.name)"
@@ -160,12 +171,11 @@ try {
     # --- the player and the privileged agent: ONE setup .exe -----------------------------------------------------------
     Step 'Installing the player and the privileged agent (one installer)'
     # The values reach the installer through this process's environment, never through its command line.
-    $env:AISIGNX_SETUP_SERVER = $Server.TrimEnd('/'); $env:AISIGNX_SETUP_CODE = $EnrollCode; $env:AISIGNX_SETUP_KEY = $KeyPrint
+    $env:AISIGNX_SETUP_SERVER = $Server.TrimEnd('/')
     $env:AISIGNX_SETUP_KIOSKUSER = $KioskUser
     $allow = @(); if ($AllowReboot) { $allow += 'reboot' }; if ($AllowStartup) { $allow += 'startup' }; if ($AllowUpdate) { $allow += 'update' }
     $env:AISIGNX_SETUP_ALLOW = ($allow -join ',')
     $proc = Start-Process -FilePath $installer -ArgumentList '/S', '/allusers' -Wait -PassThru
-    Remove-Item Env:\AISIGNX_SETUP_CODE -ErrorAction SilentlyContinue
     if ($proc.ExitCode -ne 0) { Fail "The setup program did not finish (exit code $($proc.ExitCode)). If the player is installed but not the agent, use Start menu > Connect AiSignX agent." }
     $player = Join-Path $env:ProgramFiles 'AiSignX Player\AiSignX Player.exe'
     if (-not (Test-Path -LiteralPath $player)) { Fail 'The player was installed but its program file was not found under Program Files.' }
@@ -188,7 +198,7 @@ finally {
 
 
 def build(*, server: str, name: str, run_text: str, kiosk_user: str, player: dict,
-          cert: dict, thumbprint: str, pair_secret: str, enroll_code: str, key_fingerprint: str, allow_reboot: bool,
+          cert: dict, thumbprint: str, pair_secret: str, allow_reboot: bool,
           allow_startup: bool, allow_update: bool, allow_autologin: bool) -> str:
     """The script text. player/cert are {"url", "sha256"}. Raises ValueError for anything unsafe."""
     if not _URL.match(server or ""):
@@ -198,8 +208,8 @@ def build(*, server: str, name: str, run_text: str, kiosk_user: str, player: dic
             raise ValueError(f"bad {label}")
     if not _THUMB.match(thumbprint or ""):
         raise ValueError("bad thumbprint")
-    if not _SECRET.match(pair_secret or "") or not _CODE.match(enroll_code or "") or not _FINGERPRINT.match(key_fingerprint or ""):
-        raise ValueError("bad secret, code or fingerprint")
+    if not _SECRET.match(pair_secret or ""):
+        raise ValueError("bad secret")
     if not _ACCOUNT.match(kiosk_user or ""):
         raise ValueError("bad account name")
     text = (_TEMPLATE
@@ -211,7 +221,6 @@ def build(*, server: str, name: str, run_text: str, kiosk_user: str, player: dic
             .replace("@@PLAYER_URL@@", _q(player["url"])).replace("@@PLAYER_SHA@@", _q(player["sha256"]))
             .replace("@@CERT_URL@@", _q(cert["url"])).replace("@@CERT_SHA@@", _q(cert["sha256"]))
             .replace("@@THUMBPRINT@@", _q(thumbprint)).replace("@@PAIR_SECRET@@", _q(pair_secret))
-            .replace("@@ENROLL_CODE@@", _q(enroll_code)).replace("@@KEY_FINGERPRINT@@", _q(key_fingerprint))
             .replace("@@KIOSK_USER@@", _q(kiosk_user))
             .replace("@@ALLOW_REBOOT@@", _b(allow_reboot)).replace("@@ALLOW_STARTUP@@", _b(allow_startup))
             .replace("@@ALLOW_UPDATE@@", _b(allow_update)).replace("@@ALLOW_AUTOLOGIN@@", _b(allow_autologin))

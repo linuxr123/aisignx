@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from aisignx.extensions import db
@@ -153,3 +155,33 @@ def test_editor_can_manage(app, client, configured, library):
     login(client, "ed")
     pid = _create(client)
     assert client.post(f"/playlists/{pid}/items", data={"media_ids": library}).status_code == 302
+
+
+def test_an_item_can_be_switched_off_without_leaving_the_playlist(admin_client, app):
+    """Off: screens skip it, the total ignores it, a copy keeps the switch, and an all-off playlist plays nothing."""
+    from aisignx.player.manifest import is_playable
+    from aisignx.playlists import service
+    with app.app_context():
+        pl = Playlist(name="Menu")
+        for i, secs in enumerate((10, 20)):
+            m = Media(name=f"m{i}", media_type="web", url="https://example.com", default_duration=secs)
+            pl.items.append(PlaylistItem(media=m, position=i))
+        db.session.add(pl)
+        db.session.commit()
+        pid, first, second = pl.id, pl.items[0].id, pl.items[1].id
+        assert all(is_playable(i) for i in pl.items) and pl.total_duration == 30
+    token = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', admin_client.get(f"/playlists/{pid}").get_data(as_text=True)).group(1)
+    r = admin_client.post(f"/playlists/{pid}/items/{first}/toggle", data={"csrf_token": token}, follow_redirects=True)
+    assert r.status_code == 200 and b"is off" in r.data and b"Turn on" in r.data
+    with app.app_context():
+        pl = db.session.get(Playlist, pid)
+        assert [is_playable(i) for i in pl.items] == [False, True] and pl.total_duration == 20
+        assert [i.enabled for i in service.duplicate(pl).items] == [False, True]
+        db.session.rollback()
+    admin_client.post(f"/playlists/{pid}/items/{second}/toggle", data={"csrf_token": token})
+    with app.app_context():
+        assert not any(is_playable(i) for i in db.session.get(Playlist, pid).items)
+    admin_client.post(f"/playlists/{pid}/items/{first}/toggle", data={"csrf_token": token})
+    with app.app_context():
+        assert [i.enabled for i in db.session.get(Playlist, pid).items] == [True, False]
+    assert admin_client.post(f"/playlists/{pid}/items/99999/toggle", data={"csrf_token": token}).status_code == 404

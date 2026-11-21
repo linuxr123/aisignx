@@ -225,6 +225,19 @@ Only the NVIDIA Shield has been tried. Upload the newest Android APK on Download
 | N8 | A screen (Android and Windows) paired over `https://`, with a bought certificate and then with the self-signed one | The bought certificate just works; the self-signed one asks to pin (compare the SHA-256) or must be installed as trusted first | |
 | N9 | Linux (if you use it): `sudo scripts/setup-nginx.sh --host <name>`, then `--letsencrypt` on a public name | The same as N2/N5; the certificate renews itself | |
 
+## O. One Windows setup .exe and agent approval (docs/windows-agent.md)
+
+| # | Do this | Expected | Result |
+|---|---|---|---|
+| O1 | Run `AiSignX Player Setup 3.4.0.exe` on a PC | Windows asks for administrator permission; a page asks for the server address, a **drop-down of the PC's accounts** (first entry "none") and three permission boxes | |
+| O2 | Finish with a server address; the player starts | The player shows a pairing code. Task Scheduler has **AiSignX Agent** (SYSTEM). The Start menu has **Connect AiSignX agent** | |
+| O3 | Displays > Pair a display: type the code and tick **Also approve the privileged agent** | Within about a minute the display page shows the agent **running**; the agent log says approved | |
+| O4 | Repeat on another PC but do NOT tick the box | The display page shows "The agent on <PC> is waiting for approval" with **Approve** / **Reject**; Approve connects it; Reject leaves it unconnected | |
+| O5 | Reboot, update and "How the player runs" on the display page | They work through the agent (signed commands), as in section L | |
+| O6 | Uninstall the player from Windows | The agent task and `Program Files\AiSignX\Agent` are gone | |
+| O7 | Downloads > Set up a Windows PC, leave the account empty, run the script on a PC | The script lists the PC's accounts, pairs, installs the .exe and the agent connects without any code | |
+| O8 | Over plain http and then over https (nginx) | Both work; over http the page and docs warn that the agent trusts the server's key on first contact | |
+
 ---
 
 **Report back with:** the row numbers that failed and what you saw (a screenshot helps). Logs: Admin > Logs, and

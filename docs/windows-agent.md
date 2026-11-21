@@ -11,17 +11,31 @@ as something a device has confirmed. The open questions are listed at the end.
 ## One setup .exe: player and agent together
 
 Since 3.4.0 the build makes **one** `AiSignX Player Setup <version>.exe` (build: `npm run dist:win` in `clients\electron-client`, with
-`AISIGNX_SIGN_THUMBPRINT` set; it builds the app, the agent bundle and the installer with everything inside, and signs it). It installs
-the player **for all users** (it asks Windows for administrator permission) and puts the privileged agent's files, its signed
-`Install-Agent.ps1` and your public signing certificate next to it. The installer is about 280 MB because the agent runs its own copy of the runtime.
+`AISIGNX_SIGN_THUMBPRINT` set; it builds the app, the agent bundle and the installer with everything inside, and signs it). It always asks
+Windows for **administrator permission**, installs the player **for all users**, and installs the privileged agent (SYSTEM) next to it, with its signed
+`Install-Agent.ps1` and your public signing certificate. The installer is about 280 MB because the agent runs its own copy of the runtime.
 
-- **By hand:** run the .exe. A page asks for the server address, the **enrollment code**, the **key fingerprint** (all on Displays > the
-  screen > Device agent) and what the web page may do. The screen must be **paired first**, so on a new PC leave the code empty, pair the
-  screen, then use **Start menu > Connect AiSignX agent** (it asks for the same things).
-- **Silent:** `"AiSignX Player Setup.exe" /S /SERVER=http://192.168.1.19:5000 /CODE=ABCD-EFGH-JKLM-NPQR /KEY="ab12 cd34 ef56 7890" /KIOSKUSER=kiosk /ALLOW=update,startup`.
-  The generated script of the next section does this for you (it passes the values in the environment, not on a command line).
+**How the agent is connected: approval, no codes to type.**
+1. The setup page asks for the **server address**, the **Windows account** the screen runs as (a **list of that PC's accounts**, or "none: whoever signs in";
+   it is only needed for the shell and automatic sign-in) and what the web page may do (restart, change how the player starts, install updates).
+   The agent is installed *unconnected*.
+2. The player starts and shows its **pairing code**, as always. You pair it on the server (Displays > Pair a display) and tick **"Also approve the privileged agent"**.
+3. The agent asks the server for approval; the player (signed in as the paired screen) tells the server "that agent is on my PC" by passing on a random claim id
+   the agent publishes; the server approves (because of the box, or because an admin pressed **Approve** on the display page) and sends the agent its
+   credential **encrypted to the agent's own key**. Both sides now trust each other: the agent obeys only commands signed by this server's key, and the server only
+   gives the agent token to the agent that asked and the screen that claimed it.
+   Over `https://` the server's command key is trusted because of the certificate. Over plain `http://` the agent trusts it on first contact (an attacker in the
+   middle at that moment could substitute their own), so use `https://` (see [https.md](https.md)); the key's fingerprint is on System and on the display page to compare.
+4. What the web page may do on the PC is fixed at install; the admin can also switch each action off per screen (Displays > Edit > Device agent).
+
+Other ways in:
+- **Silent:** `"AiSignX Player Setup.exe" /S /SERVER=http://192.168.1.19:5000 /KIOSKUSER=kiosk /ALLOW=update,startup` (or the same values in `AISIGNX_SETUP_*` environment variables).
+  The generated script of the next section does this for you.
+- **Later:** Start menu > **Connect AiSignX agent** (asks for the same things; needs administrator permission).
+- **Strict, with a typed code and fingerprint:** the older way still works: Displays > the screen > *Enroll the privileged agent* gives a one-time code and the key's fingerprint, and
+  `Install-Agent.ps1 -Server ... -Code ... -KeyFingerprint ...` installs and enrolls in one step (see below).
 - Uninstalling the player from Windows removes the agent too.
-- The separate `AiSignX-Agent-*.zip` and `Install-Agent.ps1` (`npm run agent:win`) still exist for installing the agent without the player, but the Downloads page and the PC script no longer need them. The installer has been built, but is **not yet tested on a real PC**.
+- The installer has been built and its script compiles; it is **not yet tested on a real PC**.
 
 ## One-step set-up of a PC (recommended)
 

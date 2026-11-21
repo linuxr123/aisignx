@@ -11,12 +11,13 @@ from functools import wraps
 from flask import g, jsonify, request, send_file
 
 from ..audit import service as audit
-from ..displays import agent, ecies, enroll, signing
+from ..displays import agent, agent_request, ecies, enroll, signing
 from ..extensions import db
 from ..models import Display
 from ..models.device_command import SIGNED_ACTIONS
 from ..timeutil import as_utc, utcnow
 from . import agent_diag, api_bp
+from .auth import display_required
 from .api import _bad, _body, _text, api_error
 
 _MAX_TOKEN = 80
@@ -84,6 +85,57 @@ def agent_enroll():
                      detail={"fingerprint": ecies.key_id(ecies.decode_public(body.get("public_key"))),
                              "replaced": replaced, "host": _text(body.get("host"), 64), "version": _text(body.get("version"), 20)})
     return jsonify(agent_token=token, display_id=display.id, command_key=signing.public_key_b64(),
+                   fingerprint=signing.fingerprint(), server_time_ms=int(utcnow().timestamp() * 1000))
+
+
+@api_bp.post("/agent/request")
+def agent_request_create():
+    """A freshly installed agent asks to be enrolled (no code: an admin approves, see displays/agent_request.py)."""
+    if _rate_limited(request.remote_addr or "?"):
+        return api_error(429, "too_many_pending", "Too many attempts. Wait a minute.", retry_after=60)
+    if (request.content_length or 0) > 4096:
+        return api_error(413, "too_large", "Request too large.")
+    body = _body()
+    if body is None:
+        return _bad("Expected a JSON object.")
+    req, reason = agent_request.create(body.get("claim_id"), body.get("poll_secret"), body.get("public_key"),
+                                       _text(body.get("host"), 64), _text(body.get("version"), 20))
+    db.session.commit()
+    if req is None:
+        return api_error(429 if "many" in reason else 400, "request_refused", reason)
+    return jsonify(ok=True, state=req.state)
+
+
+@api_bp.post("/agent/claim")
+@display_required
+def agent_request_claim():
+    """The player says which agent runs on its PC (the claim id the agent wrote where the player can read it)."""
+    body = _body()
+    if body is None:
+        return _bad("Expected a JSON object.")
+    req, reason = agent_request.claim(g.display, body.get("claim_id"))
+    db.session.commit()
+    if req is None:
+        return api_error(404 if reason == "unknown request" else 409 if reason == "already claimed" else 400, "claim_refused", reason)
+    if req.state == "approved":
+        audit.record_now("display.agent_approved", g.display, detail={"host": req.host, "via": "pairing"})
+    return jsonify(ok=True, state=req.state)
+
+
+@api_bp.post("/agent/poll")
+def agent_request_poll():
+    """The agent asks whether it was approved. Approved: the token encrypted to its own key, and the command key."""
+    if _rate_limited(request.remote_addr or "?"):
+        return api_error(429, "too_many_pending", "Too many attempts. Wait a minute.", retry_after=60)
+    body = _body()
+    if body is None:
+        return _bad("Expected a JSON object.")
+    state, req = agent_request.poll(body.get("poll_secret"))
+    if state == "unknown":
+        return api_error(404, "unknown_request", "Unknown or expired request.")
+    if state != "approved":
+        return jsonify(state=state, claimed=req.display_id is not None)
+    return jsonify(state="approved", ciphertext=req.ciphertext, display_id=req.display_id, command_key=signing.public_key_b64(),
                    fingerprint=signing.fingerprint(), server_time_ms=int(utcnow().timestamp() * 1000))
 
 

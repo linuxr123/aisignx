@@ -1,4 +1,5 @@
 """Database models. Import every model here so Alembic sees it."""
+from .agent_request import AgentRequest
 from .alert import Alert
 from .audit import AuditLog
 from .device_command import DeviceCommand
@@ -17,7 +18,7 @@ from .setting import Setting
 from .token import SCOPE_MIN_ROLE, SCOPES, ApiToken
 from .user import ROLES, User
 
-__all__ = ["Alert", "ApiToken", "AuditLog", "DeviceCommand", "DOWNLOAD_KINDS", "Display", "Download", "DisplayGroup", "EmergencyMessage", "EmergencyPlan", "EmergencyTemplate",
+__all__ = ["AgentRequest", "Alert", "ApiToken", "AuditLog", "DeviceCommand", "DOWNLOAD_KINDS", "Display", "Download", "DisplayGroup", "EmergencyMessage", "EmergencyPlan", "EmergencyTemplate",
            "MEDIA_PLUGIN", "MEDIA_TYPES", "Media", "PairingCode", "PlayDaily", "PlayEvent", "Playlist",
            "PlaylistItem", "ROLES", "SCOPES", "SCOPE_MIN_ROLE", "Schedule", "Setting",
            "User"]

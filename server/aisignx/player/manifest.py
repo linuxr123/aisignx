@@ -38,7 +38,7 @@ def is_playable(item) -> bool:
     """Whether a playlist item can appear in a manifest. No url_for, so the resolver
     can use it outside a request."""
     media = item.media
-    if media is None:
+    if media is None or getattr(item, "enabled", True) is False:
         return False
     if media.media_type in _FILE_TYPES:
         return bool(media.stored_name)

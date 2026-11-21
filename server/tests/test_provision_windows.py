@@ -125,14 +125,19 @@ def test_the_script_is_made_secret_bearing_valid_and_the_secrets_work(app, confi
         assert d.agent_allow_reboot and d.agent_allow_startup and d.agent_allow_update and d.agent_watchdog
         did = d.id
     secret = re.search(r"\$PairSecret\s*=\s*'([^']+)'", text).group(1)
-    code = re.search(r"\$EnrollCode\s*=\s*'([^']+)'", text).group(1)
-    # the secrets in the script really work, in the order the script uses them: claim the pairing, then enroll the agent
+    assert "EnrollCode" not in text and "KeyPrint" not in text            # no code to type or carry: the admin's approval is the script itself
+    with app.app_context():
+        assert db.session.get(Display, did).agent_auto_approve is True
+    # the secrets in the script really work, in the order the script uses them: claim the pairing, then the agent asks and is approved
     claimed = client.post(f"{API}/pair/status", json={"pairing_secret": secret, "credential": "bearer"}).get_json()
     assert claimed["status"] == "paired" and claimed["token"] and claimed["display"]["id"] == did
     assert client.post(f"{API}/pair/status", json={"pairing_secret": secret}).get_json().get("status") != "paired"   # once
-    pub = base64.b64encode(X25519PrivateKey.generate().public_key().public_bytes_raw()).decode()
-    got = client.post(f"{API}/agent/enroll", json={"code": code, "public_key": pub, "host": "PC", "version": "1.0"})
-    assert got.status_code == 200 and got.get_json()["agent_token"].startswith("agt_")
+    priv = X25519PrivateKey.generate()
+    pub = base64.b64encode(priv.public_key().public_bytes_raw()).decode()
+    claim_id, poll = "c" * 24, "p" * 24
+    assert client.post(f"{API}/agent/request", json={"claim_id": claim_id, "poll_secret": poll, "public_key": pub, "host": "PC", "version": "3.4.0"}).status_code == 200
+    assert client.post(f"{API}/agent/claim", json={"claim_id": claim_id}, headers={"Authorization": "Bearer " + claimed["token"]}).get_json()["state"] == "approved"
+    assert client.post(f"{API}/agent/poll", json={"poll_secret": poll}).get_json()["state"] == "approved"
     # and the script is valid PowerShell
     ps = shutil.which("powershell")
     if ps:
@@ -144,13 +149,12 @@ def test_the_script_is_made_secret_bearing_valid_and_the_secrets_work(app, confi
         assert out.stdout.strip() == "0", out.stdout + out.stderr
 
 
-def test_the_enrollment_code_in_the_script_lasts_hours_not_minutes(app, admin):
+def test_the_account_may_be_left_empty_and_is_then_picked_from_a_list_on_the_pc(app, admin):
     _upload_all(app)
-    admin.post("/provision/windows", data=_form(_csrf(admin)))
-    with app.app_context():
-        d = Display.query.filter_by(name="Front desk PC").one()
-        left = (d.agent_enroll_expires.replace(tzinfo=datetime.timezone.utc) - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
-        assert 3600 < left <= 2 * 3600 + 5
+    r = admin.post("/provision/windows", data=_form(_csrf(admin), kiosk_user=""))
+    assert r.status_code == 200 and "attachment" in r.headers["Content-Disposition"]
+    text = r.get_data(as_text=True)
+    assert "$KioskUser    = ''" in text and "Which Windows account runs the screen?" in text and "Get-LocalUser" in text
 
 
 def test_plain_http_leaves_auto_login_off_and_is_declared(app, admin):
@@ -177,11 +181,10 @@ def test_the_script_builder_refuses_unsafe_values():
     ok = dict(server="http://192.168.1.19:5000", name="PC", run_text="Application", kiosk_user="kiosk",
               player={"url": "http://192.168.1.19:5000/provision/file/a.b.c", "sha256": "a" * 64},
               cert={"url": "http://192.168.1.19:5000/provision/file/a.b.f", "sha256": "d" * 64},
-              thumbprint="A" * 40, pair_secret="s" * 30, enroll_code="ABCD-EFGH-JKLM-NPQR",
-              key_fingerprint="ab12 cd34 ef56 7890", allow_reboot=True, allow_startup=True, allow_update=True, allow_autologin=False)
+              thumbprint="A" * 40, pair_secret="s" * 30,
+              allow_reboot=True, allow_startup=True, allow_update=True, allow_autologin=False)
     assert "192.168.1.19" in winscript.build(**ok)
     bad_cases = [{"server": "http://x'; calc #"}, {"kiosk_user": "a'b"}, {"thumbprint": "zz"}, {"pair_secret": "a b"},
-                 {"enroll_code": "lower-case-code-1234"}, {"key_fingerprint": "nope"},
                  {"player": {"url": "http://h/`whoami`", "sha256": "a" * 64}}, {"cert": {"url": "http://h/x", "sha256": "xyz"}}]
     for bad in bad_cases:
         with pytest.raises(ValueError):
@@ -238,8 +241,8 @@ def test_the_work_folder_is_only_locked_down_when_elevated():
     text = winscript.build(server="http://192.168.1.19:5000", name="PC", run_text="Application", kiosk_user="kiosk",
                            player={"url": "http://h/a", "sha256": "a" * 64},
                            cert={"url": "http://h/d", "sha256": "d" * 64},
-                           thumbprint="A" * 40, pair_secret="s" * 30, enroll_code="ABCD-EFGH-JKLM-NPQR",
-                           key_fingerprint="ab12 cd34 ef56 7890", allow_reboot=True, allow_startup=True, allow_update=True,
+                           thumbprint="A" * 40, pair_secret="s" * 30,
+                           allow_reboot=True, allow_startup=True, allow_update=True,
                            allow_autologin=False)
     assert "if ($elevated) { & icacls.exe $work" in text and "GetTempPath()" in text
     assert text.count("icacls.exe $work") == 1

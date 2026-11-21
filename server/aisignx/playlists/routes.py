@@ -177,6 +177,21 @@ def update_item(playlist_id: int, item_id: int):
     return _back(playlist)
 
 
+@bp.route("/<int:playlist_id>/items/<int:item_id>/toggle", methods=["POST"])
+@editor_required
+def toggle_item(playlist_id: int, item_id: int):
+    """Switch one item on or off without losing its settings or its place in the order."""
+    _require_action_form()
+    playlist = _get_playlist_or_404(playlist_id)
+    item = _get_item_or_404(playlist, item_id)
+    item.enabled = not item.enabled
+    service.touch(playlist)
+    audit.record("playlist.item_toggle", playlist, detail={"item_id": item.id, "media": item.media.name, "enabled": item.enabled})
+    db.session.commit()
+    flash(f"{item.media.name} is {'on' if item.enabled else 'off'}.", "success")
+    return _back(playlist)
+
+
 @bp.route("/<int:playlist_id>/items/<int:item_id>/delete", methods=["POST"])
 @editor_required
 def remove_item(playlist_id: int, item_id: int):
