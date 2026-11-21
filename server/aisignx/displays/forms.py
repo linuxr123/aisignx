@@ -85,6 +85,14 @@ class DisplayForm(FlaskForm):
                           render_kw={"min": 0, "max": 100})
     show_offline_banner = BooleanField("Show a small banner when the screen is offline",
                                        default=True)
+    brightness = IntegerField("Brightness (10-100 %)", default=100, validators=[InputRequired(), NumberRange(10, 100)],
+                              render_kw={"min": 10, "max": 100})
+    dim_level = IntegerField("Night brightness (10-100 %)", default=40, validators=[Optional(), NumberRange(10, 100)],
+                             render_kw={"min": 10, "max": 100})
+    dim_from = StringField("Dim from", validators=[Optional(), Regexp(r"^([01]\d|2[0-3]):[0-5]\d$", message="Use HH:MM, for example 22:00")],
+                           render_kw={"placeholder": "22:00", "maxlength": 5})
+    dim_to = StringField("until", validators=[Optional(), Regexp(r"^([01]\d|2[0-3]):[0-5]\d$", message="Use HH:MM, for example 06:00")],
+                         render_kw={"placeholder": "06:00", "maxlength": 5})
 
     # Kiosk lock: admins only. Removed from the form for everyone else, so an editor
     # posting these fields changes nothing.
@@ -128,6 +136,12 @@ class DisplayForm(FlaskForm):
 
     def validate(self, extra_validators=None) -> bool:
         ok = super().validate(extra_validators)
+        if bool(self.dim_from.data) != bool(self.dim_to.data):
+            self.dim_to.errors = [*self.dim_to.errors, "Give both times (or neither) for night dimming."]
+            ok = False
+        elif self.dim_from.data and self.dim_from.data == self.dim_to.data:
+            self.dim_to.errors = [*self.dim_to.errors, "The two times must differ."]
+            ok = False
         if self.is_admin_form and self.clear_pin.data and self.unlock_pin.data:
             self.unlock_pin.errors = [*self.unlock_pin.errors,
                                       "Either remove the PIN or set a new one."]

@@ -34,6 +34,14 @@
         <p class="form-text mt-n2">Rotation is for screens whose device cannot rotate its own output. Fit overrides how every item fills the screen.</p>
         {{ field(form.volume) }}
         {{ field(form.show_offline_banner) }}
+        <h3 class="h6 mt-3">Brightness</h3>
+        {{ field(form.brightness) }}
+        <div class="row g-2 align-items-end">
+          <div class="col-md-4">{{ field(form.dim_level) }}</div>
+          <div class="col-md-4">{{ field(form.dim_from) }}</div>
+          <div class="col-md-4">{{ field(form.dim_to) }}</div>
+        </div>
+        <p class="form-text mt-n2 mb-0">The player darkens its picture to this level (in the organization's time zone, {{ "dimming from " ~ display.dim_from ~ " to " ~ display.dim_to if display.dim_from and display.dim_to else "leave the times empty for no night dimming" }}). It does not change the device's own backlight; set that on the device. Emergency messages are always shown at full brightness.</p>
       </div></div>
 
       <div class="card edit-card"><div class="card-body">

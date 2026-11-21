@@ -328,3 +328,6 @@ body.rot-90 #hint.scrub, body.rot-270 #hint.scrub { width: 60vh; bottom: 6vmin; 
 }
 
 .noscript { padding: 2rem; color: #fff; text-align: center; }
+
+/* Brightness: a black layer over everything but the picture's own controls; its opacity is set by device.js (settings.brightness and the night window). */
+#dimmer { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 30; transition: opacity 1.2s ease; }

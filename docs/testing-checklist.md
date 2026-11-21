@@ -147,7 +147,7 @@ Use a tablet that holds nothing you need. First upload the newest Android APK on
 | J8 | Setup > **Factory reset this device** (Device Owner only): Cancel, wrong word, then RESET; or alternatively Lock player off and Settings > Factory data reset | Cancel and a wrong word erase nothing; RESET erases the tablet, which then shows the Welcome screen and can be provisioned again from J2 | |
 | J9 | Try Reboot / Push the update with those switches off (Edit > Device agent) | Refused with a message | |
 | J10 | With the lockdown on, hold Power + Volume Down and choose Power off | The power menu opens even in the lockdown and the tablet shuts down. There is no remote shutdown; the admin can only reboot (J5). Write down if your model behaves differently | |
-| J11 | Look for a brightness setting on the display's edit page and in the Device agent options | There is none: a brightness setting is not built (it is on the planned list). Set the brightness on the tablet itself | |
+| J11 | Displays > Edit > Screen: set Brightness to 50 %, then a night window a few minutes from now | The picture darkens at once (and again at the window start, back at its end); an emergency message shows at full brightness; the device's own backlight does not change | |
 
 ## K. Windows: reboot, startup and updates (signed commands)
 

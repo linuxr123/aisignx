@@ -171,6 +171,10 @@ def edit(display_id: int):
         display.fit_override = form.fit_override.data or None
         display.volume = form.volume.data
         display.show_offline_banner = bool(form.show_offline_banner.data)
+        display.brightness = form.brightness.data
+        display.dim_from = (form.dim_from.data or "").strip() or None
+        display.dim_to = (form.dim_to.data or "").strip() or None
+        display.dim_level = form.dim_level.data if form.dim_level.data is not None else display.dim_level
         pin_changed = False
         if form.is_admin_form:
             display.allow_input = bool(form.allow_input.data)
@@ -205,7 +209,7 @@ def edit(display_id: int):
 
 
 _AUDITED_FIELDS = ("name", "playlist_id", "group_id", "location", "description", "orientation",
-                   "fit_override", "volume", "show_offline_banner", "allow_input",
+                   "fit_override", "volume", "show_offline_banner", "brightness", "dim_level", "dim_from", "dim_to", "allow_input",
                    "kiosk_lock", "resume_after_s", "agent_watchdog", "agent_allow_restart",
                    "agent_allow_logs",
                    "agent_allow_reboot", "agent_allow_startup", "agent_allow_update")
@@ -225,6 +229,10 @@ def _prefill(form: DisplayForm, display: Display) -> None:
     form.fit_override.data = display.fit_override or ""
     form.volume.data = display.volume
     form.show_offline_banner.data = display.show_offline_banner
+    form.brightness.data = display.brightness
+    form.dim_level.data = display.dim_level if display.dim_level < 100 else 40
+    form.dim_from.data = display.dim_from or ""
+    form.dim_to.data = display.dim_to or ""
     if form.is_admin_form:
         form.allow_input.data = display.allow_input  # the PIN is never prefilled
         form.kiosk_lock.data = display.kiosk_lock

@@ -87,6 +87,8 @@ def settings_payload(display: Display) -> dict:
     orientation = display.orientation if display.orientation in ORIENTATIONS else 0
     volume = display.volume if isinstance(display.volume, int) else 100
     return {
+        "brightness": clamp_percent(display.brightness),
+        "dim": dim_payload(display),
         "orientation": orientation,
         "volume": max(0, min(100, volume)),
         "show_offline_banner": bool(display.show_offline_banner),
@@ -102,6 +104,28 @@ def settings_payload(display: Display) -> dict:
                   "startup": bool(display.agent_allow_startup),
                   "update": bool(display.agent_allow_update)},
     }
+
+
+def clamp_percent(value, low: int = 10) -> int:
+    """A brightness in percent: 10..100 (never fully black), 100 when it is not a number."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 100
+    return max(low, min(100, value))
+
+
+def valid_clock(text) -> bool:
+    """HH:MM, 00:00..23:59."""
+    import re
+    return isinstance(text, str) and bool(re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", text))
+
+
+def dim_payload(display: Display) -> dict | None:
+    """The night dimming for the manifest, or None when it is off: {level, from, to, tz}. Times are the organization's local time."""
+    if not (valid_clock(display.dim_from) and valid_clock(display.dim_to)) or display.dim_from == display.dim_to:
+        return None
+    from ..timeutil import org_tz
+
+    return {"level": clamp_percent(display.dim_level), "from": display.dim_from, "to": display.dim_to, "tz": org_tz().key}
 
 
 def resume_seconds(value) -> int:

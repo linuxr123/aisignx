@@ -77,6 +77,12 @@ class Display(db.Model):
                                server_default="300")
     # Device agent (docs/device-agent-design.md). Admin-only, all off by default: the watchdog
     # restarts the player when it hangs; the allow_* switches let an admin issue that command.
+    # Brightness: the screen's own level (percent) and an optional dimmer period (local time of the organization). The player darkens its output;
+    # a device's backlight is not touched, so on LCD screens this saves little power but changes how bright the picture looks.
+    brightness = db.Column(db.Integer, nullable=False, default=100, server_default="100")
+    dim_level = db.Column(db.Integer, nullable=False, default=100, server_default="100")
+    dim_from = db.Column(db.String(5), nullable=True)
+    dim_to = db.Column(db.String(5), nullable=True)
     agent_watchdog = db.Column(db.Boolean, nullable=False, default=False, server_default=sa.false())
     agent_allow_restart = db.Column(db.Boolean, nullable=False, default=False,
                                     server_default=sa.false())

@@ -14,15 +14,15 @@
 
   var ORIENTATIONS = [0, 90, 180, 270];
   // A settings object with a bad field falls back to these.
-  var DEFAULTS = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: false, resume_after_s: 300 };
+  var DEFAULTS = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: false, resume_after_s: 300, brightness: 100, dim: null };
   // No settings key at all (older server or cached manifest): keep the old behaviour.
-  var LEGACY = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: true, resume_after_s: 300 };
+  var LEGACY = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: true, resume_after_s: 300, brightness: 100, dim: null };
   var RESUME_MIN_S = 60, RESUME_MAX_S = 3600;
   var BLOCKED = ["keydown", "keyup", "keypress", "contextmenu", "wheel", "dragstart"];
   var MAX_SIDE = 1920, JPEG_QUALITY = 0.8, MAX_ERRORS = 10, DIAG_MAX = 4000;
   var RID = /^[0-9a-f]{16}$/;
 
-  var cfg = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: true, resume_after_s: 300 };
+  var cfg = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: true, resume_after_s: 300, brightness: 100, dim: null };
   var ctx = { manifest: function () { return null; } };
   var errors = [];
   var idTimer = null, shotRid = null;
@@ -37,6 +37,48 @@
   function isBool(v) { return typeof v === "boolean"; }
   function count(v) { return typeof v === "number" && isFinite(v) && v >= 0 ? Math.round(v) : null; }
 
+  // ---- Brightness: the player darkens its own output with a black layer (the device's backlight is not touched). A night window
+  // lowers it further between two local times of the organization. Emergency messages are always shown at full brightness.
+  var CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
+  function pct(v, d) { return typeof v === "number" && isFinite(v) ? Math.max(10, Math.min(100, Math.round(v))) : d; }
+  function cleanDim(d) {
+    if (!d || typeof d !== "object" || !CLOCK.test(d.from) || !CLOCK.test(d.to) || d.from === d.to) return null;
+    return { level: pct(d.level, 100), from: d.from, to: d.to, tz: typeof d.tz === "string" ? d.tz : "" };
+  }
+  function minutes(t) { var m = CLOCK.exec(t); return Number(m[1]) * 60 + Number(m[2]); }
+  // The minute of the day (0..1439) in the organization's zone at time nowMs; the device's own zone when the name is unknown.
+  function minuteOfDay(nowMs, tz) {
+    try {
+      var parts = new Intl.DateTimeFormat("en-GB", { timeZone: tz || undefined, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(nowMs)).split(":");
+      return (Number(parts[0]) % 24) * 60 + Number(parts[1]);
+    } catch (e) { var d = new Date(nowMs); return d.getHours() * 60 + d.getMinutes(); }
+  }
+  // The brightness to show now (10..100): the base level, or the night level inside the window (which may cross midnight).
+  function brightnessFor(settings, nowMs) {
+    var base = pct(settings && settings.brightness, 100), dim = cleanDim(settings && settings.dim);
+    if (!dim) return base;
+    var now = minuteOfDay(nowMs, dim.tz), from = minutes(dim.from), to = minutes(dim.to);
+    var inside = from < to ? now >= from && now < to : now >= from || now < to;
+    return inside ? Math.min(base, dim.level) : base;
+  }
+  var dimmer = null;
+  function dimLayer() {
+    if (dimmer || !document.createElement) return dimmer;
+    dimmer = document.createElement("div");
+    dimmer.id = "dimmer";
+    dimmer.setAttribute("aria-hidden", "true");
+    body.appendChild(dimmer);
+    return dimmer;
+  }
+  function applyBrightness() {
+    var level = brightnessFor(cfg, A.sync && A.sync.clock && A.sync.clock.ready && A.sync.clock.ready() ? A.sync.clock.now() : Date.now());
+    var em = document.getElementById("emergency");
+    var emergency = !!(em && em.hidden === false);
+    var layer = level < 100 && !emergency ? dimLayer() : dimmer;
+    if (layer) layer.style.opacity = (level < 100 && !emergency) ? String(Math.round((100 - level)) / 100) : "0";
+  }
+  if (typeof setInterval === "function") setInterval(applyBrightness, 3000);
+
   // ---- Settings.
   function applySettings(s) {
     var legacy = !s || typeof s !== "object";
@@ -49,6 +91,8 @@
       allow_input: isBool(s.allow_input) ? s.allow_input : d.allow_input,
       resume_after_s: typeof s.resume_after_s === "number" && Math.floor(s.resume_after_s) === s.resume_after_s
         ? Math.max(RESUME_MIN_S, Math.min(RESUME_MAX_S, s.resume_after_s)) : d.resume_after_s,
+      brightness: pct(s.brightness, d.brightness),
+      dim: cleanDim(s.dim),
     };
     var rot = hasCap("rotate") ? 0 : cfg.orientation;  // the shell rotates the device itself
     cssRot = rot;
@@ -56,6 +100,7 @@
     R.setVolume(cfg.volume);
     body.classList.toggle("no-input", !cfg.allow_input);
     body.classList.toggle("input-on", cfg.allow_input);
+    applyBrightness();
   }
 
   // Input lock: keys, the context menu, the wheel and drags do nothing. Clicks and touches
@@ -359,6 +404,7 @@
     config: config,
     rotation: rotation,
     applySettings: applySettings,
+    brightnessFor: brightnessFor,
     command: command,
     identify: identify,
     capture: capture,

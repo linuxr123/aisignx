@@ -33,6 +33,7 @@ class BulkForm(FlaskForm):
     fit_override = SelectField("Fit", default=KEEP)
     volume = IntegerField("Volume (0-100)", validators=[Optional(), NumberRange(0, 100)], render_kw={"min": 0, "max": 100, "placeholder": "No change"})
     show_offline_banner = SelectField("Small banner when the screen is offline", choices=YES_NO, default=KEEP)
+    brightness = IntegerField("Brightness (10-100 %)", validators=[Optional(), NumberRange(10, 100)], render_kw={"min": 10, "max": 100, "placeholder": "No change"})
     resume_after_min = IntegerField("Resume after a pause (minutes)", validators=[Optional(), NumberRange(1, 60)], render_kw={"min": 1, "max": 60, "placeholder": "No change"})
 
     def __init__(self, *args, admin: bool = False, **kwargs):
@@ -62,6 +63,8 @@ def apply(displays: list[Display], form: BulkForm, post) -> dict[int, list[str]]
         plan["fit_override"] = None if form.fit_override.data == "default" else form.fit_override.data
     if form.volume.data is not None:
         plan["volume"] = form.volume.data
+    if form.brightness.data is not None:
+        plan["brightness"] = form.brightness.data
     if form.show_offline_banner.data != KEEP:
         plan["show_offline_banner"] = form.show_offline_banner.data == "1"
     if form.is_admin_form:

@@ -32,9 +32,9 @@ commands on Windows and the PowerPoint add-in inside PowerPoint have never run o
 
 ### Planned (not built)
 1. **One-click server update:** a button on Admin > Updates that downloads a release, verifies its signature (public key built into the server), backs up the database, upgrades and restarts. Needs a privileged helper and a generated release key; works only for servers set up by the installer scripts. Today the page only shows "update available"; see [docs/updates.md](docs/updates.md).
-2. **Recurring emergencies** (planned emergencies repeat on a schedule; today a plan runs once).
+2. ~~Recurring emergencies~~ (built: *Repeat* on a message's schedule).
 3. **API plan scheduling:** planning an emergency through the API (today the API sends and clears prepared messages only).
-4. **Brightness setting** for screens (no setting exists, on any platform).
+4. ~~Brightness setting~~ (built).
 5. **Windows live mode for web pages:** an optional live mode in the Windows app for sites that forbid embedding (screenshots already cover them).
 6. **Content extras:** media tags and folders, smart playlists (filled by tags), a schedule conflict view.
 7. **Later, maybe:** multiple sites and single sign-on (Phase 7, on hold).
@@ -43,6 +43,12 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
+
+## Unreleased: Brightness
+
+### Added
+- **Brightness** for every screen (Displays > Edit > Screen, also in bulk edit): a level from 10 to 100 % and an optional **night window** (dim to a lower level between two local times, across midnight if needed, in the organization's time zone). The player darkens its own picture; the device's backlight is not touched, so on LCD screens it changes how bright the picture looks but saves little power. Emergency messages are always shown at full brightness. Migration 0026. Works the same in the browser, Windows and Android players because the player page does it.
+- Removed from the Planned list: recurring emergencies (shipped earlier as *Repeat* on a message's schedule) and brightness.
 
 ## Unreleased: Android signing keys (3.0.7)
 
