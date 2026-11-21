@@ -4,18 +4,44 @@ A plan that is more than GRACE_MIN minutes late (the server was off at the time)
 "missed" and never sent: a fire drill announced an hour late is worse than none.
 """
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from ..audit import service as audit
 from ..extensions import db
 from ..models import EmergencyMessage, EmergencyPlan
-from ..timeutil import as_utc, utcnow
+from ..timeutil import as_utc, org_tz, utcnow
 from . import service
 
 log = logging.getLogger(__name__)
 GRACE_MIN = 10
 MAX_DURATION_MIN = 24 * 60
 CLEAR_EXPIRED = "expired"
+
+
+def next_start(starts_at, repeat: str, now=None):
+    """The next start after `starts_at` (and after `now`) for a repeating plan, at the same wall-clock time in the
+    organization's time zone (so a 10:00 drill stays at 10:00 across a clock change). None for "none"."""
+    if repeat not in ("daily", "weekdays", "weekly"):
+        return None
+    now = now or utcnow()
+    tz = org_tz()
+    local = as_utc(starts_at).astimezone(tz).replace(tzinfo=None)
+    for _ in range(400):
+        local += timedelta(days=7 if repeat == "weekly" else 1)
+        if repeat == "weekdays" and local.weekday() >= 5:
+            continue
+        candidate = as_utc(local.replace(tzinfo=tz))
+        if candidate > now:
+            return candidate
+    return None
+
+
+def _schedule_next(plan, now) -> None:
+    """A repeating plan is replaced by its next occurrence whether it was sent, missed or failed: the series goes on."""
+    when = next_start(plan.starts_at, plan.repeat, now)
+    if when is not None:
+        db.session.add(EmergencyPlan(template_id=plan.template_id, starts_at=when, duration_min=plan.duration_min,
+                                     repeat=plan.repeat, created_by_id=plan.created_by_id))
 
 
 def fire_due(now=None) -> int:
@@ -28,6 +54,7 @@ def fire_due(now=None) -> int:
         late = now - as_utc(plan.starts_at)
         if late > timedelta(minutes=GRACE_MIN):
             plan.state, plan.note = "missed", f"Not sent: the server was {int(late.total_seconds() // 60)} minutes late."
+            _schedule_next(plan, now)
             db.session.commit()
             log.warning("emergency plan %s missed (%s late)", plan.id, late)
             continue
@@ -35,12 +62,14 @@ def fire_due(now=None) -> int:
             msg = service.send_template(plan.template, plan.created_by)
         except service.TemplateError as exc:
             plan.state, plan.note = "failed", str(exc)[:200]
+            _schedule_next(plan, now)
             db.session.commit()
             log.warning("emergency plan %s failed: %s", plan.id, exc)
             continue
         if plan.duration_min:
             msg.ends_at = as_utc(plan.starts_at) + timedelta(minutes=plan.duration_min)
         plan.state, plan.message_id = "fired", msg.id
+        _schedule_next(plan, now)
         audit.record("emergency.send", ("emergency", msg.id, msg.title),
                      detail={"plan": plan.id, "template": plan.template.name, "target": msg.target_label,
                              "level": msg.level, "via": "schedule"})

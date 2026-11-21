@@ -67,12 +67,7 @@ def _add(app, kind, filename, data, version=""):
 
 def _upload_all(app):
     der, thumb = _cert_der()
-    zbuf = io.BytesIO()
-    with zipfile.ZipFile(zbuf, "w") as z:
-        z.writestr("aisignx-agent.exe", b"x" * 50)
     ids = {"player": _add(app, "windows-player", "AiSignX Player Setup 3.3.0.exe", b"MZ" + b"p" * 200, "3.3.0"),
-           "zip": _add(app, "windows-agent", "AiSignX-Agent-3.3.0.zip", zbuf.getvalue(), "3.3.0"),
-           "script": _add(app, "windows-agent", "Install-Agent.ps1", b"# agent installer\r\n", ""),
            "cert": _add(app, "windows-agent", "AiSignX-signing.cer", der, "")}
     return ids, thumb
 
@@ -120,7 +115,7 @@ def test_the_script_is_made_secret_bearing_valid_and_the_secrets_work(app, confi
     assert r.headers["Content-Disposition"].endswith('Setup-AiSignX-Windows-PC.ps1"')
     text = r.get_data(as_text=True)
     assert "@@" not in text and "\r\n" in text
-    for key in ("player", "zip", "script", "cert"):                                  # every file is checked against its hash
+    for key in ("player", "cert"):                                  # every file is checked against its hash
         with app.app_context():
             assert db.session.get(Download, ids[key]).sha256 in text
     assert thumb in text and "/provision/file/" in text and "kiosk" in text
@@ -181,8 +176,6 @@ def test_bad_account_or_address_makes_no_display(app, admin):
 def test_the_script_builder_refuses_unsafe_values():
     ok = dict(server="http://192.168.1.19:5000", name="PC", run_text="Application", kiosk_user="kiosk",
               player={"url": "http://192.168.1.19:5000/provision/file/a.b.c", "sha256": "a" * 64},
-              agent_zip={"url": "http://192.168.1.19:5000/provision/file/a.b.d", "sha256": "b" * 64},
-              agent_script={"url": "http://192.168.1.19:5000/provision/file/a.b.e", "sha256": "c" * 64},
               cert={"url": "http://192.168.1.19:5000/provision/file/a.b.f", "sha256": "d" * 64},
               thumbprint="A" * 40, pair_secret="s" * 30, enroll_code="ABCD-EFGH-JKLM-NPQR",
               key_fingerprint="ab12 cd34 ef56 7890", allow_reboot=True, allow_startup=True, allow_update=True, allow_autologin=False)
@@ -243,8 +236,8 @@ def test_the_work_folder_is_only_locked_down_when_elevated():
     """Found by running -DownloadOnly for real: locking the folder to administrators made an unelevated run unable to
     write into its own folder."""
     text = winscript.build(server="http://192.168.1.19:5000", name="PC", run_text="Application", kiosk_user="kiosk",
-                           player={"url": "http://h/a", "sha256": "a" * 64}, agent_zip={"url": "http://h/b", "sha256": "b" * 64},
-                           agent_script={"url": "http://h/c", "sha256": "c" * 64}, cert={"url": "http://h/d", "sha256": "d" * 64},
+                           player={"url": "http://h/a", "sha256": "a" * 64},
+                           cert={"url": "http://h/d", "sha256": "d" * 64},
                            thumbprint="A" * 40, pair_secret="s" * 30, enroll_code="ABCD-EFGH-JKLM-NPQR",
                            key_fingerprint="ab12 cd34 ef56 7890", allow_reboot=True, allow_startup=True, allow_update=True,
                            allow_autologin=False)

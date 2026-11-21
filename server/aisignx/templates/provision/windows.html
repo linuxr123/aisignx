@@ -12,7 +12,7 @@
 <div class="card mb-4" style="max-width: 44rem"><div class="card-body">
   <h2 class="h6">What the script uses from the Downloads page</h2>
   <ul class="list-unstyled small mb-0">
-    {% for label, row in [("Player installer (.exe)", files.player), ("Agent bundle (.zip)", files.zip), ("Agent script (Install-Agent.ps1)", files.script), ("Public signing certificate (.cer)", files.cert)] %}
+    {% for label, row in [("Setup program (.exe, player and agent in one)", files.player), ("Public signing certificate (.cer)", files.cert)] %}
     <li class="py-1">{% if row %}<span class="text-success">&#10003;</span> {{ label }}: <strong>{{ row.filename }}</strong>{% if row.version %} {{ row.version }}{% endif %}
       {% else %}<span class="text-danger">&#10007;</span> {{ label }}: <span class="text-danger">missing</span>{% endif %}</li>
     {% endfor %}

@@ -12,6 +12,7 @@ from ..audit import service as audit
 from ..auth.decorators import editor_required
 from ..extensions import db
 from ..models import EmergencyMessage, EmergencyPlan, EmergencyTemplate
+from ..models.emergency_plan import REPEATS
 from ..timeutil import as_utc, org_tz, utcnow
 from . import bp, service
 from .forms import ActionForm, EmergencyForm
@@ -216,12 +217,15 @@ def add_plan():
     if duration is not None and not 1 <= duration <= plan_service.MAX_DURATION_MIN:
         flash("Stay up for 1 to 1440 minutes, or leave it empty.", "danger")
         return redirect(url_for("emergency.index"))
-    plan = EmergencyPlan(template_id=tpl.id, starts_at=starts, duration_min=duration,
+    repeat = request.form.get("repeat", "none")
+    if repeat not in REPEATS:
+        repeat = "none"
+    plan = EmergencyPlan(template_id=tpl.id, starts_at=starts, duration_min=duration, repeat=repeat,
                          created_by_id=current_user.id)
     db.session.add(plan)
     db.session.flush()
     audit.record("emergency.plan_add", ("emergency_plan", plan.id, tpl.name),
-                 detail={"starts_at": starts.isoformat(), "duration_min": duration})
+                 detail={"starts_at": starts.isoformat(), "duration_min": duration, "repeat": repeat})
     db.session.commit()
     flash(f"Scheduled {tpl.name}.", "success")
     return redirect(url_for("emergency.index"))
@@ -236,5 +240,5 @@ def cancel_plan(plan_id: int):
         plan.state = "cancelled"
         audit.record("emergency.plan_cancel", ("emergency_plan", plan.id, plan.template.name))
         db.session.commit()
-        flash("Cancelled.", "info")
+        flash("Cancelled. A repeating message stops repeating." if plan.repeat != "none" else "Cancelled.", "info")
     return redirect(url_for("emergency.index"))

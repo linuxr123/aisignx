@@ -1,7 +1,7 @@
 {
   "name": "aisignx-player",
   "productName": "AiSignX Player",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "description": "AiSignX v3 display client",
   "license": "AGPL-3.0-or-later",
   "private": true,
@@ -12,7 +12,7 @@
     "test": "node --test \"test/*.test.js\"",
     "smoke": "electron . --smoke --server=http://127.0.0.1:5000",
     "prebuild:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prebuild_clean.ps1",
-    "dist:win": "npm run prebuild:win && electron-builder --win nsis --x64",
+    "dist:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Build-Setup.ps1",
     "dist:linux": "electron-builder --linux AppImage deb --x64",
     "agent:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Build-Agent.ps1"
   },
@@ -43,6 +43,10 @@
       {
         "from": "resources/agent/ps",
         "to": "agent/ps"
+      },
+      {
+        "from": "agent-pack",
+        "to": "agent-install"
       }
     ],
     "win": {
@@ -61,7 +65,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
+      "perMachine": true,
+      "include": "assets/installer.nsh",
       "allowElevation": true,
       "allowToChangeInstallationDirectory": false,
       "runAfterFinish": true,

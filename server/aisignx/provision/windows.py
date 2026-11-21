@@ -46,18 +46,15 @@ class WindowsForm(FlaskForm):
 
 
 def _files() -> dict:
-    """What the script needs from the Downloads page: the signed installer, the agent bundle and script, the certificate."""
-    return {"player": latest_download("windows-player", "exe"), "zip": latest_download("windows-agent", "zip"),
-            "script": latest_download("windows-agent", "ps1"), "cert": latest_download("windows-agent", "cer")}
+    """What the script needs from the Downloads page: the one signed setup .exe (player and agent inside) and the certificate."""
+    return {"player": latest_download("windows-player", "exe"), "cert": latest_download("windows-agent", "cer")}
 
 
 def _problem(files: dict) -> str | None:
     missing = [label for key, label in (("player", "the Windows player installer (.exe, kind Windows player app)"),
-                                        ("zip", "the agent bundle (AiSignX-Agent-<version>.zip)"),
-                                        ("script", "the agent script (Install-Agent.ps1)"),
                                         ("cert", "your public signing certificate (.cer)")) if files[key] is None]
     if missing:
-        return "Upload " + ", ".join(missing) + " on the Downloads page first (kind Windows agent for the last three)."
+        return "Upload " + ", ".join(missing) + " on the Downloads page first (kind Windows agent for the certificate)."
     return None
 
 
@@ -102,7 +99,7 @@ def windows():
                 text = winscript.build(
                     server=base, name=form.name.data, run_text=RUN_LABELS.get(form.run_as.data, "Application"),
                     kiosk_user=form.kiosk_user.data.strip(),
-                    player=_link(files["player"]), agent_zip=_link(files["zip"]), agent_script=_link(files["script"]),
+                    player=_link(files["player"]),
                     cert=_link(files["cert"]), thumbprint=thumbprint, pair_secret=secret, enroll_code=code,
                     key_fingerprint=signing.fingerprint(),
                     allow_reboot=display.agent_allow_reboot, allow_startup=display.agent_allow_startup,

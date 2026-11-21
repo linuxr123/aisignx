@@ -8,15 +8,30 @@ administrator. Design and reasoning: [windows-agent-service.md](windows-agent-se
 **Status: built and unit-tested, never run on a real PC.** Treat everything below as what the scripts and code do, not
 as something a device has confirmed. The open questions are listed at the end.
 
+## One setup .exe: player and agent together
+
+Since 3.4.0 the build makes **one** `AiSignX Player Setup <version>.exe` (build: `npm run dist:win` in `clients\electron-client`, with
+`AISIGNX_SIGN_THUMBPRINT` set; it builds the app, the agent bundle and the installer with everything inside, and signs it). It installs
+the player **for all users** (it asks Windows for administrator permission) and puts the privileged agent's files, its signed
+`Install-Agent.ps1` and your public signing certificate next to it. The installer is about 280 MB because the agent runs its own copy of the runtime.
+
+- **By hand:** run the .exe. A page asks for the server address, the **enrollment code**, the **key fingerprint** (all on Displays > the
+  screen > Device agent) and what the web page may do. The screen must be **paired first**, so on a new PC leave the code empty, pair the
+  screen, then use **Start menu > Connect AiSignX agent** (it asks for the same things).
+- **Silent:** `"AiSignX Player Setup.exe" /S /SERVER=http://192.168.1.19:5000 /CODE=ABCD-EFGH-JKLM-NPQR /KEY="ab12 cd34 ef56 7890" /KIOSKUSER=kiosk /ALLOW=update,startup`.
+  The generated script of the next section does this for you (it passes the values in the environment, not on a command line).
+- Uninstalling the player from Windows removes the agent too.
+- The separate `AiSignX-Agent-*.zip` and `Install-Agent.ps1` (`npm run agent:win`) still exist for installing the agent without the player, but the Downloads page and the PC script no longer need them. The installer has been built, but is **not yet tested on a real PC**.
+
 ## One-step set-up of a PC (recommended)
 
 Instead of installing the player, pairing it and running `Install-Agent.ps1` by hand, the admin can make **one script for
 one PC**:
 
-1. **Once**, put these on the **Downloads** page: the signed player installer (`AiSignX Player Setup <version>.exe`), the
-   agent bundle (`AiSignX-Agent-<version>.zip`), `Install-Agent.ps1`, and your **public** signing certificate
+1. **Once**, put these on the **Downloads** page: the one signed setup program (`AiSignX Player Setup <version>.exe`,
+   player and agent inside), and your **public** signing certificate
    (`AiSignX-signing.cer`, exported without the private key: `Export-Certificate -Cert Cert:\CurrentUser\My\<thumbprint>
-   -FilePath AiSignX-signing.cer`). They are recognised by name (kind *Windows agent*).
+   -FilePath AiSignX-signing.cer`). The certificate is recognised by name (kind *Windows agent*).
 2. **Downloads > Set up a Windows PC (one script)**: name the screen, pick a playlist, the Windows account the player runs
    as (it must exist on the PC; a standard account is best), how the player runs (see below), the address the PC uses to
    reach the server, and what the web page may do to the PC (reboot, change how the player runs, install updates,

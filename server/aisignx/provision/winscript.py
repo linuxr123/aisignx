@@ -68,10 +68,6 @@ $ErrorActionPreference = 'Stop'
 $Server       = @@SERVER@@
 $PlayerUrl    = @@PLAYER_URL@@
 $PlayerSha    = @@PLAYER_SHA@@
-$AgentZipUrl  = @@ZIP_URL@@
-$AgentZipSha  = @@ZIP_SHA@@
-$AgentPsUrl   = @@PS_URL@@
-$AgentPsSha   = @@PS_SHA@@
 $CertUrl      = @@CERT_URL@@
 $CertSha      = @@CERT_SHA@@
 $Thumbprint   = @@THUMBPRINT@@
@@ -138,8 +134,6 @@ function Get-Verified([string]$url, [string]$name, [string]$sha) {
 try {
     Step 'Downloading and checking the files'
     $installer = Get-Verified $PlayerUrl 'AiSignX-Player-Setup.exe' $PlayerSha
-    $zip       = Get-Verified $AgentZipUrl 'AiSignX-Agent.zip' $AgentZipSha
-    $agentPs   = Get-Verified $AgentPsUrl 'Install-Agent.ps1' $AgentPsSha
     $cer       = Get-Verified $CertUrl 'signing.cer' $CertSha
     $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList $cer
     if ($cert.Thumbprint -ne $Thumbprint) { Fail 'The signing certificate does not have the thumbprint this script expects.' }
@@ -148,17 +142,6 @@ try {
     if (-not $sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $Thumbprint) { Fail 'The player installer was not signed by your code-signing certificate.' }
     Ok 'all files match their checksums; the installer is signed by your certificate'
     if ($DownloadOnly) { Ok 'Download only: nothing was installed.'; exit 0 }
-
-    # --- the player ------------------------------------------------------------------------------------------------
-    Step 'Installing the player for all users'
-    $proc = Start-Process -FilePath $installer -ArgumentList '/S', '/allusers' -Wait -PassThru
-    if ($proc.ExitCode -ne 0) { Fail "The player installer failed (exit code $($proc.ExitCode))." }
-    $player = Join-Path $env:ProgramFiles 'AiSignX Player\AiSignX Player.exe'
-    if (-not (Test-Path -LiteralPath $player)) {
-        $found = Get-ChildItem -LiteralPath $env:ProgramFiles -Filter 'AiSignX Player.exe' -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($found) { $player = $found.FullName } else { Fail 'The player was installed but its program file was not found under Program Files.' }
-    }
-    Ok "installed: $player"
 
     # --- pairing ---------------------------------------------------------------------------------------------------
     Step 'Pairing this PC with the screen'
@@ -174,20 +157,19 @@ try {
     [IO.File]::WriteAllText((Join-Path $dataDir 'setup.json'), ($setup | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     Ok "paired as $($r.display.name)"
 
-    # --- the privileged agent --------------------------------------------------------------------------------------
-    Step 'Installing and enrolling the privileged agent'
-    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote $agentPs),
-           '-Server', $Server.TrimEnd('/'), '-Code', $EnrollCode, '-KeyFingerprint', (Quote $KeyPrint),
-           '-Thumbprint', $Thumbprint, '-CertFile', (Quote $cer), '-Bundle', (Quote $zip), '-BundleSha256', $AgentZipSha,
-           '-KioskUser', (Quote $KioskUser), '-PlayerExe', (Quote $player), '-SkipSelfCheck', '-Yes')
-    if ($AllowReboot) { $a += '-AllowReboot' }
-    if ($AllowStartup) { $a += '-AllowStartup' }
-    if ($AllowUpdate) { $a += '-AllowUpdate' }
-    if ($AllowAutologin) { $a += '-AllowAutologin' }
-    if ($InsecureHttp) { $a += '-AllowInsecureHttp' }
-    $ag = Start-Process -FilePath powershell.exe -ArgumentList $a -Wait -PassThru -NoNewWindow
-    if ($ag.ExitCode -ne 0) { Fail "The agent installer failed (exit code $($ag.ExitCode)); read what it printed above. The player is installed and paired." }
-    Ok 'the agent is installed and running'
+    # --- the player and the privileged agent: ONE setup .exe -----------------------------------------------------------
+    Step 'Installing the player and the privileged agent (one installer)'
+    # The values reach the installer through this process's environment, never through its command line.
+    $env:AISIGNX_SETUP_SERVER = $Server.TrimEnd('/'); $env:AISIGNX_SETUP_CODE = $EnrollCode; $env:AISIGNX_SETUP_KEY = $KeyPrint
+    $env:AISIGNX_SETUP_KIOSKUSER = $KioskUser
+    $allow = @(); if ($AllowReboot) { $allow += 'reboot' }; if ($AllowStartup) { $allow += 'startup' }; if ($AllowUpdate) { $allow += 'update' }
+    $env:AISIGNX_SETUP_ALLOW = ($allow -join ',')
+    $proc = Start-Process -FilePath $installer -ArgumentList '/S', '/allusers' -Wait -PassThru
+    Remove-Item Env:\AISIGNX_SETUP_CODE -ErrorAction SilentlyContinue
+    if ($proc.ExitCode -ne 0) { Fail "The setup program did not finish (exit code $($proc.ExitCode)). If the player is installed but not the agent, use Start menu > Connect AiSignX agent." }
+    $player = Join-Path $env:ProgramFiles 'AiSignX Player\AiSignX Player.exe'
+    if (-not (Test-Path -LiteralPath $player)) { Fail 'The player was installed but its program file was not found under Program Files.' }
+    Ok "installed: $player; the agent is installed and connected"
 
     # --- start the player now (if the player account is signed in; otherwise it starts at its next sign-in) --------
     Start-ScheduledTask -TaskName 'AiSignX Player Launch' -ErrorAction SilentlyContinue
@@ -205,13 +187,13 @@ finally {
 """
 
 
-def build(*, server: str, name: str, run_text: str, kiosk_user: str, player: dict, agent_zip: dict, agent_script: dict,
+def build(*, server: str, name: str, run_text: str, kiosk_user: str, player: dict,
           cert: dict, thumbprint: str, pair_secret: str, enroll_code: str, key_fingerprint: str, allow_reboot: bool,
           allow_startup: bool, allow_update: bool, allow_autologin: bool) -> str:
-    """The script text. player/agent_zip/agent_script/cert are {"url", "sha256"}. Raises ValueError for anything unsafe."""
+    """The script text. player/cert are {"url", "sha256"}. Raises ValueError for anything unsafe."""
     if not _URL.match(server or ""):
         raise ValueError("bad server")
-    for label, d in (("player", player), ("agent zip", agent_zip), ("agent script", agent_script), ("certificate", cert)):
+    for label, d in (("player", player), ("certificate", cert)):
         if not _URL.match(d.get("url", "")) or not _HEX64.match(d.get("sha256", "")):
             raise ValueError(f"bad {label}")
     if not _THUMB.match(thumbprint or ""):
@@ -227,8 +209,6 @@ def build(*, server: str, name: str, run_text: str, kiosk_user: str, player: dic
             .replace("@@KIOSK_TEXT@@", re.sub(r"[^A-Za-z0-9._ -]", "", kiosk_user))
             .replace("@@SERVER@@", _q(server))
             .replace("@@PLAYER_URL@@", _q(player["url"])).replace("@@PLAYER_SHA@@", _q(player["sha256"]))
-            .replace("@@ZIP_URL@@", _q(agent_zip["url"])).replace("@@ZIP_SHA@@", _q(agent_zip["sha256"]))
-            .replace("@@PS_URL@@", _q(agent_script["url"])).replace("@@PS_SHA@@", _q(agent_script["sha256"]))
             .replace("@@CERT_URL@@", _q(cert["url"])).replace("@@CERT_SHA@@", _q(cert["sha256"]))
             .replace("@@THUMBPRINT@@", _q(thumbprint)).replace("@@PAIR_SECRET@@", _q(pair_secret))
             .replace("@@ENROLL_CODE@@", _q(enroll_code)).replace("@@KEY_FINGERPRINT@@", _q(key_fingerprint))

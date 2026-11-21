@@ -44,6 +44,13 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
+## Unreleased: One Windows setup program, emergency schedules per message
+
+### Changed
+- **One Windows setup .exe (3.4.0):** installs the player for all users and the privileged agent together (agent files, signed `Install-Agent.ps1` and your public certificate inside). A wizard page takes the server address, enrollment code and key fingerprint; silent installs take `/SERVER= /CODE= /KEY= /KIOSKUSER= /ALLOW=` (or the same values in `AISIGNX_SETUP_*` environment variables). Start menu entry **Connect AiSignX agent** for connecting later; uninstalling removes the agent. Build: `npm run dist:win` (new `scripts/Build-Setup.ps1`). Built and compiled; not yet run on a real PC.
+- The generated **Set up a Windows PC** script now needs only the setup program and the certificate on Downloads: it pairs first, then runs the one installer.
+- **Emergency:** every saved message has its own **Schedule** form on its card, with **Repeat** (once, every day, weekdays, every week; the next one is created after each, at the same local time across clock changes). New `emergency_plans.repeat` (migration 0022). Cancelling a repeating plan stops the series.
+
 ## Unreleased: HTTPS with nginx
 
 ### Added

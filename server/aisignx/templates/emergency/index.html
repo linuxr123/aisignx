@@ -84,6 +84,33 @@
           {% endif %}
           <span class="em-meta ms-auto">API id {{ t.id }}</span>
         </div>
+        {% set mine = plans|selectattr("template_id", "equalto", t.id)|selectattr("state", "equalto", "pending")|list %}
+        <details class="em-sched mt-2"{% if mine %} open{% endif %}>
+          <summary class="small text-secondary">{{ icon("clock", 13) }} Schedule{% if mine %} ({{ mine|length }} planned){% endif %}</summary>
+          {% for p in mine|sort(attribute="starts_at") %}
+          <div class="d-flex align-items-center gap-2 small py-1">
+            <span>{{ p.starts_at|localtime }}</span>
+            <span class="text-secondary">{{ {"daily": "every day", "weekdays": "weekdays", "weekly": "every week"}.get(p.repeat, "once") }}{{ (", " ~ p.duration_min ~ " min") if p.duration_min else "" }}</span>
+            {% if current_user.can_edit %}
+            <form method="post" action="{{ url_for('emergency.cancel_plan', plan_id=p.id) }}" class="ms-auto" data-confirm="Cancel this scheduled message{{ ' and its repeat' if p.repeat != 'none' else '' }}?">
+              {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-link text-secondary py-0" type="submit">Cancel</button></form>
+            {% endif %}
+          </div>
+          {% endfor %}
+          {% if current_user.can_edit and tname %}
+          <form method="post" action="{{ url_for('emergency.add_plan') }}" class="row g-2 mt-1">
+            {{ action_form.hidden_tag() }}<input type="hidden" name="template_id" value="{{ t.id }}">
+            <div class="col-12"><label class="form-label small mb-0" for="ps-{{ t.id }}">Starts <span class="text-secondary">(organization time)</span></label>
+              <input class="form-control form-control-sm" type="datetime-local" id="ps-{{ t.id }}" name="starts_at" required></div>
+            <div class="col-6"><label class="form-label small mb-0" for="pd-{{ t.id }}">Stays up (min)</label>
+              <input class="form-control form-control-sm" type="number" id="pd-{{ t.id }}" name="duration_min" min="1" max="1440" placeholder="until cleared"></div>
+            <div class="col-6"><label class="form-label small mb-0" for="pr-{{ t.id }}">Repeat</label>
+              <select class="form-select form-select-sm" id="pr-{{ t.id }}" name="repeat">
+                <option value="none">Once</option><option value="daily">Every day</option><option value="weekdays">Weekdays (Mon-Fri)</option><option value="weekly">Every week</option></select></div>
+            <div class="col-12"><button class="btn btn-sm btn-outline-danger w-100" type="submit">Schedule {{ t.name }}</button></div>
+          </form>
+          {% endif %}
+        </details>
       </article>
       {% endfor %}
       {% if form %}
@@ -108,7 +135,7 @@
       <div class="em-plan">
         {% set when = (p.starts_at|localtime).split(" ") %}
         <div class="em-when"><b>{{ when[1] if when|length > 1 else when[0] }}</b><span>{{ when[0] if when|length > 1 else "" }}{{ " " ~ when[2] if when|length > 2 else "" }}</span></div>
-        <div class="em-what">{{ p.template.name }}<small>{{ ("stays up " ~ p.duration_min ~ " min") if p.duration_min else "stays up until cleared" }}</small></div>
+        <div class="em-what">{{ p.template.name }}<small>{{ ("stays up " ~ p.duration_min ~ " min") if p.duration_min else "stays up until cleared" }}{{ {"daily": " · every day", "weekdays": " · weekdays", "weekly": " · every week"}.get(p.repeat, "") }}</small></div>
         {% if current_user.can_edit %}
         <form method="post" action="{{ url_for('emergency.cancel_plan', plan_id=p.id) }}" data-confirm="Cancel this scheduled message?">
           {{ action_form.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit">Cancel</button></form>
@@ -118,21 +145,7 @@
       <p class="text-secondary small mb-0">Nothing scheduled.</p>
       {% endfor %}
     </div>
-    {% if templates and current_user.can_edit %}
-    <form method="post" action="{{ url_for('emergency.add_plan') }}" class="em-card">
-      {{ action_form.hidden_tag() }}
-      <h3 class="h6 mb-3">{{ icon("clock", 15) }} Schedule a saved message</h3>
-      <label class="form-label small mb-1" for="plan-template">Message</label>
-      <select class="form-select mb-2" id="plan-template" name="template_id" required>
-        {% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
-      </select>
-      <label class="form-label small mb-1" for="plan-start">Starts <span class="text-secondary">(organization time)</span></label>
-      <input class="form-control mb-2" type="datetime-local" id="plan-start" name="starts_at" required>
-      <label class="form-label small mb-1" for="plan-dur">Stays up <span class="text-secondary">(minutes, optional)</span></label>
-      <input class="form-control mb-3" type="number" id="plan-dur" name="duration_min" min="1" max="1440" placeholder="until cleared">
-      <button class="btn btn-outline-danger w-100" type="submit">Schedule</button>
-    </form>
-    {% endif %}
+    <p class="text-secondary small">Schedule each saved message from its own card ("Schedule"), once or repeating.</p>
     {% if earlier %}
     <details class="mt-3 small">
       <summary class="text-secondary">Earlier plans ({{ earlier|length }})</summary>

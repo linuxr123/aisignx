@@ -148,3 +148,48 @@ def test_schedule_page_flow(admin_client, app):
     admin_client.post(f"/emergency/plans/{pid}/cancel", data={"csrf_token": _csrf(admin_client)})
     with app.app_context():
         assert EmergencyPlan.query.one().state == "cancelled"
+
+
+def test_a_repeating_plan_is_followed_by_its_next_occurrence_at_the_same_local_time(admin_client, app):
+    from datetime import datetime, timedelta, timezone
+    from aisignx.emergency import plans
+    from aisignx.models import EmergencyPlan, Setting
+    from aisignx.timeutil import org_tz
+    tid = _template(app)
+    with app.app_context():
+        Setting.set("timezone", "America/New_York")
+        tz = org_tz()
+        fri = datetime(2026, 3, 6, 10, 0, tzinfo=tz)                       # Friday 10:00 local, a week before the clock change
+        utc = fri.astimezone(timezone.utc)
+        assert plans.next_start(utc, "none", utc) is None
+        wk = plans.next_start(utc, "weekdays", utc).astimezone(tz)
+        assert (wk.weekday(), wk.hour, wk.day) == (0, 10, 9)               # Friday -> Monday, still 10:00
+        dl = plans.next_start(fri.replace(day=7).astimezone(timezone.utc), "daily", utc).astimezone(tz)
+        assert (dl.day, dl.hour) == (8, 10)
+        w = plans.next_start(fri.replace(day=6).astimezone(timezone.utc), "weekly", utc).astimezone(tz)
+        assert (w.month, w.day, w.hour) == (3, 13, 10)
+        dst = plans.next_start(datetime(2026, 3, 7, 10, 0, tzinfo=tz).astimezone(timezone.utc), "daily", utc).astimezone(tz)
+        assert dst.day == 8 and dst.hour == 10                              # the clocks changed on the 8th: still 10:00
+        # firing a repeating plan leaves the next one pending; cancelling the pending one ends the series
+        now = datetime.now(timezone.utc)
+        db.session.add(EmergencyPlan(template_id=tid, starts_at=now - timedelta(seconds=5), repeat="daily"))
+        db.session.commit()
+        assert plans.fire_due(now) == 1
+        rows = sorted(EmergencyPlan.query.all(), key=lambda p: p.id)
+        assert [p.state for p in rows] == ["fired", "pending"] and rows[1].repeat == "daily"
+        assert 23 <= (rows[1].starts_at.replace(tzinfo=timezone.utc) - now).total_seconds() / 3600 <= 25
+        assert plans.fire_due(now) == 0                                      # one occurrence only
+
+
+def test_each_saved_message_has_its_own_schedule_form_and_repeat_is_saved(admin_client, app):
+    tid = _template(app)
+    page = admin_client.get("/emergency/").get_data(as_text=True)
+    assert f'name="template_id" value="{tid}"' in page and 'name="repeat"' in page
+    r = admin_client.post("/emergency/plans", data={"csrf_token": _csrf(admin_client), "template_id": tid,
+                                                    "starts_at": "2099-01-05T10:00", "repeat": "weekdays", "duration_min": "30"})
+    assert r.status_code == 302
+    from aisignx.models import EmergencyPlan
+    with app.app_context():
+        p = EmergencyPlan.query.one()
+        assert p.repeat == "weekdays" and p.duration_min == 30
+    assert b"weekdays" in admin_client.get("/emergency/").data
