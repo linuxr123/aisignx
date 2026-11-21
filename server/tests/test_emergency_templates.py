@@ -193,3 +193,100 @@ def test_each_saved_message_has_its_own_schedule_form_and_repeat_is_saved(admin_
         p = EmergencyPlan.query.one()
         assert p.repeat == "weekdays" and p.duration_min == 30
     assert b"weekdays" in admin_client.get("/emergency/").data
+
+
+# ---- planning through the API ----------------------------------------------------------------------------------------------
+def _api(app):
+    uid = make_user(app, "planner", "editor")
+    return {"Authorization": f"Bearer {make_token(app, uid, scopes='emergency:send')}"}
+
+
+def test_the_api_plans_lists_and_cancels_a_saved_message(configured, client, app):
+    from datetime import datetime, timedelta, timezone
+    from aisignx.models import EmergencyPlan
+    h = _api(app)
+    tid = _template(app)
+    when = (datetime.now(timezone.utc) + timedelta(days=2)).replace(microsecond=0)
+    body = {"template_id": tid, "starts_at": when.isoformat().replace("+00:00", "Z"), "duration_min": 30, "repeat": "weekdays"}
+    r = client.post("/api/v1/emergency/plans", json=body, headers=h)
+    assert r.status_code == 201 and r.get_json()["already_planned"] is False
+    plan = r.get_json()["plan"]
+    assert plan["template_id"] == tid and plan["duration_min"] == 30 and plan["repeat"] == "weekdays" and plan["state"] == "pending"
+    again = client.post("/api/v1/emergency/plans", json=body, headers=h)                       # a retried webhook
+    assert again.status_code == 200 and again.get_json()["already_planned"] is True and again.get_json()["plan"]["id"] == plan["id"]
+    listing = client.get("/api/v1/emergency/plans", headers=h).get_json()
+    assert [p["id"] for p in listing["pending"]] == [plan["id"]]
+    cancelled = client.delete(f"/api/v1/emergency/plans/{plan['id']}", headers=h)
+    assert cancelled.status_code == 200 and cancelled.get_json()["plan"]["state"] == "cancelled"
+    assert client.delete(f"/api/v1/emergency/plans/{plan['id']}", headers=h).status_code == 409        # already cancelled
+    assert client.get("/api/v1/emergency/plans", headers=h).get_json()["pending"] == []
+    with app.app_context():
+        assert EmergencyPlan.query.count() == 1
+
+
+def test_a_time_without_an_offset_is_the_organizations_local_time(configured, client, app):
+    from aisignx.models import EmergencyPlan, Setting
+    h = _api(app)
+    tid = _template(app)
+    with app.app_context():
+        Setting.set("timezone", "America/New_York")
+        db.session.commit()
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+    day = (datetime.now(timezone.utc) + timedelta(days=60)).date()
+    r = client.post("/api/v1/emergency/plans", json={"template_id": tid, "starts_at": f"{day}T10:00"}, headers=h)
+    assert r.status_code == 201
+    expected = datetime(day.year, day.month, day.day, 10, 0, tzinfo=ZoneInfo("America/New_York")).astimezone(timezone.utc)
+    assert r.get_json()["plan"]["starts_at"].startswith(expected.strftime("%Y-%m-%dT%H:%M:00"))   # 10:00 in New York, whatever the clock rule
+    with app.app_context():
+        assert EmergencyPlan.query.one().duration_min is None and EmergencyPlan.query.one().repeat == "none"
+
+
+def test_the_plan_api_refuses_bad_input_and_needs_the_scope(configured, client, app):
+    h = _api(app)
+    tid = _template(app)
+    from datetime import datetime, timedelta, timezone
+    good = {"template_id": tid, "starts_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()}
+    for bad, code in (({"starts_at": good["starts_at"]}, 404), ({**good, "template_id": 9999}, 404), ({**good, "starts_at": "tomorrow"}, 400),
+                      ({**good, "starts_at": "2000-01-01T00:00:00Z"}, 400), ({**good, "starts_at": "2200-01-01T00:00:00Z"}, 400),
+                      ({**good, "duration_min": 0}, 400), ({**good, "duration_min": 5000}, 400), ({**good, "duration_min": "30"}, 400),
+                      ({**good, "duration_min": True}, 400), ({**good, "repeat": "hourly"}, 400)):
+        assert client.post("/api/v1/emergency/plans", json=bad, headers=h).status_code == code, bad
+    assert client.post("/api/v1/emergency/plans", data="not json", headers=h).status_code == 400
+    assert client.post("/api/v1/emergency/plans", json=good).status_code == 401                 # no token
+    vid = make_user(app, "viewer", "viewer")
+    vraw = make_token(app, vid, scopes="emergency:send")
+    assert client.post("/api/v1/emergency/plans", json=good, headers={"Authorization": f"Bearer {vraw}"}).status_code == 403
+    assert client.delete("/api/v1/emergency/plans/1", headers={"Authorization": f"Bearer {vraw}"}).status_code == 403
+    assert client.delete("/api/v1/emergency/plans/12345", headers=h).status_code == 404
+
+
+def test_the_plan_api_fires_like_any_other_plan(configured, client, app):
+    from datetime import datetime, timedelta, timezone
+    from aisignx.emergency import plans
+    h = _api(app)
+    tid = _template(app)
+    soon = datetime.now(timezone.utc) + timedelta(seconds=30)
+    r = client.post("/api/v1/emergency/plans", json={"template_id": tid, "starts_at": soon.isoformat(), "duration_min": 5, "repeat": "daily"}, headers=h)
+    assert r.status_code == 201
+    with app.app_context():
+        assert plans.fire_due(soon + timedelta(seconds=1)) == 1
+        msg = EmergencyMessage.query.one()
+        assert msg.live and msg.ends_at is not None
+    again = client.get("/api/v1/emergency/plans", headers=h).get_json()
+    assert [p["repeat"] for p in again["pending"]] == ["daily"] and again["recent"][0]["state"] == "fired"       # the next occurrence is waiting
+
+
+def test_the_pending_plans_are_capped(configured, client, app):
+    from aisignx.api import emergency as api_emergency
+    from aisignx.models import EmergencyPlan
+    from aisignx.timeutil import utcnow
+    from datetime import timedelta
+    h = _api(app)
+    tid = _template(app)
+    with app.app_context():
+        for i in range(api_emergency.MAX_PENDING_PLANS):
+            db.session.add(EmergencyPlan(template_id=tid, starts_at=utcnow() + timedelta(days=1, minutes=i)))
+        db.session.commit()
+    r = client.post("/api/v1/emergency/plans", json={"template_id": tid, "starts_at": (utcnow() + timedelta(days=30)).isoformat()}, headers=h)
+    assert r.status_code == 409

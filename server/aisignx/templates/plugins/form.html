@@ -25,7 +25,7 @@
           <div class="form-text">How long this item shows in a playlist unless the playlist item sets its own time.</div>
         </div>
         {% for f in plugin.schema %}
-        {{ field(f, values.get(f.name), errors.get(f.name), timezones=timezones, images=images) }}
+        {{ field(f, values.get(f.name), errors.get(f.name), timezones=timezones, images=images, image_sources=image_sources) }}
         {% endfor %}
         <button class="btn btn-primary" type="submit">{{ "Save" if media else "Add to library" }}</button>
         <a class="btn btn-link" href="{{ url_for('media.index') }}">Cancel</a>

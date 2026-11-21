@@ -14,7 +14,7 @@
 {{ "1" if value in (true, 1, "1", "on", "true", "yes", "y") else "" }}
 {%- endmacro %}
 
-{% macro field(f, value, error, timezones=(), images=(), prefix="pf-") %}
+{% macro field(f, value, error, timezones=(), images=(), image_sources=(), prefix="pf-") %}
 {% set id = prefix ~ f.name %}
 {% set invalid = " is-invalid" if error else "" %}
 {{ _wrap_open(f, error) }}

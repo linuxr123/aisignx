@@ -340,3 +340,25 @@ def test_the_plugin_form_offers_the_sources_and_validates_the_choice(app, config
         for bad in ("abc", "0", "9999"):
             value, error = schema.validate_value(field, bad)
             assert error, bad
+
+
+def test_the_plugin_form_lists_the_sources_in_its_dropdown(app, configured, photos):
+    """The first version passed the sources to the page but not into the field macro, so the dropdown said "No source yet"."""
+    sid = _source(app, "folder", str(photos), name="Family photos")
+    make_user(app, "boss", "admin")
+    c = app.test_client()
+    login(c, "boss")
+    html = c.get("/plugins/new/image_library").get_data(as_text=True)
+    select = re.search(r'<select[^>]*name="image_source".*?</select>', html, re.S).group(0)
+    assert f'<option value="{sid}"' in select and "Family photos" in select and "No source yet" not in select
+    _sync(app, sid)
+    r = c.post("/plugins/new/image_library", data={"name": "Photos", "source": "connected", "image_source": str(sid), "source_count": "20", "source_order": "newest",
+                                                  "mode": "slideshow", "seconds_per_image": "8", "transition": "fade", "fit": "contain", "background": "blur",
+                                                  "caption": "none", "auto_duration": "y", "default_duration": "40"}, follow_redirects=True)
+    assert r.status_code == 200
+    with app.app_context():
+        item = Media.query.filter_by(media_type="plugin").one()
+        assert item.plugin_config["image_source"] == sid
+        mid = item.id
+    again = c.get(f"/plugins/items/{mid}/edit").get_data(as_text=True)                      # editing it later still shows the chosen source
+    assert re.search(rf'<option value="{sid}" selected', again)
