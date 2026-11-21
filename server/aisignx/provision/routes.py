@@ -123,12 +123,18 @@ def install_link_info():
     expires = Setting.get_datetime("install_link.expires")
     if not code or expires is None or expires <= utcnow():
         return None
-    base = request.host_url.rstrip("/")
-    if request.host.split(":")[0] in ("localhost", "127.0.0.1", "::1", "[::1]"):
-        base = service.lan_address(request.host.rsplit(":", 1)[-1] if ":" in request.host else 80)
+    base = _base_url()
     url = f"{base}/get/{code}"
     return {"url": url, "short": url.split("://", 1)[-1], "code": code, "svg": service.qr_svg_text(url),
-            "expires": expires, "base": base}
+            "expires": expires, "base": base, "tv_script": f"{base}/get/{code}/tv.ps1"}
+
+
+def _base_url() -> str:
+    """The address another device should use to reach this server: the one in the address bar, or this computer's
+    LAN address when the admin is looking at the page as localhost."""
+    if request.host.split(":")[0] in ("localhost", "127.0.0.1", "::1", "[::1]"):
+        return service.lan_address(request.host.rsplit(":", 1)[-1] if ":" in request.host else 80)
+    return request.host_url.rstrip("/")
 
 
 @get_bp.route("/<code>")
@@ -145,3 +151,29 @@ def get(code: str):
 
     return render_template("provision/get.html", download=download, link=link,
                            base=request.host_url.rstrip("/"), org=Setting.get("org_name"))
+
+
+@get_bp.route("/<code>/tv.ps1")
+def tv_script(code: str):
+    """The PC install script for Android TV boxes (docs/android-tv.md). Opened by the same code as the install page."""
+    from flask import Response
+
+    from . import tvscript
+
+    if not service.install_link_valid(code):
+        abort(404)
+    download = _installer()
+    package = service.detect_package(downloads_dir() / download.stored_name) if download else None
+    if download is None or package is None:
+        abort(404)
+    base = _base_url()
+    try:
+        text = tvscript.build(server=base, apk_url=base + url_for("provision.apk", token=service.apk_token(download.id)),
+                              apk_sha256=download.sha256, package=package, version=download.version)
+    except ValueError:
+        abort(404)
+    resp = Response(text, mimetype="text/plain; charset=utf-8")
+    resp.headers["Content-Disposition"] = f'attachment; filename="{tvscript.SCRIPT_NAME}"'
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp

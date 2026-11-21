@@ -66,6 +66,9 @@ class SetupActivity : AppCompatActivity() {
         setContentView(b.root)
 
         b.serverInput.setText(config.serverUrl.orEmpty())
+        // Started with an address (adb from the PC install script): fill it in and test it, Save stays a person's choice.
+        val prefilled = ServerUrl.prefill(config.isConfigured, intent.getStringExtra(EXTRA_SERVER))
+        if (prefilled != null) b.serverInput.setText(prefilled)
         b.homeCheck.isChecked = config.homeMode
         b.deviceInfo.text = getString(R.string.device_info, BuildConfig.VERSION_NAME, config.clientId)
         b.serverInput.addTextChangedListener(object : TextWatcher {
@@ -101,6 +104,7 @@ class SetupActivity : AppCompatActivity() {
         })
         onAddressEdited()
         b.serverInput.requestFocus()
+        if (prefilled != null) runTest()
     }
 
     override fun onResume() {
@@ -325,5 +329,7 @@ class SetupActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "Setup"
         const val EXTRA_RECONFIGURE = "com.aisignx.player.RECONFIGURE"
+        /** A server address to prefill on a first set-up (see ServerUrl.prefill). */
+        const val EXTRA_SERVER = "com.aisignx.player.SERVER"
     }
 }

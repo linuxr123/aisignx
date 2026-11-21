@@ -44,6 +44,12 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
+## Unreleased: Android TV install from a PC
+
+### Added
+- **PC install script for Android TV boxes:** the install-link card now offers "Download the PC script" (`/get/<code>/tv.ps1`). It finds or downloads Google's `adb`, downloads the app from your server and checks its SHA-256, connects to the box over the network, installs the app and opens it with the server address filled in (optional `-DeviceOwner`). No password or pairing secret is inside the script. Replaces typing an address with a remote and the free Downloader app as the recommended route (`docs/android-tv.md`).
+- **Android 3.0.5:** the setup screen accepts a server address from the launch intent (first set-up only; it fills and tests the box, Save stays a person's choice).
+
 ## Unreleased: Android 3.0.4, run modes on Android
 
 ### Changed

@@ -74,4 +74,15 @@ class ServerUrlTest {
         assertEquals("192.168.1.20", ServerUrl.hostOf("http://192.168.1.20:5000"))
         assertEquals("::1", ServerUrl.hostOf("http://[::1]:5000"))
     }
+
+    // The PC install script starts the app with a server address; only a first set-up takes it, and it is normalized.
+    @Test fun prefillOnlyOnAFirstSetup() {
+        assertEquals("http://192.168.1.19:5000", ServerUrl.prefill(false, "192.168.1.19:5000"))
+        assertEquals("https://signs.example.com", ServerUrl.prefill(false, " https://signs.example.com/ "))
+        assertNull("an already configured device keeps its server", ServerUrl.prefill(true, "http://evil.example"))
+        assertNull(ServerUrl.prefill(false, "javascript:alert(1)"))
+        assertNull(ServerUrl.prefill(false, "http://user:pw@host"))
+        assertNull(ServerUrl.prefill(false, null))
+        assertNull(ServerUrl.prefill(false, "http://host/path"))
+    }
 }

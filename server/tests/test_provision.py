@@ -199,3 +199,44 @@ def test_install_page_without_an_app_says_so(app, configured, client):
     with app.app_context():
         code = service.make_install_link()
     assert b"no android app" in client.get(f"/get/{code}").data.lower()
+
+
+def test_tv_script_is_gated_checked_and_free_of_secrets(app, configured, admin, client):
+    import shutil
+    import subprocess
+    from aisignx.provision import tvscript
+    did, data = _download(app)
+    token = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', admin.get("/provision/android").get_data(as_text=True)).group(1)
+    admin.post("/provision/install-link", data={"csrf_token": token})
+    page = admin.get("/provision/android").get_data(as_text=True)
+    assert "Download the PC script" in page and "Install-AiSignX-on-Android-TV.ps1" in page
+    code = re.search(r"/get/([A-Z0-9]{8})", page).group(1)
+    assert client.get("/get/AAAAAAAA/tv.ps1").status_code == 404                       # only the right code
+    r = client.get(f"/get/{code}/tv.ps1")
+    assert r.status_code == 200 and "attachment" in r.headers["Content-Disposition"]
+    text = r.get_data(as_text=True)
+    assert hashlib.sha256(data).hexdigest() in text                                    # it checks the app against this
+    assert "/provision/apk/" in text and "com.aisignx.player" in text
+    assert "adb" in text and "pairing_secret" not in text and "command_key" not in text and "secret" not in text.lower().replace("secrets", "")
+    assert "\r\n" in text and "@@" not in text                                         # CRLF, every placeholder filled
+    ps = shutil.which("powershell")
+    if ps:                                                                             # it must be valid PowerShell
+        path = Path(app.instance_path) / "tv.ps1"
+        path.write_text(text, encoding="utf-8")
+        out = subprocess.run([ps, "-NoProfile", "-Command",
+                              f"$e=$null;[void][System.Management.Automation.Language.Parser]::ParseFile('{path}',[ref]$null,[ref]$e);$e.Count"],
+                             capture_output=True, text=True, timeout=60)
+        assert out.stdout.strip() == "0", out.stdout + out.stderr
+
+
+def test_tv_script_refuses_unsafe_values():
+    from aisignx.provision import tvscript
+    ok = dict(server="http://192.168.1.19:5000", apk_url="http://192.168.1.19:5000/provision/apk/abc.def-ghi_jk",
+              apk_sha256="a" * 64, package="com.aisignx.player", version="3.0.5")
+    assert "192.168.1.19" in tvscript.build(**ok)
+    for bad in ({"server": "http://x'; Remove-Item C:\\ -Recurse #"}, {"apk_url": "http://x/`whoami`"}, {"apk_sha256": "zz"},
+                {"package": "evil.package"}, {"server": "http://a b"}):
+        with pytest.raises(ValueError):
+            tvscript.build(**{**ok, **bad})
+    text = tvscript.build(**{**ok, "version": "3.0.5'; calc"})                       # the version is reduced to safe characters
+    assert "'; calc" not in text and "3.0.5calc" in text

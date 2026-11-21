@@ -5,29 +5,42 @@ The factory-reset QR set-up (see [android-kiosk.md](android-kiosk.md)) suits a *
 install the app, pair with a short code. They work as normal screens: playlists, schedules, emergency messages,
 restart-player and log collection from the web page all work.
 
-## Install and pair
+## Install and pair: from your PC (recommended for a TV box)
 
-1. In the admin open **Downloads**, press **Set up an Android tablet as a kiosk (QR code)** and scroll to the card
-   **Phones that are already set up, and Android TV boxes**. Press **Make an install link**. You get a short address
-   such as `192.168.1.19:5000/get/K7M2Q9XD` and a QR code for it. The link works for 7 days; a new link replaces the
-   old one. The server needs an Android app on the Downloads page first (kind **Android player app (APK)**).
-2. On the device:
-   - **Phone:** scan the QR code with the camera, press **Download the app**, allow installs from the browser when
-     Android asks, open the file and press Install.
-   - **TV box:** install the app **Downloader** (developer **AFTVnews**, package `com.esaba.downloader`, official
-     page <https://aftvnews.com/downloader>) from the store of the box. In Downloader type the **full address
-     with `http://`** in front, for example `http://192.168.1.19:5000/get/K7M2Q9XD` (use `https://` if your server
-     does). Without the scheme Downloader may treat the text as a search. The code is not case sensitive. Open the
-     page, press **Download the app**, then Install. The first time, Android asks to allow Downloader to install
-     apps: allow it.
-   - **Optional, with adb:** if you would rather not type on a remote, download the APK from the admin's Downloads page
-     to a PC, switch on network debugging on the box, then run `adb connect <box address>:5555` and
-     `adb install -r app-release.apk`. The menu names for network debugging differ by box and are not described here.
-3. Open the app, type the server address shown on that page, press **Test**, then **Save and start**. The app shows a
-   short pairing code.
-4. In the admin: **Displays > Pair a display**, type the code.
+Typing an address with a remote and the free "Downloader" apps are the weak part, so the admin makes a small script that
+does it from your PC over the network with Google's `adb` tool.
 
-Only the NVIDIA Shield has been tried. Chromecast with Google TV and Fire TV follow the same route but are untested.
+**Once, on the TV box** (NVIDIA Shield, Chromecast with Google TV, most Android TV boxes):
+1. Settings > Device Preferences > About: press **Build** seven times (it says "you are a developer").
+2. Settings > Device Preferences > Developer options: switch on **Network debugging** (on some boxes: **USB debugging**).
+3. Note the box's IP address (Settings > Network, or the router's list).
+
+**Then, on your PC:**
+1. In the admin open **Downloads > Set up an Android tablet** and press **Make an install link** (bottom card).
+2. In the box *Android TV box: install from your PC* press **Download the PC script**.
+3. Run it in PowerShell: `powershell -ExecutionPolicy Bypass -File .\Install-AiSignX-on-Android-TV.ps1` (it asks for the box's IP
+   address; or add `-Address 192.168.1.40`).
+4. The first time, the TV asks "Allow this computer?": choose **Always allow** and run the script again.
+
+The script finds `adb` (or downloads it from Google), downloads the app **from your server and checks its SHA-256**,
+installs it, and opens it with your server address already filled in. On the TV, wait for the green "connected" line and press
+**Save**. It shows a short pairing code: type it in the admin under **Displays > Pair a display**.
+
+Add `-DeviceOwner` to also make the app the Device Owner (silent updates, remote reboot, Home mode). Android only allows
+that on a device with **no accounts signed in** (a Shield with a Google account refuses); the script says so and the app still
+works as a normal app.
+
+## Install and pair: with the link, no PC
+
+If you cannot use a PC: the same **install link** page opens on the TV or a phone.
+
+1. On a phone, scan the QR code beside the link; on a TV box, use any file-download or browser app and type the short address
+   (for example `http://192.168.1.19:5000/get/K7M2Q9XD`, the code is not case sensitive).
+2. Press **Download the app**, then **Install** (allow installs from that app when Android asks).
+3. Open AiSignX, type the server address shown on the page, press **Test**, then **Save**, and pair with the code in the admin.
+
+The free "Downloader by AFTVnews" app (package `com.esaba.downloader`, official page https://aftvnews.com/downloader) is one
+such app, but the PC script above is more reliable.
 
 ## Leaving the player (the hidden exit)
 

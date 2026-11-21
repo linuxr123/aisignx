@@ -46,6 +46,12 @@
       <p class="mb-1">Open this on the device:</p>
       <p class="fs-5 mb-2"><code>{{ link.short }}</code></p>
       <p class="small text-secondary mb-0">Valid until {{ link.expires|localtime }}. Making a new link replaces this one. It only gives the app and this server's address; it cannot pair anything by itself.</p>
+      <div class="mt-3 p-3 rounded border">
+        <div class="fw-semibold mb-1">Android TV box: install from your PC (recommended)</div>
+        <p class="small text-secondary mb-2">Better than typing on a TV remote. The script downloads Google's adb tool if you do not have it, installs the app over your network and opens it with this server's address already filled in. You turn on <em>Network debugging</em> on the TV once.</p>
+        <a class="btn btn-primary btn-sm" href="{{ link.tv_script }}" download>Download the PC script</a>
+        <span class="small text-secondary ms-2">then run it: <code>powershell -ExecutionPolicy Bypass -File .\Install-AiSignX-on-Android-TV.ps1</code></span>
+      </div>
     </div>
   </div>
   {% endif %}

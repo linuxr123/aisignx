@@ -40,6 +40,14 @@ object ServerUrl {
         return "$scheme://$host$portPart"
     }
 
+    /**
+     * The address to put in the setup field when the app is started with a server address (the PC install script for
+     * Android TV boxes does this with adb, so nobody types an address with a remote). Only a FIRST set-up takes it,
+     * and it only fills the box: the person still presses Save. Null: leave the field alone.
+     */
+    fun prefill(alreadyConfigured: Boolean, raw: String?): String? =
+        if (alreadyConfigured) null else normalize(raw)
+
     /** Host part of a normalized origin, without brackets for IPv6. */
     fun hostOf(origin: String): String =
         (try { URI(origin).host } catch (_: Exception) { null }).orEmpty()
