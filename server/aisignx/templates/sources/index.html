@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Image sources{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+  <h1 class="h3 mb-0">Image sources</h1>
+  <a class="btn btn-outline-secondary" href="{{ url_for('plugins.index') }}">Plugins</a>
+</div>
+<p class="text-secondary" style="max-width: 52rem">Keep the media library filled from a folder, a network share or a cloud album. Each image is copied into the library (so screens never depend on the other service being up), new ones appear by themselves, and the <strong>Image library</strong> plugin can show a source in a playlist. Nothing here ever changes the original pictures.</p>
+
+<div class="card mb-4"><div class="table-responsive">
+  <table class="table align-middle mb-0">
+    <thead><tr><th>Name</th><th>Kind</th><th>Images</th><th>Last sync</th><th></th></tr></thead>
+    <tbody>
+    {% for s in sources %}
+    <tr>
+      <td><strong>{{ s.name }}</strong>{% if not s.enabled %} <span class="badge text-bg-secondary">paused</span>{% endif %}<div class="small text-secondary text-truncate" style="max-width: 22rem" title="{{ s.location }}">{{ s.location }}</div></td>
+      <td class="small">{{ kinds.get(s.kind, s.kind) }}</td>
+      <td>{{ counts.get(s.id, 0) }}</td>
+      <td class="small">{% if s.last_sync_at %}<span class="{{ 'text-success' if s.last_ok else 'text-danger' }}">{{ s.last_status }}</span><div class="text-secondary">{{ s.last_sync_at|localtime }}</div>{% else %}<span class="text-secondary">waiting for the first sync</span>{% endif %}</td>
+      <td class="text-end text-nowrap">
+        <form method="post" action="{{ url_for('sources.test', source_id=s.id) }}" class="d-inline">{{ csrf.hidden_tag() }}<button class="btn btn-sm btn-outline-secondary" type="submit" title="List what is there without importing">Test</button></form>
+        <form method="post" action="{{ url_for('sources.sync_now', source_id=s.id) }}" class="d-inline">{{ csrf.hidden_tag() }}<button class="btn btn-sm btn-outline-primary" type="submit">Sync now</button></form>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('sources.edit', source_id=s.id) }}">Edit</a>
+        <form method="post" action="{{ url_for('sources.delete', source_id=s.id) }}" class="d-inline" data-confirm="Remove {{ s.name }} and the {{ counts.get(s.id, 0) }} images copied from it? The originals are not touched.">{{ csrf.hidden_tag() }}<button class="btn btn-sm btn-outline-danger" type="submit">Remove</button></form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="text-secondary py-4 text-center">No source yet. Add one below.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+
+<div class="card" style="max-width: 46rem"><div class="card-body">
+  <h2 class="h5 mb-3">{{ "Edit " ~ editing.name if editing else "Add a source" }}</h2>
+  <form method="post" action="{{ url_for('sources.edit', source_id=editing.id) if editing else url_for('sources.create') }}" novalidate>
+    {{ form.hidden_tag() }}
+    {{ field(form.name) }}
+    {{ field(form.kind) }}
+    <div class="mb-3">
+      <label class="form-label" for="{{ form.location.id }}" id="loc-label">Address</label>
+      {{ form.location(class="form-control" ~ (" is-invalid" if form.location.errors else "")) }}
+      {% for e in form.location.errors %}<div class="invalid-feedback">{{ e }}</div>{% endfor %}
+      <div class="form-text" id="loc-help"></div>
+    </div>
+    <div class="row g-3" id="auth-row">
+      <div class="col-md-6">{{ field(form.username) }}</div>
+      <div class="col-md-6">{{ field(form.secret) }}{% if editing and editing.secret %}<div class="form-text mt-n2">A password is saved. Leave empty to keep it.</div>{% endif %}</div>
+    </div>
+    {{ field(form.recursive) }}
+    {{ field(form.mirror) }}
+    {{ field(form.enabled) }}
+    <div class="row g-3">
+      <div class="col-md-6">{{ field(form.interval_min) }}</div>
+      <div class="col-md-6">{{ field(form.max_images) }}</div>
+    </div>
+    <button class="btn btn-primary" type="submit">{{ "Save" if editing else "Add source" }}</button>
+    {% if editing %}<a class="btn btn-link" href="{{ url_for('sources.index') }}">Cancel</a>{% endif %}
+  </form>
+</div></div>
+<script>
+(function () {
+  var help = {{ help|tojson }};
+  var kind = document.getElementById("{{ form.kind.id }}"), loc = document.getElementById("{{ form.location.id }}");
+  var secretLabel = document.querySelector('label[for="{{ form.secret.id }}"]');
+  function apply() {
+    var h = help[kind.value]; if (!h) return;
+    document.getElementById("loc-label").textContent = h[0];
+    loc.placeholder = h[1];
+    document.getElementById("loc-help").textContent = h[3];
+    document.getElementById("auth-row").style.display = h[2] ? "" : "none";
+    if (secretLabel) secretLabel.textContent = kind.value === "gdrive" ? "Google API key" : "Password";
+  }
+  kind.addEventListener("change", apply); apply();
+})();
+</script>
+{% endblock %}

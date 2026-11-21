@@ -265,3 +265,16 @@ Run on a spare tablet; tick each.
 - Android finishes its own first-time setup (`user_setup_complete`) only at the first reboot after QR provisioning. Until
   then Samsung's main Settings page closes itself (the log showed `user_setup_complete=0`, then `1` after the reboot).
   Reboot the tablet once after provisioning and the main Settings page works.
+
+## Signing keys: why an update can fail
+
+Android installs an update **only when the new APK is signed with the same key as the installed app**. The debug builds (`app-debug.apk`) are
+signed with the build PC's debug key; the release build is signed with your release key (`keystore.properties`). They look the same but Android
+treats them as different publishers, so a screen installed from a debug build **cannot be updated to a release build** (and the other way round).
+The app then reports `last_update_error: "invalid package"` on the display page, although the command was acknowledged as "installing".
+
+- From app 3.0.7 the app reports the SHA-256 of its signing key, checks a downloaded installer **before** it says "installing" (a different key is
+  reported as a failure with the reason), and the server **refuses to push** an installer signed with another key than the screen's app, in words.
+- **Keep one key for the whole fleet.** Upload only installers signed with that key. To move a screen from the debug key to the release key, reinstall
+  the app once (uninstall, then the install link or QR code); a Device Owner tablet has to be factory reset first.
+- Check a file: `apksigner verify --print-certs app.apk` (Android SDK build-tools) prints its signer's SHA-256.

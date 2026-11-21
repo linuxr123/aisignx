@@ -44,6 +44,29 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
+## Unreleased: Android signing keys (3.0.7)
+
+### Fixed
+- **Android screens that stopped updating:** the 3.0.6 installer was signed with the release key, the screens had been installed from debug-signed builds, and Android refuses an update signed with a different key (it reported "invalid package" after the command had said "installing"). Android 3.0.7 reports its signing key, checks a downloaded installer against its own key *before* saying "installing" (a mismatch fails with the reason), and the server refuses to push an installer signed with another key than the screen's app, in words (new `downloads/apksign.py` reads an APK's signing key). See docs/android-kiosk.md, "Signing keys".
+
+## Unreleased: Fleet pages
+
+### Added
+- **Displays > App updates** (admin): every screen that runs a Windows or Android app with its version, the newest installer on Downloads and a status (up to date, update available, waiting, installing, installed, failed with the reason, not picked up). **Tick the screens** you want and press *Update selected*; screens that cannot be updated are refused with their reason. The table refreshes by itself.
+- **Edit several screens at once:** tick screens on the Displays list, *Edit selected together*. Everything starts at *No change*; only what you fill in (default playlist, group, orientation, fit, volume, offline banner and, for admins, controls, resume time and the device-agent switches) is applied to all of them, and each change is audited.
+- **Live pages:** the display page refreshes its status, commands, diagnostics and agent card by itself every 6 seconds (not while you are typing, a dialog is open or text is selected); the same mechanism updates the App updates table.
+- **Settings in the screen's own words:** the edit page says *Windows settings*, *Android settings*, *Linux settings* or *Browser settings* (worked out from what the player reported) and words the lock, watchdog, reboot, startup and update switches for that system.
+
+### Changed
+- Downloads page and the Android set-up page: clearer wording for the three ways to set up an Android screen (factory-reset QR code = managed kiosk, camera QR code = normal app, TV box = install link or PC script), what each QR code does, that a code works for 24 hours and one device, and the Windows SmartScreen note.
+
+## Unreleased: Image sources
+
+### Added
+- **Plugins > Image sources:** keep the media library filled from a **folder** (also a network share), a **web folder**, **WebDAV** (Nextcloud, ownCloud, NAS), a shared **Google Drive** folder (free API key), a **OneDrive** share link, a **Dropbox** shared-folder link or a public **Flickr** stream. Images are copied into the library, kept in step by a background job (new, changed, removed), limited to the newest N, and the saved password or key is stored encrypted. Migration 0025 (`image_sources`, `media.source_id/source_key/source_stamp`).
+- The **Image library** plugin has a new choice, *A connected source*, with how many images and which (newest or by name). Imported images stay out of the main Media list and the image picker (Media > Image sources, or `?source=all`).
+- Google Photos cannot be read (Google's API no longer allows it); the docs say how to use a Drive folder instead. Tested for real with folders, a local web server and a fake WebDAV server; the cloud readers against faked answers only.
+
 ## Unreleased: Agent approval instead of codes, playlist item switch
 
 ### Changed

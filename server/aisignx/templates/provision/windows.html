@@ -3,7 +3,7 @@
 {% block title %}Set up a Windows PC{% endblock %}
 {% block content %}
 <h1 class="h3 mb-2">Set up a Windows PC as a screen</h1>
-<p class="text-secondary">One script does the whole set-up on the PC: it installs the player and the privileged agent, pairs the PC with a new screen, and sets how the player runs. You run it once, as administrator, on the PC. Everything it installs is checked against your own signing certificate and checksums.</p>
+<p class="text-secondary" style="max-width: 52rem">One script does the whole set-up on the PC: it installs the player and its <strong>helper agent</strong> (the part that lets this web page restart, update and set up the PC), pairs the PC with a new screen, and sets how the player runs. You run it once on the PC, as administrator. Everything it installs is checked against your own signing certificate and checksums. Prefer no script? Run the Windows setup program from the Downloads page instead and pair the screen with the code it shows.</p>
 
 {% if problem %}
 <div class="alert alert-warning">{{ problem }} <a href="{{ url_for('downloads.index') }}">Downloads</a></div>

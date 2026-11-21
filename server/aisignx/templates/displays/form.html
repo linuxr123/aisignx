@@ -37,16 +37,17 @@
       </div></div>
 
       <div class="card edit-card"><div class="card-body">
-        <h2 class="edit-card-title">{{ icon("key", 16) }} Controls and lock</h2>
+        <h2 class="edit-card-title">{{ icon("key", 16) }} {{ pf.label }} settings: controls and lock</h2>
+        <p class="form-text mt-n1">{{ pf.intro }}</p>
         {% if form.is_admin_form %}
         {{ field(form.allow_input) }}
         <p class="form-text mt-n2">Tap or Space pauses; arrows seek 10 s in videos or change item; swipe or PageUp/PageDown change item. Content itself (web pages, YouTube, plugins) is never clickable, with this on or off.</p>
         {{ field(form.resume_after_min) }}
         <p class="form-text mt-n2">A paused screen always resumes after this time.</p>
         {{ field(form.kiosk_lock) }}
-        <p class="form-text mt-n2">Windows and Android apps only: no way out without the unlock PIN (Android: lock task mode; full lockdown needs Device Owner, see docs). A plain browser cannot be locked.</p>
+        <p class="form-text mt-n2">{{ pf.lock_help }}</p>
         {{ field(form.unlock_pin) }}
-        <p class="form-text mt-n2">The PIN guards leaving the Windows and Android apps. Blank keeps the current PIN ({{ "set" if pin_set else "none set" }}).</p>
+        <p class="form-text mt-n2">{{ pf.pin_help }} Blank keeps the current PIN ({{ "set" if pin_set else "none set" }}).</p>
         {% if pin_set %}{{ field(form.clear_pin) }}{% endif %}
         {% else %}
         <p class="text-body-secondary mb-0">Controls: {{ "on" if display.allow_input else "off" }} &middot; Lock: {{ "on" if display.kiosk_lock else "off" }} &middot; Resume after: {{ (display.resume_after_s or 300) // 60 }} min &middot; Unlock PIN: {{ "set" if pin_set else "not set" }} &middot; admins only</p>
@@ -54,12 +55,12 @@
       </div></div>
       {% if form.is_admin_form %}
       <div class="card edit-card"><div class="card-body">
-        <h2 class="edit-card-title">{{ icon("cpu", 16) }} Device agent</h2>
+        <h2 class="edit-card-title">{{ icon("cpu", 16) }} {{ pf.label }} settings: device agent</h2>
         {{ field(form.agent_watchdog) }}
-        <p class="form-text mt-n2">A small helper in the Windows and Android apps that restarts the player if it stops responding. Off by default.</p>
+        <p class="form-text mt-n2">{{ pf.watchdog_help }}</p>
         {{ field(form.agent_allow_restart) }}
         {{ field(form.agent_allow_logs) }}
-        <p class="form-text mt-n2">The next three are <strong>signed</strong> commands: the app checks the server's signature before it acts, and each has its own switch because each is more serious.</p>
+        <p class="form-text mt-n2">{{ pf.agent_help }}</p>
         {{ field(form.agent_allow_reboot) }}
         {{ field(form.agent_allow_startup) }}
         {{ field(form.agent_allow_update) }}

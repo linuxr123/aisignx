@@ -51,6 +51,12 @@ class Media(db.Model):
     snapshot_size = db.Column(db.BigInteger, nullable=True)
     snapshot_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
+    # Imported from an image source (aisignx/sources): which one, the item's id there, and a change stamp (etag, size and time).
+    # No foreign key: deleting a source removes its images in code, so a half-deleted source never blocks anything.
+    source_id = db.Column(db.Integer, nullable=True, index=True)
+    source_key = db.Column(db.String(700), nullable=True)
+    source_stamp = db.Column(db.String(160), nullable=True)
+
     # Detected metadata.
     width = db.Column(db.Integer, nullable=True)
     height = db.Column(db.Integer, nullable=True)

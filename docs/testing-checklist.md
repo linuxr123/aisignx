@@ -238,6 +238,30 @@ Only the NVIDIA Shield has been tried. Upload the newest Android APK on Download
 | O7 | Downloads > Set up a Windows PC, leave the account empty, run the script on a PC | The script lists the PC's accounts, pairs, installs the .exe and the agent connects without any code | |
 | O8 | Over plain http and then over https (nginx) | Both work; over http the page and docs warn that the agent trusts the server's key on first contact | |
 
+## P. Image sources (docs/image-sources.md)
+
+| # | Do this | Expected | Result |
+|---|---|---|---|
+| P1 | Plugins > Image sources: add a **folder** with a few pictures, wait a minute | The page shows "N images, N new"; the pictures appear under Media > Image sources, not in the main list | |
+| P2 | Add a picture to the folder, change one, delete one | Within the check interval (or **Sync now**) they are copied, replaced and removed | |
+| P3 | Add a playlist item: Plugins > Image library > *A connected source* | The screen shows the pictures; a new picture shows up without editing the item | |
+| P4 | A network share (`\nas\photos`) as a folder source, with the service running as LOCAL SERVICE | It either works or says the folder cannot be read (give the service account access) | |
+| P5 | A WebDAV address (Nextcloud) and a Nextcloud share link | Test lists the pictures; sync copies them | |
+| P6 | A shared Google Drive folder with an API key | Works; a wrong key or a private folder gives a clear message | |
+| P7 | OneDrive share link, Dropbox folder link, Flickr user id | Each lists and copies pictures (note anything that differs) | |
+| P8 | Remove a source | Its copied pictures are removed from the library and from playlists | |
+
+## Q. Fleet pages
+
+| # | Do this | Expected | Result |
+|---|---|---|---|
+| Q1 | Open a display page and change its state from another place (stop its player, push a command) | Status, commands and the agent card change within about 6 seconds without reloading; typing in a form is never interrupted | |
+| Q2 | Displays > **App updates** with two screens behind (one Windows, one Android) | Both listed with their versions; tick one, **Update selected** | Only that one gets the command; its status goes waiting > installing > installed; the other stays untouched | |
+| Q3 | A screen whose update switch is off, or an app that cannot update itself | It is refused with the reason, the others still update | |
+| Q4 | An update that fails (for example an installer signed by another certificate) | Status shows **Failed** with the reason and a way to try again | |
+| Q5 | Tick three screens on the Displays list, **Edit selected together**, change only the volume | Only the volume changes on all three; everything else is untouched | |
+| Q6 | Edit page of a Windows PC, an Android tablet and a browser screen | *Windows settings*, *Android settings* and *Browser settings* with wording for that system | |
+
 ---
 
 **Report back with:** the row numbers that failed and what you saw (a screenshot helps). Logs: Admin > Logs, and

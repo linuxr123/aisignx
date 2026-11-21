@@ -30,7 +30,7 @@ from urllib.parse import urlsplit
 from zoneinfo import available_timezones
 
 FIELD_TYPES = ("string", "text", "integer", "boolean", "select", "url", "timezone",
-               "location", "media_multi")
+               "location", "media_multi", "image_source")
 RESERVED = frozenset({"name", "duration", "loop", "video_duration", "enabled"})
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 MAX_CONFIG_BYTES = 16 * 1024
@@ -341,6 +341,16 @@ def _coerce(field, value, check_refs: bool):
         if str(value) not in allowed:
             raise _Invalid("Choose one of the listed options.")
         return str(value)
+    if ftype == "image_source":
+        text = str(value).strip()
+        if not text.isdigit() or int(text) <= 0:
+            raise _Invalid("Choose one of the image sources.")
+        if check_refs:
+            from ..models import ImageSource
+            from ..extensions import db
+            if db.session.get(ImageSource, int(text)) is None:
+                raise _Invalid("That image source no longer exists.")
+        return int(text)
     if ftype == "url":
         return check_url(value)
     if ftype == "timezone":

@@ -16,7 +16,7 @@ from ..player.manifest import build_manifest
 from ..pop import service as pop_service
 from ..schedules.resolve import load_context, resolve, split_by_day, week_segments
 from ..downloads.service import app_update, fleet_updates
-from . import agent, agent_request, bp, enroll, options, pairing, screenshots, service
+from . import agent, agent_request, bp, enroll, options, pairing, platform, screenshots, service
 from .agent import RUN_MODES  # noqa: F401  (tests also import it from here)
 from .agent_admin_forms import AutologinForm
 from .forms import ActionForm, DisplayForm, PairForm, UnlockForm
@@ -151,6 +151,13 @@ def edit(display_id: int):
     display = _get_display_or_404(display_id)
     # not obj=: "playlist"/"group" would read the relationships
     form = DisplayForm(admin=current_user.is_admin, has_pin=bool(display.unlock_pin_hash))
+    pf_key = platform.of_display(display)
+    pf = platform.words(pf_key)
+    if form.is_admin_form:        # the same switch is worded for the system the screen runs
+        for field, key in (("kiosk_lock", "lock"), ("agent_watchdog", "watchdog"), ("agent_allow_restart", "restart"),
+                           ("agent_allow_logs", "logs"), ("agent_allow_reboot", "reboot"), ("agent_allow_startup", "startup"),
+                           ("agent_allow_update", "update")):
+            getattr(form, field).label.text = pf[key]
     if request.method == "GET":
         _prefill(form, display)
     if form.validate_on_submit():
@@ -193,7 +200,7 @@ def edit(display_id: int):
                                     display.id, current_user.id)
         flash("Display saved.", "success")
         return _detail(display)
-    return render_template("displays/form.html", form=form, display=display,
+    return render_template("displays/form.html", form=form, display=display, pf=pf, pf_key=pf_key,
                            pin_set=bool(display.unlock_pin_hash))
 
 

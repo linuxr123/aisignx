@@ -133,7 +133,7 @@ def test_qr_creates_a_preapproved_display_that_the_device_can_claim(app, configu
     r = admin.post("/provision/android", data={
         "csrf_token": _csrf(admin), "name": "Lobby tablet", "playlist": "0", "server_url": "http://192.168.1.50:5000",
         "lock": "y", "manage": "y", "wifi_ssid": "Office", "wifi_security": "WPA", "wifi_password": "pw"})
-    assert r.status_code == 200 and b"<svg" in r.data and b"Scan this on the tablet" in r.data
+    assert r.status_code == 200 and b"<svg" in r.data and b"QR code for a factory-reset device" in r.data
     with app.app_context():
         d = Display.query.filter_by(name="Lobby tablet").one()
         assert d.kiosk_lock and d.agent_allow_reboot and d.agent_allow_update and d.agent_watchdog
@@ -261,8 +261,8 @@ def test_qr_to_install_as_an_app_opens_a_page_that_pairs_a_phone_that_is_not_res
     r = admin.post("/provision/android", data={
         "csrf_token": _csrf(admin), "name": "My phone", "playlist": "0", "server_url": "http://192.168.1.50:5000",
         "wifi_security": "WPA", "mode": "app"})
-    assert r.status_code == 200 and b"<svg" in r.data and b"Scan this with the phone" in r.data
-    assert b"Scan this on the tablet" not in r.data
+    assert r.status_code == 200 and b"<svg" in r.data and b"QR code to install as an app" in r.data
+    assert b"QR code for a factory-reset device (managed kiosk)" not in r.data
     with app.app_context():
         d = Display.query.filter_by(name="My phone").one()
         assert PairingCode.query.filter_by(display_id=d.id).count() == 1

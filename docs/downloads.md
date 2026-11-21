@@ -63,3 +63,19 @@ Only the owner's own Galaxy Tab and a Shield have been used to try these steps. 
 Download the installer (or the add-in zip) from the page and run it on the PC. The Windows installer is not
 code-signed unless you sign your own build, so SmartScreen shows a warning ("More info" > "Run anyway"); see
 [clients.md](clients.md). For the add-in see [powerpoint-addin.md](powerpoint-addin.md).
+
+## "Windows protected your PC" (SmartScreen)
+
+A setup program downloaded in a browser is marked as coming from the internet, and Windows SmartScreen warns about any program
+whose publisher it does not know. The installer is signed, but with **your own** certificate (free), which Windows has never
+heard of, so it shows the blue "Windows protected your PC" page. It is a warning about the publisher, not a sign of a problem.
+
+- **Once per file:** click **More info**, then **Run anyway**. Or right-click the downloaded file > Properties > tick **Unblock**.
+- **No warning at all:** get the file onto the PC without the browser mark: the generated **Set up a Windows PC** script downloads it
+  itself (a script download carries no mark), or copy it over the network or on a USB stick.
+- **Make this PC trust your certificate** (stops "unknown publisher" prompts for everything you sign; run in an elevated PowerShell):
+  `Import-Certificate -FilePath .\AiSignX-signing.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher`
+  and the same into `Cert:\LocalMachine\Root` (a self-signed certificate must be trusted as a root as well). Only do this on PCs you own.
+- **To remove the warning for everyone:** a certificate from a publisher Windows trusts. The paid ways are an OV/EV code-signing
+  certificate or Microsoft Trusted Signing. A free way for an open-source project is the **SignPath Foundation** programme (it signs
+  builds of public open-source projects with its own certificate); SmartScreen then still learns a new file's reputation over time.

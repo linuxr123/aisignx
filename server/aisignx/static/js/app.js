@@ -169,6 +169,37 @@
     window.setInterval(refresh, 15000);
   }
 
+  // Live regions: any element with data-live="name" is refreshed in the background (every 6 s while the tab is visible) from the same
+  // page, so a screen's state, commands and update progress change without reloading. A region is left alone while the person is typing
+  // in it, a dialog is open, or text inside it is selected, and the whole page is left alone while a form anywhere has unsaved input.
+  const liveRegions = document.querySelectorAll("[data-live]");
+  if (liveRegions.length) {
+    let busy = false;
+    const idle = () => !document.hidden && !document.querySelector(".modal.show");
+    const refreshLive = async () => {
+      if (busy || !idle()) return;
+      busy = true;
+      try {
+        const response = await fetch(window.location.href, { headers: { "X-Requested-With": "live" }, credentials: "same-origin" });
+        if (!response.ok || response.redirected) return;
+        const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+        document.querySelectorAll("[data-live]").forEach((region) => {
+          const fresh = doc.querySelector(`[data-live="${region.dataset.live}"]`);
+          if (!fresh || fresh.innerHTML === region.innerHTML) return;
+          const sel = window.getSelection();
+          if (region.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+          if (sel && !sel.isCollapsed && region.contains(sel.anchorNode)) return;
+          // Ticked boxes (data-keep) survive the refresh.
+          const keep = new Set([...region.querySelectorAll("input[data-keep]:checked")].map((i) => i.name + "=" + i.value));
+          region.innerHTML = fresh.innerHTML;
+          region.querySelectorAll("input[data-keep]").forEach((i) => { if (keep.has(i.name + "=" + i.value)) i.checked = true; });
+        });
+      } catch (err) { /* try again next time */ } finally { busy = false; }
+    };
+    window.setInterval(refreshLive, 6000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshLive(); });
+  }
+
   // Display detail: while a screenshot is pending, poll status.json every 2 s (for up to
   // 90 s) and reload once it arrives or the request is no longer open.
   const shot = document.querySelector("[data-screenshot-pending]");

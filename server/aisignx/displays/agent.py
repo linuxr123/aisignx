@@ -171,6 +171,24 @@ def update_package(display: Display):
     return latest_download(kind) if kind else None
 
 
+def signer_problem(display: Display, package) -> str | None:
+    """Android refuses an update signed with another key than the installed app's. When the app has reported its key (the agent block's
+    "signer") and the installer's key can be read, a different pair is refused here, in words, instead of failing on the device."""
+    from ..downloads import apksign
+    from ..downloads.routes import downloads_dir
+
+    caps = capabilities(display)
+    own = str(caps.get("signer") or "")
+    if not own or package is None or not package.filename.lower().endswith(".apk"):
+        return None
+    theirs = apksign.signer_sha256(downloads_dir() / package.stored_name)
+    if theirs and theirs.lower() != own.lower():
+        return ("This screen's app was installed with a different signing key than the installer on the Downloads page, and Android refuses "
+                "such an update. Reinstall the app once from the Downloads page (a Device Owner tablet must be factory reset first), "
+                "or upload an installer signed with the key this app uses.")
+    return None
+
+
 def create(display: Display, action: str, user, now: datetime | None = None, params: dict | None = None,
            request_id: str | None = None) -> tuple[DeviceCommand | None, str | None]:
     """(command, None) or (None, reason). One open command per display and action."""
@@ -182,6 +200,9 @@ def create(display: Display, action: str, user, now: datetime | None = None, par
         package = update_package(display)
         if package is None:
             return None, "There is no installer for this screen's app on the Downloads page."
+        problem = signer_problem(display, package)
+        if problem:
+            return None, problem
         params = {"version": package.version, "sha256": package.sha256, "size": package.size}
     clean, reason = validate_params(display, action, params)
     if reason:

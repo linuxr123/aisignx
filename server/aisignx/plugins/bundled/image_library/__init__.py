@@ -15,6 +15,7 @@ the browser there has a login session and no display cookie.
 """
 from flask import has_request_context, request, url_for
 
+from aisignx.extensions import db
 from aisignx.models import Media
 from aisignx.models.media import MEDIA_IMAGE
 from aisignx.plugins.schema import SchemaError
@@ -28,8 +29,22 @@ def _images():
     return Media.query.filter(Media.media_type == MEDIA_IMAGE, Media.stored_name.isnot(None))
 
 
+def _connected(config: dict):
+    """The images imported from the chosen image source, newest first or by name, at most source_count."""
+    try:
+        sid = int(config.get("image_source"))
+    except (TypeError, ValueError):
+        return _images().filter(Media.id < 0)
+    q = _images().filter(Media.source_id == sid)
+    if config.get("source_order") == "name":
+        return q.order_by(db.func.lower(Media.name), Media.id)
+    return q.order_by(Media.created_at.desc(), Media.id.desc())
+
+
 def resolve(config: dict) -> list:
-    """The Media rows to show, in order: the chosen ids that still exist, or the newest."""
+    """The Media rows to show, in order: the chosen ids that still exist, the newest, or those of a connected source."""
+    if config.get("source") == "connected":
+        return _connected(config).limit(int(config.get("source_count") or 50)).all()
     if config.get("source") == "newest":
         count = int(config.get("newest_count") or 1)
         return _images().order_by(Media.created_at.desc(), Media.id.desc()).limit(count).all()
@@ -42,18 +57,25 @@ def resolve(config: dict) -> list:
 
 def image_count(config: dict) -> int:
     """How many images the item shows (for "newest": the number asked for)."""
+    if config.get("source") == "connected":
+        return min(int(config.get("source_count") or 50), _connected(config).count())
     if config.get("source") == "newest":
         return int(config.get("newest_count") or 1)
     return len([i for i in (config.get("media_ids") or []) if isinstance(i, int)])
 
 
 def normalize(config: dict, ctx) -> dict:
-    if config.get("source") != "newest" and not config.get("media_ids"):
+    if config.get("source") == "connected":
+        if not config.get("image_source"):
+            raise SchemaError("Choose an image source.", "image_source")
+    elif config.get("source") != "newest" and not config.get("media_ids"):
         raise SchemaError("Choose at least one image.", "media_ids")
     return config
 
 
 def playable(media, config: dict, ctx) -> bool:
+    if config.get("source") == "connected":
+        return _connected(config).with_entities(Media.id).first() is not None
     if config.get("source") == "newest":
         return _images().with_entities(Media.id).first() is not None
     ids = [i for i in (config.get("media_ids") or []) if isinstance(i, int)]

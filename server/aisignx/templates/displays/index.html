@@ -5,14 +5,17 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h1 class="h3 mb-0">Displays</h1>
-  {% if current_user.can_edit %}<a class="btn btn-primary" href="{{ url_for('displays.pair') }}">Pair a display</a>{% endif %}
+  <div class="d-flex gap-2">
+    {% if current_user.is_admin %}<a class="btn btn-outline-secondary" href="{{ url_for('displays.updates_page') }}">App updates</a>{% endif %}
+    {% if current_user.can_edit %}<a class="btn btn-primary" href="{{ url_for('displays.pair') }}">Pair a display</a>{% endif %}
+  </div>
 </div>
 {% for u in fleet_updates %}
 <div class="alert alert-warning py-2" role="status">
   {% if u.outdated %}
   <strong>{{ u.outdated|length }} screen{{ "" if u.outdated|length == 1 else "s" }}</strong> run an older {{ u.label }} than the installer on the Downloads page ({{ u.latest }}):
   {{ u.outdated[:6]|join(", ") }}{% if u.outdated|length > 6 %} and {{ u.outdated|length - 6 }} more{% endif %}.
-  Open a screen and press <em>Push the update</em> (it needs the update switch on that screen).
+  <a class="alert-link" href="{{ url_for('displays.updates_page') }}">Choose which screens to update</a> (it needs the update switch on that screen).
   {% endif %}
   {% if u.ahead %}
   A screen already runs {{ u.label }} <strong>{{ u.ahead }}</strong>, newer than what the
@@ -22,12 +25,21 @@
 </div>
 {% endfor %}
 {% if displays %}
+{% if current_user.can_edit %}
+<form method="get" action="{{ url_for('displays.bulk_edit') }}" id="bulkForm" class="d-flex flex-wrap align-items-center gap-2 mb-2">
+  <span class="small text-secondary"><span data-bulk-count>0</span> selected</span>
+  <button class="btn btn-sm btn-outline-primary" type="submit" data-bulk-needs>Edit selected together</button>
+  {% if current_user.is_admin %}<button class="btn btn-sm btn-outline-secondary" type="submit" formaction="{{ url_for('displays.updates_page') }}" data-bulk-needs title="Open the app updates page">App updates</button>{% endif %}
+  <span class="small text-secondary ms-2">Tick screens in the first column, then change settings for all of them at once.</span>
+</form>
+{% endif %}
 <div class="card"><div class="table-responsive">
   <table class="table table-hover align-middle mb-0">
-    <thead><tr><th>Status</th><th>Name</th><th>Now playing</th><th>Last seen</th><th>IP</th><th>Player</th><th></th></tr></thead>
+    <thead><tr>{% if current_user.can_edit %}<th style="width: 2.5rem"><input class="form-check-input" type="checkbox" data-bulk-all aria-label="Select all"></th>{% endif %}<th>Status</th><th>Name</th><th>Now playing</th><th>Last seen</th><th>IP</th><th>Player</th><th></th></tr></thead>
     <tbody data-display-status-url="{{ url_for('displays.status') }}">
     {% for d in displays %}
       <tr>
+        {% if current_user.can_edit %}<td><input class="form-check-input" type="checkbox" name="id" value="{{ d.id }}" form="bulkForm" data-bulk-one aria-label="Select {{ d.name }}"></td>{% endif %}
         <td class="text-nowrap">{{ badge(states[d.id], labels, d.id) }}
           <span class="text-success{% if not live[d.id] %} d-none{% endif %}" data-display-live="{{ d.id }}" title="Live push connected">&#9679;</span></td>
         <td><a href="{{ url_for('displays.detail', display_id=d.id) }}" class="fw-semibold">{{ d.name }}</a>
@@ -61,6 +73,24 @@
     </tbody>
   </table>
 </div></div>
+<script>
+(function () {
+  var form = document.getElementById("bulkForm");
+  if (!form) return;
+  var ones = function () { return document.querySelectorAll("[data-bulk-one]"); };
+  var count = form.querySelector("[data-bulk-count]");
+  function sync() {
+    var n = 0; ones().forEach(function (c) { if (c.checked) n++; });
+    count.textContent = n;
+    form.querySelectorAll("[data-bulk-needs]").forEach(function (b) { b.disabled = n === 0; });
+  }
+  document.addEventListener("change", function (e) {
+    if (e.target.matches("[data-bulk-all]")) ones().forEach(function (c) { c.checked = e.target.checked; });
+    if (e.target.matches("[data-bulk-one],[data-bulk-all]")) sync();
+  });
+  sync();
+})();
+</script>
 {% else %}
 <div class="text-center text-secondary py-5">
   No displays yet. Open <code>{{ request.host_url }}player/</code> on a screen{% if current_user.can_edit %}, then click Pair a display{% endif %}.

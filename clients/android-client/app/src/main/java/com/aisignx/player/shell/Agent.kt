@@ -151,6 +151,7 @@ class Agent(
             .put("can_collect_logs", true)
             .put("can_reboot", caps().canReboot)
             .put("can_update", caps().canUpdate)
+            .put("signer", Signer.own(ctx) ?: "")
             .put("can_set_startup", caps().canSetStartup)
             .put("startup", JSONObject().put("autostart", Installer.autostart(ctx))
                 .put("mode", StartupRules.reportedMode(app.config.homeMode, LockdownApplier.engaged(ctx))).put("shell_capable", true))
@@ -353,6 +354,13 @@ class Agent(
                 return false
             }
             PackageDownload.Outcome.Ok -> Unit
+        }
+        // Android installs an update only when it is signed with the same key as this app: say so now, not after "installing".
+        Signer.mismatch(Signer.own(ctx), Signer.ofArchive(ctx, file.absolutePath))?.let { why ->
+            FileLog.w(TAG, "update refused: $why")
+            ack(base, token, id, "failed", why.take(150))
+            Installer.cleanUp(ctx)
+            return false
         }
         store.updatePendingMs = System.currentTimeMillis()
         store.updateVersion = a.version

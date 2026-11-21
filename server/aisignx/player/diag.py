@@ -5,6 +5,7 @@ keys are dropped, strings are truncated and integers clamped. The result is stor
 JSON (at most MAX_LEN characters) and only ever shown autoescaped in the admin.
 """
 import json
+import re
 
 MAX_LEN = 4096
 MAX_INT = 2**53
@@ -96,6 +97,7 @@ def _agent(value) -> dict | None:
         "can_set_startup": _bool, "command_key_changed": _bool,
         "command_key_fingerprint": lambda x: _str(x, 24),
         "last_update_error": lambda x: _str(x, 120),
+        "signer": lambda x: x.lower() if isinstance(x, str) and re.fullmatch(r"[0-9a-fA-F]{64}", x) else None,
         "startup": lambda x: _obj(x, {"autostart": _bool, "mode": lambda m: m if m in ("app", "shell") else None,
                                       "shell_capable": _bool}),
         "watchdog": _bool, "restarts_1h": _int, "gave_up": _bool, "last_restart_ms": _int,

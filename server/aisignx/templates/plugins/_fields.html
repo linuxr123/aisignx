@@ -57,6 +57,12 @@
     </div>
     <div class="col-sm-5 small text-secondary" data-location-point>{% if loc.lat is not none and loc.lon is not none %}{{ loc.lat }}, {{ loc.lon }}{% else %}No place chosen{% endif %}</div>
   </div>
+  {% elif f.type == "image_source" %}
+  <select class="form-select{{ invalid }}" id="{{ id }}" name="{{ f.name }}">
+    <option value="">{{ "Choose a source" if image_sources else "No source yet" }}</option>
+    {% for s in image_sources %}<option value="{{ s.id }}" {% if value|string == s.id|string %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+  </select>
+  {% if not image_sources %}<div class="small mt-1"><a href="{{ url_for('sources.index') }}">Add an image source first</a> (a folder, a share, Google Drive, OneDrive, ...).</div>{% endif %}
   {% elif f.type == "media_multi" %}
   {% set chosen = value if value is iterable and value is not string else [] %}
   <div data-media-multi="{{ f.name }}" data-max="{{ f.max }}">

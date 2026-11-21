@@ -24,7 +24,7 @@ from flask_login import current_user, login_required
 from ..audit import service as audit
 from ..auth.decorators import admin_required, editor_required
 from ..extensions import db
-from ..models import Media, Setting
+from ..models import ImageSource, Media, Setting
 from ..models.media import MEDIA_IMAGE
 from ..player.api import api_error
 from ..player.broker import get_broker
@@ -239,7 +239,7 @@ def _read_form(plugin, check_refs: bool = True, geocode: bool = True):
 
 
 def _images() -> list[dict]:
-    rows = (Media.query.filter(Media.media_type == MEDIA_IMAGE)
+    rows = (Media.query.filter(Media.media_type == MEDIA_IMAGE, Media.source_id.is_(None))      # imported images have their own picker (a source)
             .order_by(Media.created_at.desc(), Media.id.desc()).limit(PICKER_MAX).all())
     return [{"id": m.id, "name": m.name,
              "thumb": url_for("media.thumb", media_id=m.id, v=(m.thumbnail_name or "")[:8])
@@ -255,6 +255,7 @@ def _render_form(plugin, *, media, name, duration, values, errors, status=200):
         "plugins/form.html", plugin=plugin, media=media, name=name, duration=duration,
         values=values, errors=errors, entry=entry,
         images=_images() if "media_multi" in types else [],
+        image_sources=ImageSource.query.order_by(ImageSource.name).all() if "image_source" in types else [],
         timezones=schema.timezone_names() if "timezone" in types else [],
         hosts=list(plugin.data.hosts) if plugin.data else [],
         secrets=service.secret_status(plugin),

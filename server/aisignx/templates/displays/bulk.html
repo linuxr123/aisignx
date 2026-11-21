@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+{% block title %}Edit several displays{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <a class="small text-secondary text-decoration-none" href="{{ url_for('displays.index') }}">&larr; Displays</a>
+  <h1 class="h3 mb-1">Edit {{ displays|length }} display{{ "" if displays|length == 1 else "s" }}</h1>
+  <div class="small text-secondary">{{ displays|map(attribute="name")|join(", ") }}</div>
+</div>
+<p class="text-secondary" style="max-width: 50rem">Everything starts at <strong>No change</strong>: only the settings you change here are applied, to every screen listed above. Name, notes and the unlock PIN are per screen, and the kiosk lock needs a PIN on each screen, so they are not here.</p>
+<form method="post" novalidate>
+  {{ form.hidden_tag() }}
+  {% for d in displays %}<input type="hidden" name="id" value="{{ d.id }}">{% endfor %}
+  <div class="row g-4">
+    <div class="col-xl-6"><div class="card edit-card"><div class="card-body">
+      <h2 class="edit-card-title">General and screen</h2>
+      {{ field(form.playlist) }}
+      {{ field(form.group) }}
+      <div class="row g-3">
+        <div class="col-md-6">{{ field(form.orientation) }}</div>
+        <div class="col-md-6">{{ field(form.fit_override) }}</div>
+      </div>
+      {{ field(form.volume) }}
+      {{ field(form.show_offline_banner) }}
+    </div></div></div>
+    {% if form.is_admin_form %}
+    <div class="col-xl-6"><div class="card edit-card"><div class="card-body">
+      <h2 class="edit-card-title">Controls and device agent (admins)</h2>
+      {{ field(form.resume_after_min) }}
+      {% for name, label in switches %}
+      <div class="mb-2">
+        <label class="form-label small mb-1" for="sw-{{ name }}">{{ label }}</label>
+        <select class="form-select form-select-sm" id="sw-{{ name }}" name="{{ name }}">
+          {% for c in yes_no %}<option value="{{ c.value }}">{{ c.label }}</option>{% endfor %}
+        </select>
+      </div>
+      {% endfor %}
+      <p class="form-text mb-0">The wording of these switches follows each screen's system on its own Edit page (Windows, Android, ...); a screen whose app cannot do an action simply ignores the switch.</p>
+    </div></div></div>
+    {% endif %}
+  </div>
+  <div class="action-bar">
+    <button class="btn btn-primary" type="submit" name="apply" value="1" data-confirm="Apply these changes to {{ displays|length }} screen{{ '' if displays|length == 1 else 's' }}?">Apply to all</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('displays.index') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

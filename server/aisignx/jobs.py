@@ -64,6 +64,7 @@ JOBS = (
     Job("updates.check", 86400, "aisignx.updates.service:check_job"),
     Job("emergency.schedule", 30, "aisignx.emergency.plans:job"),
     Job("plugin_cache_prune", 86400, "aisignx.plugins.cache:prune_job"),
+    Job("sources.sync", 60, "aisignx.sources.service:job"),
 )
 
 

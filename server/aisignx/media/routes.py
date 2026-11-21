@@ -4,7 +4,7 @@ from flask_login import current_user, login_required
 from ..audit import service as audit
 from ..auth.decorators import editor_required
 from ..extensions import db
-from ..models import MEDIA_TYPES, Media
+from ..models import MEDIA_TYPES, ImageSource, Media
 from ..models.media import MEDIA_IMAGE, MEDIA_PLUGIN, MEDIA_VIDEO, MEDIA_WEB, THUMB_PENDING
 from . import bp, convert, service, storage, thumbnails, webpage, webshot
 from .forms import ConvertForm, DeleteForm, MediaEditForm, ReplaceForm, UploadForm, WebPageForm
@@ -24,6 +24,14 @@ def index():
     media_type = request.args.get("type", "")
     search = (request.args.get("q") or "").strip()
     query = Media.query
+    # Images copied from an image source (Plugins > Image sources) stay out of the main list unless asked for: ?source=all or ?source=<id>.
+    source = request.args.get("source", "")
+    if source == "all":
+        pass
+    elif source.isdigit():
+        query = query.filter(Media.source_id == int(source))
+    else:
+        query = query.filter(Media.source_id.is_(None))
     if media_type in MEDIA_TYPES:
         query = query.filter(Media.media_type == media_type)
     if search:
@@ -31,7 +39,8 @@ def index():
     items = query.order_by(Media.created_at.desc(), Media.id.desc()).all()
     return render_template(
         "media/index.html",
-        items=items, media_type=media_type, search=search,
+        items=items, media_type=media_type, search=search, source=source,
+        sources=ImageSource.query.order_by(ImageSource.name).all(),
         upload_form=UploadForm(), web_form=WebPageForm(), delete_form=DeleteForm(),
         default_duration=service.default_duration(), ffmpeg_ok=ffmpeg_available(),
         max_upload_mb=current_app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024),

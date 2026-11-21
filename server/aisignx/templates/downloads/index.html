@@ -2,8 +2,27 @@
 {% block title %}Downloads{% endblock %}
 {% block content %}
 <h1 class="h3 mb-2">Downloads</h1>
-<p class="text-secondary">Apps and add-ins for this server. After downloading, compare the checksum (SHA-256) with the one shown here if you want to be sure the file is intact.
-  Setup guides: <code>docs/clients.md</code>, <code>docs/powerpoint-addin.md</code>.</p>
+<p class="text-secondary" style="max-width: 52rem">The programs that turn a PC or an Android device into a screen for this server, and the PowerPoint add-in. The <strong>checksum</strong> (SHA-256) beside each file is its fingerprint: if yours matches, the file arrived unchanged.
+  Windows may show <em>"Windows protected your PC"</em> for the setup program because it is signed with your own certificate, not one Windows already knows: choose <strong>More info</strong>, then <strong>Run anyway</strong> (or use the setup script below, which avoids the page).</p>
+{% if can_manage %}
+<div class="row g-3 mb-4">
+  <div class="col-md-4"><div class="card h-100"><div class="card-body">
+    <h2 class="h6">Windows PC</h2>
+    <p class="small text-secondary">One script installs the player and its helper agent, pairs the PC and sets how it runs. Or just run the Windows setup program on the PC and pair it with the code it shows.</p>
+    <a class="btn btn-sm btn-primary" href="{{ url_for('provision.windows') }}">Make a setup script</a>
+  </div></div></div>
+  <div class="col-md-4"><div class="card h-100"><div class="card-body">
+    <h2 class="h6">Android tablet or phone</h2>
+    <p class="small text-secondary">A <strong>QR code</strong> for a device that has been factory reset (it becomes a locked-down kiosk), or a QR code that installs the app on a phone you keep using.</p>
+    <a class="btn btn-sm btn-primary" href="{{ url_for('provision.android') }}">Make a QR code</a>
+  </div></div></div>
+  <div class="col-md-4"><div class="card h-100"><div class="card-body">
+    <h2 class="h6">Android TV box (NVIDIA Shield, ...)</h2>
+    <p class="small text-secondary">Install from a PC with one script, or open a short install address on the box. No QR code and no factory reset.</p>
+    <a class="btn btn-sm btn-primary" href="{{ url_for('provision.android') }}#install-link">Install link and script</a>
+  </div></div></div>
+</div>
+{% endif %}
 
 {% for label, items in groups %}
 <div class="card mb-3">
@@ -42,8 +61,6 @@
 {% endfor %}
 
 {% if can_manage %}
-<p class="mb-3 d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{{ url_for('provision.android') }}">Set up an Android tablet as a kiosk (QR code)</a>
-  <a class="btn btn-outline-primary" href="{{ url_for('provision.windows') }}">Set up a Windows PC (one script)</a></p>
 <div class="card">
   <div class="card-header fw-semibold">Add a file</div>
   <div class="card-body">
@@ -58,7 +75,7 @@
       <div class="col-12"><label class="form-label" for="notes">Notes (optional)</label>
         {{ upload_form.notes(class="form-control") }}</div>
       <div class="col-12"><button class="btn btn-primary" type="submit">Upload</button>
-        <span class="text-secondary small ms-2">Allowed: exe, msi, zip, apk, pdf and a few more. Up to the server's upload limit.</span></div>
+        <span class="text-secondary small ms-2">The kind is detected from the file name. Allowed: exe, msi, zip, apk, pdf, cer and a few more, up to the server's upload limit.</span></div>
     </form>
   </div>
 </div>

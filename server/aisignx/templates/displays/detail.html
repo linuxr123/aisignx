@@ -52,6 +52,7 @@
 {% endif %}
 <div class="row g-4">
 <div class="col-xl-6">
+<div data-live="summary">
 <div class="card mb-4"><div class="card-body">
   <dl class="row mb-0">
     <dt class="col-sm-4">Now playing</dt>
@@ -82,13 +83,16 @@
     <dd class="col-sm-8">{% if display.client_id %}<code>{{ display.client_id[:8] }}</code>{% else %}&mdash;{% endif %}</dd>
   </dl>
 </div></div>
+</div>
 {{ settings_card(display, pin_set, current_user.is_admin, unlock_form) }}
 </div>
 <div class="col-xl-6">
 {% if display.is_paired or has_screenshot %}{{ screenshot_card(display, has_screenshot, screenshot_pending) }}{% endif %}
+<div data-live="device">
 {{ agent_card(display, agent_caps, agent_cmds, current_user.is_admin, action_form, app_update, (diag.shell.name if diag and diag.shell else '')) }}
 {{ privileged_card(display, priv, current_user.is_admin, action_form, autologin_form) }}
 {{ playback_card(support, diag) }}
+</div>
 <div class="card mb-4"><div class="card-body">
   <div class="d-flex justify-content-between align-items-center">
     <h2 class="h5 mb-0">Next 7 days</h2>
@@ -96,7 +100,7 @@
   </div>
   {{ week_list(week, tz_name) }}
 </div></div>
-{{ diagnostics_card(display, diag, current_user.can_edit, action_form, app_update) }}
+<div data-live="diagnostics">{{ diagnostics_card(display, diag, current_user.can_edit, action_form, app_update) }}</div>
 </div>
 </div>
 <a class="btn btn-link px-0 mt-3" href="{{ url_for('displays.index') }}">&larr; All displays</a>

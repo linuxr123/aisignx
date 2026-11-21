@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_form.html" import field %}
-{% block title %}Set up an Android tablet{% endblock %}
+{% block title %}Set up an Android screen{% endblock %}
 {% block content %}
 <style>
   /* The code is always drawn black on white and fits its box; it must never depend on the page theme. */
@@ -8,8 +8,13 @@
             width: min(100%, 26rem); flex: 0 0 auto; }
   .qr-box svg { display: block; width: 100%; height: auto; }
 </style>
-<h1 class="h3 mb-2">Set up an Android tablet as a kiosk</h1>
-<p class="text-secondary">For a tablet or phone that has been <strong>factory reset</strong> and is on its first welcome screen. It downloads the AiSignX app from this server, becomes a managed device (Device Owner), pairs itself, and can then be locked down and controlled from the web page. Everything on the device is replaced, so use a device that holds nothing you need.</p>
+<h1 class="h3 mb-2">Set up an Android screen</h1>
+<p class="text-secondary" style="max-width: 52rem">Pick the way that fits the device. Everything below installs the same AiSignX app from this server.</p>
+<ol class="text-secondary" style="max-width: 52rem">
+  <li><strong>Tablet or phone you can factory reset: QR code.</strong> The device scans a code on its first welcome screen, installs the app, becomes a <em>managed kiosk</em> (it can be locked down and controlled from the web page) and pairs itself. <strong>Erases everything</strong> on the device.</li>
+  <li><strong>Phone or tablet you keep using: QR code.</strong> You scan the code with the normal camera; it installs the app like any app and pairs it. No reset, no lock-down.</li>
+  <li><strong>Android TV box (NVIDIA Shield, ...): install link or PC script</strong> (further down). No QR code and no reset.</li>
+</ol>
 
 {% if problem %}
 <div class="alert alert-warning">{{ problem }} <a href="{{ url_for('downloads.index') }}">Downloads</a></div>
@@ -18,11 +23,11 @@
 {% if result %}
 <div class="card mb-4"><div class="card-body">
   {% if result.app %}
-  <h2 class="h5">Scan this with the phone's camera</h2>
+  <h2 class="h5">QR code to install as an app (no reset)</h2>
   <div class="d-flex flex-wrap gap-4 align-items-start">
     <div class="qr-box">{{ result.svg|safe }}</div>
     <ol class="mb-0">
-      <li>Point the phone's camera at the code and open the link.</li>
+      <li>Point the normal camera app at the code and open the link it shows.</li>
       <li>Download the app and install it (Android asks once to allow installs from the browser).</li>
       <li>Tap <strong>Open AiSignX and pair</strong>, then <strong>Pair</strong>. The screen <strong>{{ result.display.name }}</strong> then appears under <a href="{{ url_for('displays.detail', display_id=result.display.id) }}">Displays</a>, already paired.</li>
     </ol>
@@ -31,13 +36,13 @@
     The phone keeps working as a phone: the app is a normal app, not a managed kiosk (no silent updates or reboots from the web page). The link works for 24 hours and for <strong>one</strong> device; do not share a screenshot of the code.
   </div>
   {% else %}
-  <h2 class="h5">Scan this on the tablet</h2>
+  <h2 class="h5">QR code for a factory-reset device (managed kiosk)</h2>
   <div class="d-flex flex-wrap gap-4 align-items-start">
     <div class="qr-box">{{ result.svg|safe }}</div>
     <ol class="mb-0">
-      <li>Factory reset the tablet (Settings &gt; General management &gt; Reset &gt; Factory data reset), or take it out of the box.</li>
+      <li>Factory reset the device (Settings &gt; General management &gt; Reset &gt; Factory data reset), or take it out of the box. <strong>This erases everything on it.</strong></li>
       <li>On the <strong>Welcome</strong> screen, tap the same spot <strong>6 times</strong> until a QR scanner opens. Connect to Wi-Fi if it asks.</li>
-      <li>Scan this code. The tablet downloads the app from <code>{{ result.base }}</code>, installs it and finishes setup by itself.</li>
+      <li>Scan this code. The device downloads the app from <code>{{ result.base }}</code>, installs it and finishes setup by itself.</li>
       <li>The screen <strong>{{ result.display.name }}</strong> then appears under <a href="{{ url_for('displays.detail', display_id=result.display.id) }}">Displays</a>, already paired.</li>
     </ol>
   </div>
@@ -50,8 +55,8 @@
 {% endif %}
 
 <div class="card mb-4" id="install-link" style="max-width: 44rem"><div class="card-body">
-  <h2 class="h5">Phones that are already set up, and Android TV boxes</h2>
-  <p class="small text-secondary">The QR code above needs a factory reset, which suits a tablet. A phone you already use, or a TV box such as an NVIDIA Shield, installs the app the normal way and pairs with a short code. Make an install link, then open it on that device (scan it with the phone's camera, or type the short address with the TV remote).</p>
+  <h2 class="h5">Android TV box, or a device without a QR code: install link</h2>
+  <p class="small text-secondary">A TV box such as an NVIDIA Shield cannot scan a setup code and should not be factory reset. It installs the app the normal way and pairs with a short code. Make an install link, then open it on that device (type the short address with the TV remote, or scan the link's code with a phone). The link only gives the app and this server's address; it cannot pair anything by itself.</p>
   <form method="post" action="{{ url_for('provision.install_link') }}">{{ link_form.hidden_tag() }}
     <button class="btn btn-outline-primary" type="submit">{{ "Make a new install link" if link else "Make an install link" }}</button></form>
   {% if link %}
@@ -60,7 +65,7 @@
     <div>
       <p class="mb-1">Open this on the device:</p>
       <p class="fs-5 mb-2"><code>{{ link.short }}</code></p>
-      <p class="small text-secondary mb-0">Valid until {{ link.expires|localtime }}. Making a new link replaces this one. It only gives the app and this server's address; it cannot pair anything by itself.</p>
+      <p class="small text-secondary mb-0">Valid until {{ link.expires|localtime }}. Making a new link replaces this one.</p>
       <div class="mt-3 p-3 rounded border">
         <div class="fw-semibold mb-1">Android TV box: install from your PC (recommended)</div>
         <p class="small text-secondary mb-2">Better than typing on a TV remote. The script downloads Google's adb tool if you do not have it, installs the app over your network and opens it with this server's address already filled in. You turn on <em>Network debugging</em> on the TV once.</p>
@@ -74,7 +79,7 @@
 
 {% if not problem %}
 <div class="card" style="max-width: 44rem"><div class="card-body">
-  <h2 class="h5 mb-3">{{ "Make another code" if result else "New tablet" }}</h2>
+  <h2 class="h5 mb-3">{{ "Make another QR code" if result else "Make a QR code for one device" }}</h2>
   <p class="small text-secondary">App to install: <strong>{{ download.filename }}</strong>{% if download.version %} {{ download.version }}{% endif %} ({{ package }}), the newest Android app on the Downloads page.</p>
   <form method="post" novalidate>
     {{ form.hidden_tag() }}
@@ -90,9 +95,11 @@
       <div class="col-md-3">{{ field(form.wifi_security) }}</div>
       <div class="col-md-4">{{ field(form.wifi_password) }}</div>
     </div>
-    <button class="btn btn-primary" type="submit" name="mode" value="kiosk">Make the QR code (factory reset tablet)</button>
-    <button class="btn btn-outline-primary" type="submit" name="mode" value="app">Make a QR code to install as an app (no reset)</button>
-    <p class="small text-secondary mt-2 mb-0">The second one is for a phone or tablet you keep using as it is: it installs the app normally and pairs it, with no Device Owner (so no silent updates, reboots or full lock-down; the Wi-Fi fields are not used).</p>
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-primary" type="submit" name="mode" value="kiosk">QR code for a factory-reset device (kiosk)</button>
+      <button class="btn btn-outline-primary" type="submit" name="mode" value="app">QR code to install as an app (no reset)</button>
+    </div>
+    <p class="small text-secondary mt-2 mb-0">Each code works for <strong>24 hours and for one device</strong>. The first button makes a managed kiosk (restart, update and lock-down from the web page). The second installs a normal app: no silent updates, reboots or lock-down, and the Wi-Fi fields are not used.</p>
   </form>
 </div></div>
 {% endif %}

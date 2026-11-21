@@ -4,9 +4,10 @@
 {% block title %}Media{% endblock %}
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-  <h1 class="h3 mb-0">Media</h1>
+  <h1 class="h3 mb-0">Media{% if source %} <small class="text-secondary fs-6">{{ "from all sources" if source == "all" else "from a source" }} <a class="fs-6" href="{{ url_for('media.index') }}">back to uploads</a></small>{% endif %}</h1>
   {% if current_user.can_edit %}
   <div class="d-flex gap-2">
+    {% if current_user.is_admin %}<a class="btn btn-outline-secondary" href="{{ url_for('sources.index') }}" title="Folders, shares and cloud albums">Image sources{% if sources %} ({{ sources|length }}){% endif %}</a>{% endif %}
     <button class="btn btn-primary" type="button" data-upload-pick>{{ icon("upload", 16) }} Upload files</button>
     <button class="btn btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#webPanel">Add web page</button>
     <a class="btn btn-outline-success" href="{{ url_for('plugins.choose') }}">Add plugin</a>

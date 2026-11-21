@@ -63,7 +63,8 @@ def _images(app, count, start=0, kind="image"):
 
 
 def _config(**overrides):
-    return {"source": "selection", "media_ids": [], "newest_count": 10, "mode": "slideshow",
+    return {"source": "selection", "media_ids": [], "image_source": "", "source_count": 50, "source_order": "newest",
+            "newest_count": 10, "mode": "slideshow",
             "grid": "2x2", "seconds_per_image": 8, "transition": "fade", "fit": "contain",
             "background": "blur", "caption": "none", "shuffle": False, "auto_duration": True,
             **overrides}
@@ -92,7 +93,7 @@ def test_plugin_json_loads(app):
     assert plugin.render == "native" and plugin.data is None and plugin.ends_itself is False
     assert plugin.player_script == "native.js" and plugin.player_style == "native.css"
     assert {f["name"] for f in plugin.schema} == {
-        "source", "media_ids", "newest_count", "mode", "grid", "seconds_per_image",
+        "source", "media_ids", "image_source", "source_count", "source_order", "newest_count", "mode", "grid", "seconds_per_image",
         "transition", "fit", "caption", "background", "shuffle", "auto_duration"}
     media_ids = next(f for f in plugin.schema if f["name"] == "media_ids")
     assert media_ids["type"] == "media_multi" and media_ids["max"] == 200

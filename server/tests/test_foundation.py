@@ -163,7 +163,7 @@ def _status(app, name):
 def test_registry_lists_every_job():
     names = [j.name for j in jobs.JOBS]
     assert names == ["alerts.sweep", "alerts.mail", "alerts.purge", "backup.scheduled",
-                     "audit.purge", "pop.rollup", "media.orphans", "media.probe", "media.webpages", "agent.commands", "updates.check", "emergency.schedule", "plugin_cache_prune"]
+                     "audit.purge", "pop.rollup", "media.orphans", "media.probe", "media.webpages", "agent.commands", "updates.check", "emergency.schedule", "plugin_cache_prune", "sources.sync"]
     assert all(":" in j.target and j.target.startswith("aisignx.") for j in jobs.JOBS)
 
 

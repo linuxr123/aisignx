@@ -114,7 +114,7 @@ class InstallResultReceiver : BroadcastReceiver() {
     private fun failureWord(status: Int): String = when (status) {
         PackageInstaller.STATUS_FAILURE_CONFLICT -> "conflict (signature or downgrade)"
         PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "incompatible"
-        PackageInstaller.STATUS_FAILURE_INVALID -> "invalid package"
+        PackageInstaller.STATUS_FAILURE_INVALID -> "invalid package (often a different signing key: reinstall the app once)"
         PackageInstaller.STATUS_FAILURE_STORAGE -> "not enough storage"
         PackageInstaller.STATUS_FAILURE_BLOCKED -> "blocked"
         PackageInstaller.STATUS_FAILURE_ABORTED -> "refused by the user"
