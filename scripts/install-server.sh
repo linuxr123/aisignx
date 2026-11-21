@@ -22,6 +22,7 @@ SOURCE=""
 PREFIX=""
 DATA=""
 SERVICE_USER=""
+HTTPS=0   # --https: also run setup-nginx.sh at the end (nginx + HTTPS)
 
 usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; }
 while [[ $# -gt 0 ]]; do
@@ -33,6 +34,7 @@ while [[ $# -gt 0 ]]; do
     --data-dir) DATA="${2:?--data-dir needs a folder}"; shift 2 ;;
     --user) SERVICE_USER="${2:?--user needs a name}"; shift 2 ;;
     --no-start) START=0; shift ;;
+    --https) HTTPS=1; shift ;;
     --open-firewall) OPEN_FIREWALL=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     --purge) PURGE=1; shift ;;
@@ -302,3 +304,10 @@ echo "    Settings: $ENV_FILE    Data: $DATA"
 echo "    $([[ "$OS" == "Linux" ]] && echo "Status: systemctl status aisignx   Logs: journalctl -u aisignx -f" || echo "Logs: $LOG_DIR/service.err.log")"
 [[ $UPGRADE -eq 1 ]] && echo "    The previous version is kept in $APP.prev (delete it when you are happy)."
 exit 0
+
+if [[ "$HTTPS" == 1 ]]; then
+  step "HTTPS with nginx"
+  AISIGNX_PREFIX="$PREFIX" AISIGNX_DATA="$DATA" AISIGNX_USER="$SERVICE_USER" "$(dirname "$0")/setup-nginx.sh" --port "$PORT"
+else
+  echo "    For HTTPS (recommended on shared networks) run scripts/setup-nginx.sh afterwards, or install again with --https."
+fi

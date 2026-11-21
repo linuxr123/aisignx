@@ -109,3 +109,10 @@ environment, database migrations, backup before upgrade, starting the installed 
 Scheduled Task, the firewall rule and the folder permissions need elevation and were reviewed but **not yet run**.
 The Linux script was syntax-checked and its file copy tested, but has **not been run on a real Linux machine**.
 Please try it on a spare machine first and report what you see.
+
+## HTTPS in the same run
+
+Add `-Https` (Windows) or `--https` (Linux) to the install command and the installer finishes by running the nginx script
+(`setup-nginx`): certificate, nginx, firewall and the secure settings. Without winget, the Windows installer downloads the
+official Python 3.12 installer from python.org and checks that it is signed by the Python Software Foundation before running it.
+Details: [https.md](https.md).

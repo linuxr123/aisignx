@@ -32,6 +32,8 @@ param(
     # Copy, build the environment and migrate the database, but register nothing (no task, no firewall,
     # no permission changes). Used to test the installer; also handy to prepare a machine.
     [switch]$NoService,
+    # Also put nginx in front with HTTPS (runs setup-nginx.ps1 at the end: docs\https.md).
+    [switch]$Https,
     # Show what would be done and change nothing.
     [switch]$DryRun,
     [switch]$Yes
@@ -152,6 +154,22 @@ if (-not $py) {
             }
             $py = Find-Python
         }
+    }
+    if (-not $py -and -not (Get-Command winget.exe -ErrorAction SilentlyContinue) -and ($Yes -or $DryRun -or ((Read-Host '    winget is not available. Download the official Python 3.12 installer from python.org? [Y/n]') -match '^(|y|yes)$'))) {
+        # No winget (Windows Server, older Windows 10): the official installer, checked for the Python Software Foundation signature.
+        Do-It 'download Python 3.12.10 from python.org, check its signature and install it for all users' {
+            $pyInstaller = Join-Path ([IO.Path]::GetTempPath()) 'python-3.12.10-amd64.exe'
+            Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' -OutFile $pyInstaller -UseBasicParsing
+            $sig = Get-AuthenticodeSignature -FilePath $pyInstaller
+            if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Python Software Foundation') {
+                Remove-Item $pyInstaller -Force; throw 'The downloaded Python installer is not signed by the Python Software Foundation. Nothing was installed.'
+            }
+            $p = Start-Process -FilePath $pyInstaller -ArgumentList '/quiet', 'InstallAllUsers=1', 'PrependPath=1', 'Include_test=0' -Wait -PassThru
+            Remove-Item $pyInstaller -Force -ErrorAction SilentlyContinue
+            if ($p.ExitCode -ne 0) { throw "The Python installer failed (exit code $($p.ExitCode))." }
+            $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+        }
+        $py = Find-Python
     }
     if (-not $py -and -not $DryRun) { throw 'Python 3.10 or newer (installed for all users) was not found. Install it from https://www.python.org/downloads/ (tick "Install for all users" and "Add to PATH") and run this again.' }
 }
@@ -320,4 +338,10 @@ $ips = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Wher
 foreach ($ip in $ips) { Ok "Open http://${ip}:$Port in a browser to finish setup (create the admin account)." }
 if (-not $ips) { Ok "Open http://localhost:$Port in a browser to finish setup (create the admin account)." }
 Write-Host "    Settings: $EnvFile    Data: $DataDir    Log: $LogDir\service.log"
+if ($Https) {
+    Step 'HTTPS with nginx'
+    & (Join-Path $PSScriptRoot 'setup-nginx.ps1') -InstallDir $InstallDir -DataDir $DataDir -Port $Port $(if ($DryRun) { '-DryRun' })
+} else {
+    Write-Host '    For HTTPS (recommended on shared networks) run scripts\setup-nginx.ps1 afterwards, or install again with -Https.'
+}
 if ($upgrade) { Write-Host "    The previous version is kept in $App.prev (delete it when you are happy)." }
