@@ -44,6 +44,13 @@ def test_the_dimmer_layer_is_made_only_when_needed_and_steps_aside_for_an_emerge
     assert harness["config"] == [100, None]
 
 
+@needs_node
+def test_an_app_that_sets_the_backlight_itself_gets_no_layer_and_is_told_about_emergencies(harness):
+    assert harness["nativeLayers"] == 0
+    assert harness["nativeHeldAtStart"] == [False]            # told once that nothing needs holding
+    assert harness["nativeHeld"] == [False, True, False]      # an emergency: full brightness, then back; no repeats
+
+
 def test_the_manifest_carries_the_settings(app, paired_display):
     with app.app_context():
         d = db.session.get(Display, paired_display[0])

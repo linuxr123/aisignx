@@ -14,6 +14,7 @@ data class DisplaySettings(
     val allowInput: Boolean,
     val kioskLock: Boolean,
     val unlock: UnlockHash?,
+    val brightness: Brightness = Brightness.DEFAULT,
 ) {
 
     companion object {
@@ -32,7 +33,7 @@ data class DisplaySettings(
             val orientation = if (deg is Int && deg in ORIENTATIONS) deg else 0
             val allow = s.opt("allow_input") == true
             val lock = s.opt("kiosk_lock") == true
-            return DisplaySettings(orientation, allow, lock, parseUnlock(s.optJSONObject("unlock")))
+            return DisplaySettings(orientation, allow, lock, parseUnlock(s.optJSONObject("unlock")), Brightness.parse(s))
         }
 
         fun parseUnlock(u: JSONObject?): UnlockHash? {

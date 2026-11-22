@@ -35,6 +35,7 @@ class ShellPort(
     private val onCapture: (id: Int, reply: (String?) -> Unit) -> Unit = { _, reply -> reply(null) },
     private val onCommand: (Command) -> Unit = {},
     private val onAlive: () -> Unit = {},
+    private val onFullBrightness: (Boolean) -> Unit = {},
 ) {
     private val main = Handler(Looper.getMainLooper())
 
@@ -89,6 +90,7 @@ class ShellPort(
                 onCapture(id) { jpeg -> main.post { reply(replyProxy, captureReply(id, jpeg)) } }
             }
             "controls" -> controlProxy = replyProxy
+            "bright" -> onFullBrightness(msg.optBoolean("full", false)) // an emergency message is on screen: show it at full brightness
             "alive" -> onAlive() // the page is running; only the arrival counts, the payload is ignored
             "command" -> {
                 val c = msg.optJSONObject("c") ?: return

@@ -24,10 +24,10 @@ class ShellInfoTest {
 
     @Test fun capsList() {
         assertEquals(
-            listOf("pin-exit", "capture", "rotate", "controls", "kiosk-lock", "agent"),
+            listOf("pin-exit", "capture", "rotate", "controls", "kiosk-lock", "agent", "brightness"),
             ShellInfo.caps(portAttached = true, isTv = false),
         )
-        assertEquals(listOf("pin-exit", "capture", "controls", "kiosk-lock", "agent"), ShellInfo.caps(portAttached = true, isTv = true))
+        assertEquals(listOf("pin-exit", "capture", "controls", "kiosk-lock", "agent", "brightness"), ShellInfo.caps(portAttached = true, isTv = true))
         assertEquals(emptyList<String>(), ShellInfo.caps(portAttached = false, isTv = false))
         val caps = ShellInfo.caps(portAttached = true, isTv = false)
         val json = JSONObject(ShellInfo("3.0.0", "d", Config.newClientId(), "https://s", caps).info())

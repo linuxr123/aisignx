@@ -18,6 +18,9 @@ def _get_media_or_404(media_id: int) -> Media:
     return media
 
 
+PER_PAGE = 96
+
+
 @bp.route("/")
 @login_required
 def index():
@@ -36,10 +39,13 @@ def index():
         query = query.filter(Media.media_type == media_type)
     if search:
         query = query.filter(Media.name.ilike(f"%{search}%"))
-    items = query.order_by(Media.created_at.desc(), Media.id.desc()).all()
+    # Pages of PER_PAGE: hundreds of imported pictures would otherwise make the page slow and hard to use.
+    total = query.count()
+    page = max(1, request.args.get("page", 1, type=int) or 1)
+    items = query.order_by(Media.created_at.desc(), Media.id.desc()).offset((page - 1) * PER_PAGE).limit(PER_PAGE).all()
     return render_template(
         "media/index.html",
-        items=items, media_type=media_type, search=search, source=source,
+        items=items, media_type=media_type, search=search, source=source, page=page, pages=max(1, -(-total // PER_PAGE)), total=total,
         sources=ImageSource.query.order_by(ImageSource.name).all(),
         upload_form=UploadForm(), web_form=WebPageForm(), delete_form=DeleteForm(),
         default_duration=service.default_duration(), ffmpeg_ok=ffmpeg_available(),

@@ -42,7 +42,7 @@
   // or null in a plain browser.
   // Every shell call is wrapped; a broken shell never stops playback.
   var shellCache;
-  var CAPS = { capture: 1, rotate: 1, "pin-exit": 1, controls: 1, "kiosk-lock": 1, agent: 1 };
+  var CAPS = { capture: 1, rotate: 1, "pin-exit": 1, controls: 1, "kiosk-lock": 1, agent: 1, brightness: 1 };
   var ACTIONS = { toggle: 1, play: 1, pause: 1, forward: 1, back: 1, next: 1, prev: 1 };
   var CAPTURE_TIMEOUT_MS = 10000;
   function str(v, max) { return typeof v === "string" ? v.slice(0, max) : ""; }
@@ -104,7 +104,7 @@
     return function (a, r) { if (typeof a === "string" && ACTIONS[a] === 1) fn(a, !!r); };
   }
   function readShell() {
-    var raw = null, send = null, capture = null, stats = null, command = null, control = null, alive = null;
+    var raw = null, send = null, capture = null, stats = null, command = null, control = null, alive = null, bright = null;
     try {
       if (window.AiSignXShell && typeof window.AiSignXShell.info === "function") {
         var es = window.AiSignXShell;
@@ -148,6 +148,11 @@
           var port = androidPort();
           if (port) port.postMessage(JSON.stringify({ t: "alive", a: o }));
         };
+        // An emergency message is on screen (or gone): the app shows the screen at full brightness meanwhile.
+        bright = function (full) {
+          var port = androidPort();
+          if (port) port.postMessage(JSON.stringify({ t: "bright", full: !!full }));
+        };
       }
     } catch (e) { raw = null; }
     if (!raw || typeof raw !== "object" || (raw.name !== "electron" && raw.name !== "android")) return null;
@@ -180,6 +185,8 @@
       alive: function (obj) { try { if (alive) alive(obj); } catch (e) { /* ignore */ } },
       // Admin commands for the shell itself (unlock, lock). A no-op for an old shell.
       onCommand: function (obj) { try { if (command) command(obj); } catch (e) { /* ignore */ } },
+      // Android only: ask the app to show the screen at full brightness (an emergency message) or back at its setting.
+      holdBrightness: function (full) { try { if (bright) bright(full); } catch (e) { /* ignore */ } },
       // Keys and remote buttons the shell turns into control actions.
       onControl: function (fn) {
         if (typeof fn !== "function") return;

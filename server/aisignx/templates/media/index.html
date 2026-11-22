@@ -53,6 +53,17 @@
 </div>
 {% endif %}
 
+{% if sources %}
+<form method="get" class="d-flex flex-wrap align-items-center gap-2 mb-2">
+  <label class="small text-secondary" for="srcFilter">Show</label>
+  <select class="form-select form-select-sm" style="max-width: 18rem" id="srcFilter" name="source" onchange="this.form.submit()">
+    <option value="" {% if not source %}selected{% endif %}>Uploads and plugins</option>
+    <option value="all" {% if source == "all" %}selected{% endif %}>Everything</option>
+    {% for s in sources %}<option value="{{ s.id }}" {% if source == s.id|string %}selected{% endif %}>{{ s.name }} (image source)</option>{% endfor %}
+  </select>
+  <span class="small text-secondary">{{ total }} item{{ "" if total == 1 else "s" }}{% if pages > 1 %}, page {{ page }} of {{ pages }}{% endif %}</span>
+</form>
+{% endif %}
 <div class="media-filters d-flex flex-wrap align-items-center gap-2 mb-3" id="mediaFilters" data-initial-type="{{ media_type or '' }}">
   <input class="form-control media-search" type="search" id="mediaSearch" value="{{ search }}" placeholder="Search by name" aria-label="Search by name">
   {% set counts = {"image": 0, "video": 0, "web": 0, "plugin": 0} %}
@@ -101,6 +112,13 @@
   </div>
   {% endfor %}
 </div>
+{% if pages > 1 %}
+<nav class="d-flex justify-content-center gap-1 my-3" aria-label="Pages">
+  {% for n in range(1, pages + 1) %}
+  <a class="btn btn-sm {{ 'btn-primary' if n == page else 'btn-outline-secondary' }}" href="{{ url_for('media.index', page=n, source=source or None, type=media_type or None, q=search or None) }}">{{ n }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
 {% else %}
 <div class="text-center text-secondary py-5">
   {% if search or media_type %}No media matches your filter.{% else %}No media yet.{% if current_user.can_edit %} Upload some files or add a web page to get started.{% endif %}{% endif %}

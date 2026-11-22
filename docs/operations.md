@@ -205,3 +205,14 @@ Manual, uploaded and pre-restore backups are never deleted automatically.
   one's progress (waiting, installing, installed, failed with the reason). The table and the display page refresh by themselves; leave the tab open while an update runs.
   A screen is updated only if its *Allow installing updates* switch is on and its app can do it; otherwise it is refused with the reason.
 - The display's **Edit** page words its settings for the screen's system (Windows, Android, Linux, browser) once the player has reported what it is.
+
+## Brightness
+
+Displays > Edit > Screen: **Brightness** (10 to 100 %) and an optional **night window** (a lower level between two local times, in the organization's time zone).
+- **Android app 3.0.8 and newer:** the app sets the real screen backlight (the window's brightness), so it saves power too. At 100 % the device's own brightness setting applies. An emergency message is shown at full brightness. Android TV boxes usually ignore app brightness.
+- **Windows app and browsers:** the player darkens its picture with a black layer; the monitor's own backlight is not touched (set it on the monitor).
+
+## Adding media to a playlist
+
+The **Add media** box on a playlist searches and filters the whole library on the server, so it stays quick with hundreds of pictures: filter by kind, plugin or source, search, order,
+hide what is already in the playlist, and **Select all matching**. What you tick is kept while you change filters. Pictures copied from an image source are hidden until you pick that source (or Everything).

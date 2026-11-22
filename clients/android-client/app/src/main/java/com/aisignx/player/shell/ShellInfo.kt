@@ -59,6 +59,7 @@ class ShellInfo(
         const val CAP_CONTROLS = "controls"
         const val CAP_KIOSK_LOCK = "kiosk-lock"
         const val CAP_AGENT = "agent"
+        const val CAP_BRIGHTNESS = "brightness"      // the app sets the real backlight; the page draws no dimming layer
 
         /**
          * Capabilities: settings and capture requests arrive through the port, so
@@ -73,6 +74,7 @@ class ShellInfo(
                 add(CAP_CONTROLS)
                 add(CAP_KIOSK_LOCK)
                 add(CAP_AGENT)
+                add(CAP_BRIGHTNESS)
             }
         }
 

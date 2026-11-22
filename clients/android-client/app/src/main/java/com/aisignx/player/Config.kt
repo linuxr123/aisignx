@@ -3,6 +3,7 @@ package com.aisignx.player
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
+import com.aisignx.player.shell.Brightness
 import com.aisignx.player.shell.DisplaySettings
 import com.aisignx.player.shell.UnlockHash
 import java.security.SecureRandom
@@ -65,6 +66,10 @@ class Config(ctx: Context) {
     val allowInput: Boolean
         get() = prefs.getBoolean(KEY_ALLOW_INPUT, true)
 
+    /** Brightness from the last manifest (full until settings arrive). */
+    val brightness: Brightness
+        get() = Brightness.fromPref(prefs.getString(KEY_BRIGHTNESS, null))
+
     /** Lock player (lock task) from the last manifest; off until settings arrive. */
     val kioskLock: Boolean
         get() = prefs.getBoolean(KEY_KIOSK_LOCK, false)
@@ -85,6 +90,7 @@ class Config(ctx: Context) {
             .putInt(KEY_ORIENTATION, s.orientation)
             .putBoolean(KEY_ALLOW_INPUT, s.allowInput)
             .putBoolean(KEY_KIOSK_LOCK, s.kioskLock)
+            .putString(KEY_BRIGHTNESS, Brightness.toPref(s.brightness))
         val old = prefs.getString(KEY_UNLOCK_HASH, null)
         val new = s.unlock?.toPref()
         if (new == null) e.remove(KEY_UNLOCK_HASH) else e.putString(KEY_UNLOCK_HASH, new)
@@ -114,7 +120,7 @@ class Config(ctx: Context) {
 
     private fun removeDisplaySettings(e: SharedPreferences.Editor): SharedPreferences.Editor =
         e.remove(KEY_UNLOCK_HASH).remove(KEY_UNLOCK_FAILURES).remove(KEY_UNLOCK_LOCKED_UNTIL)
-            .remove(KEY_ORIENTATION).remove(KEY_ALLOW_INPUT).remove(KEY_KIOSK_LOCK)
+            .remove(KEY_ORIENTATION).remove(KEY_ALLOW_INPUT).remove(KEY_KIOSK_LOCK).remove(KEY_BRIGHTNESS)
 
     companion object {
         const val PREFS = "player_v3"
@@ -129,6 +135,7 @@ class Config(ctx: Context) {
         private const val KEY_ORIENTATION = "display_orientation"
         private const val KEY_ALLOW_INPUT = "allow_input"
         private const val KEY_KIOSK_LOCK = "kiosk_lock"
+        private const val KEY_BRIGHTNESS = "brightness"
         private const val KEY_LOCAL_UNLOCK_UNTIL = "local_unlock_until"
 
         val CLIENT_ID_RE = Regex("^[0-9a-f]{32}$")

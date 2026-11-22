@@ -44,6 +44,12 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
+## Unreleased: Media picker, Android backlight
+
+### Changed
+- **Add media** (playlists) is now a proper picker: search, filters for **kind** (images, videos, web pages, plugins), **plugin**, **source** (uploads, everything, or one image source), order, *hide ones already in the playlist*, paging ("Show more") and **Select all N matching**. Your selection is kept while you change filters. Imported pictures stay out of the default view so a big album does not bury your uploads. The Media page got the same source filter and pages of 96.
+- **Android brightness is now real** (app 3.0.8): the app sets the window's actual backlight from the screen's brightness and night window, and shows an emergency message at full brightness; the page draws no dimming layer there. Windows and browsers still darken the picture only. The first version only darkened the picture, which looked like "not working" on Android.
+
 ## Unreleased: Brightness
 
 ### Added

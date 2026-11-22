@@ -101,40 +101,41 @@
 
 {% if editable %}
 <div class="modal fade" id="addMedia" tabindex="-1" aria-labelledby="addMediaTitle" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <form class="modal-content" method="post" action="{{ url_for('playlists.add_items', playlist_id=playlist.id) }}">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <form class="modal-content" method="post" action="{{ url_for('playlists.add_items', playlist_id=playlist.id) }}"
+          data-media-picker="{{ url_for('playlists.media_picker', playlist_id=playlist.id) }}">
       {{ action_form.csrf_token }}
-      <div class="modal-header">
-        <h2 class="modal-title h5" id="addMediaTitle">Add media</h2>
+      <div class="modal-header flex-wrap gap-2">
+        <h2 class="modal-title h5 me-auto" id="addMediaTitle">Add media</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="w-100 d-flex flex-wrap gap-2 align-items-center">
+          <input class="form-control form-control-sm" style="max-width: 16rem" type="search" placeholder="Search by name" data-pk-search aria-label="Search the library">
+          <select class="form-select form-select-sm" style="max-width: 15rem" data-pk-source aria-label="Where the media comes from"></select>
+          <select class="form-select form-select-sm" style="max-width: 11rem" data-pk-sort aria-label="Order">
+            <option value="newest">Newest first</option><option value="name">Name A to Z</option></select>
+          <div class="form-check form-switch ms-1"><input class="form-check-input" type="checkbox" id="pk-hide" data-pk-hide><label class="form-check-label small" for="pk-hide">Hide ones already in this playlist</label></div>
+        </div>
+        <div class="w-100 d-flex flex-wrap gap-1" data-pk-types role="group" aria-label="Kind of media"></div>
+        <div class="w-100 d-flex flex-wrap gap-1" data-pk-plugins role="group" aria-label="Plugin"></div>
       </div>
       <div class="modal-body">
-        {% if library %}
-        <input class="form-control mb-3" type="search" placeholder="Filter by name" data-filter-target="#mediaPicker">
-        <div class="row row-cols-2 row-cols-md-4 g-2" id="mediaPicker">
-          {% for m in library %}
-          <div class="col" data-name="{{ m.name|lower }}">
-            <label class="card h-100 picker-card">
-              <input class="form-check-input picker-check" type="checkbox" name="media_ids" value="{{ m.id }}">
-              {{ thumb(m, "card-img-top") }}
-              <span class="card-body p-2 small">
-                <span class="d-block text-truncate fw-semibold">{{ m.name }}</span>
-                {{ type_badge(m) }} {{ m.effective_duration|duration }}
-              </span>
-            </label>
-          </div>
-          {% endfor %}
-        </div>
-        {% else %}
-        <p class="text-secondary mb-0">The media library is empty. <a href="{{ url_for('media.index') }}">Upload media first.</a></p>
-        {% endif %}
+        <div class="row row-cols-2 row-cols-md-4 row-cols-xl-6 g-2" data-pk-grid></div>
+        <p class="text-center text-secondary my-4" data-pk-empty hidden>Nothing matches these filters.</p>
+        <div class="text-center mt-3"><button type="button" class="btn btn-outline-secondary" data-pk-more hidden>Show more</button></div>
+        <div data-pk-hidden></div>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-link" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn btn-primary" type="submit" {% if not library %}disabled{% endif %}>Add selected</button>
+      <div class="modal-footer justify-content-between flex-wrap gap-2">
+        <div class="small d-flex flex-wrap gap-2 align-items-center">
+          <span data-pk-summary class="text-secondary"></span>
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-pk-all hidden>Select all matching</button>
+          <button type="button" class="btn btn-sm btn-link" data-pk-clear hidden>Clear selection</button>
+        </div>
+        <div><button type="button" class="btn btn-link" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit" data-pk-submit disabled>Add selected</button></div>
       </div>
     </form>
   </div>
 </div>
+<script src="{{ url_for('static', filename='js/media_picker.js') }}"></script>
 {% endif %}
 {% endblock %}

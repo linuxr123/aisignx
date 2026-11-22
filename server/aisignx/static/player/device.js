@@ -70,7 +70,15 @@
     body.appendChild(dimmer);
     return dimmer;
   }
+  var heldFull = null;
   function applyBrightness() {
+    var nativeBrightness = hasCap("brightness");        // the Android app sets the real backlight itself
+    if (nativeBrightness) {
+      var emergencyNow = !!(document.getElementById("emergency") && document.getElementById("emergency").hidden === false);
+      if (emergencyNow !== heldFull) { heldFull = emergencyNow; shell.holdBrightness(emergencyNow); }
+      if (dimmer) dimmer.style.opacity = "0";
+      return;
+    }
     var level = brightnessFor(cfg, A.sync && A.sync.clock && A.sync.clock.ready && A.sync.clock.ready() ? A.sync.clock.now() : Date.now());
     var em = document.getElementById("emergency");
     var emergency = !!(em && em.hidden === false);

@@ -30,6 +30,7 @@ import com.aisignx.player.FileLog
 import com.aisignx.player.R
 import com.aisignx.player.databinding.ActivityPlayerBinding
 import com.aisignx.player.shell.Agent
+import com.aisignx.player.shell.Brightness
 import com.aisignx.player.shell.Capture
 import com.aisignx.player.shell.DisplaySettings
 import com.aisignx.player.shell.ShellInfo
@@ -155,6 +156,7 @@ class PlayerActivity : AppCompatActivity() {
             onCapture = { _, reply -> Capture.capture(this, worker, reply) },
             onCommand = { c -> main.post { if (!isFinishing && !isDestroyed) onRemoteCommand(c) } },
             onAlive = { agent?.onAlive() },
+            onFullBrightness = { full -> main.post { emergencyBright = full; applyBrightness() } },
         )
         val attached = port.attach(view, services.origin)
         shellPort = port
@@ -209,9 +211,32 @@ class PlayerActivity : AppCompatActivity() {
         if (deg != -1 && !isTv) requestedOrientation = DisplaySettings.orientationFlag(deg)
         inputLocked = !config.allowInput
         lock.configure(config.kioskLock)
+        applyBrightness(config.brightness)
+        main.removeCallbacks(brightnessTick)
+        main.postDelayed(brightnessTick, 60_000L)
+    }
+
+    // ---- Brightness: the window's real backlight, from the manifest (base level and night window); full while an emergency is shown.
+    private var emergencyBright = false
+    private val brightnessTick = object : Runnable {
+        override fun run() { applyBrightness(); main.postDelayed(this, 60_000L) }
+    }
+
+    private fun applyBrightness(b: Brightness = AiSignXApp.from(this).config.brightness) {
+        val level = if (emergencyBright) 100 else b.levelAt(System.currentTimeMillis())
+        val value = Brightness.windowValue(level)
+        val lp = window.attributes
+        if (lp.screenBrightness != value) {
+            lp.screenBrightness = value
+            window.attributes = lp
+            FileLog.i(TAG, "brightness $level%")
+        }
     }
 
     private fun applySettings(s: DisplaySettings) {
+        applyBrightness(s.brightness)
+        main.removeCallbacks(brightnessTick)
+        main.postDelayed(brightnessTick, 60_000L)
         if (!isTv) {
             val flag = DisplaySettings.orientationFlag(s.orientation)
             if (requestedOrientation != flag) requestedOrientation = flag

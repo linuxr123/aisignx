@@ -80,8 +80,7 @@ def create():
 @login_required
 def detail(playlist_id: int):
     playlist = _get_playlist_or_404(playlist_id)
-    library = Media.query.order_by(Media.name).all()
-    return render_template("playlists/detail.html", playlist=playlist, library=library,
+    return render_template("playlists/detail.html", playlist=playlist,
                            item_form=ItemForm(), action_form=ActionForm())
 
 

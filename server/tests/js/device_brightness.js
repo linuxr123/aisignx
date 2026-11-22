@@ -4,11 +4,11 @@ const fs = require("fs");
 const vm = require("vm");
 const SRC = fs.readFileSync(process.argv[2], "utf-8");
 
-function world(emergencyHidden) {
+function world(emergencyHidden, shell) {
   const layers = [];
   const el = () => ({ hidden: true, textContent: "", querySelector: () => el(), classList: { toggle() {}, contains: () => false } });
   const emergency = { hidden: emergencyHidden, textContent: "", querySelector: () => el(), classList: { toggle() {}, contains: () => false } };
-  const window = { AiSignX: { net: { shell: () => null }, render: { setVolume() {} }, emergency: {} }, addEventListener() {}, innerWidth: 1920, innerHeight: 1080,
+  const window = { AiSignX: { net: { shell: () => shell || null }, render: { setVolume() {} }, emergency: {} }, addEventListener() {}, innerWidth: 1920, innerHeight: 1080,
     devicePixelRatio: 1, screen: { width: 1920, height: 1080 } };
   const body = { getAttribute: () => "", classList: { toggle() {}, contains: () => false }, appendChild: (n) => layers.push(n) };
   const document = { body, getElementById: (id) => (id === "emergency" ? emergency : el()),
@@ -46,4 +46,19 @@ emergency.hidden = true;
 D.applySettings({ brightness: 100 });
 out.backTo = layers[0].style.opacity;
 out.config = [D.config().brightness, D.config().dim];
+// An Android app that sets the real backlight itself: no layer in the page, and the app is told when an emergency is on screen.
+{
+  const held = [];
+  const shell = { info: { caps: ["capture", "brightness"] }, holdBrightness: (full) => held.push(full), onManifest() {}, onState() {} };
+  const w = world(true, shell);
+  w.D.applySettings({ brightness: 50 });
+  out.nativeLayers = w.layers.length;
+  out.nativeHeldAtStart = held.slice();
+  w.emergency.hidden = false;
+  w.D.applySettings({ brightness: 50 });
+  w.D.applySettings({ brightness: 50 });                    // the same state again: not repeated
+  w.emergency.hidden = true;
+  w.D.applySettings({ brightness: 50 });
+  out.nativeHeld = held.slice();
+}
 process.stdout.write(JSON.stringify(out));
