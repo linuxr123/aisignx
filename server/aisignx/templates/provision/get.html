@@ -16,6 +16,7 @@
     <a class="btn btn-primary btn-lg w-100" href="{{ link }}">Download the app ({{ download.version or "latest" }})</a>
     <p class="small text-secondary mt-2 mb-0">Android asks once to allow installs from this browser: allow it, open the file, press Install.</p>
   </div></div>
+  {% include "provision/_warnings.html" %}
   <div class="card mb-3"><div class="card-body">
     <h2 class="h6">2. Open the app and enter the server address</h2>
     <p class="mb-1"><code class="fs-5">{{ base }}</code></p>

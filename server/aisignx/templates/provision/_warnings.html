@@ -1,0 +1,14 @@
+{# What a phone says when it installs an app that did not come from the Play Store, and what to press. Shown on the public install pages. #}
+<details class="card mb-3">
+  <summary class="card-body py-2 fw-semibold" style="cursor: pointer">The phone warns me it is not secure or unsafe: what do I press?</summary>
+  <div class="card-body pt-0 small">
+    <p class="text-secondary">The app comes from your own server, not from the Play Store, so Chrome and Android ask you to confirm. These are the usual messages:</p>
+    <ul class="mb-2">
+      <li><strong>"Insecure download blocked" / "Can't download safely"</strong> (Chrome): the server address starts with <code>http://</code>. Open the downloads (the notification or the three dots &rarr; Downloads) and tap <strong>Keep</strong> or <strong>Download anyway</strong>. An administrator can remove this warning by serving the server over <code>https://</code>.</li>
+      <li><strong>"This type of file can harm your device"</strong>: tap <strong>OK</strong> or <strong>Keep</strong>.</li>
+      <li><strong>"For your security, your phone is not allowed to install unknown apps from this source"</strong>: tap <strong>Settings</strong>, switch on <strong>Allow from this source</strong> for your browser, go back, and open the file again.</li>
+      <li><strong>"Blocked by Play Protect" / "App not safe" / "Unsafe app blocked"</strong>: tap <strong>More details</strong> (or <strong>Details</strong>), then <strong>Install anyway</strong>. If there is no such button, open <strong>Play Store &rarr; your profile &rarr; Play Protect &rarr; Settings</strong>, turn off <strong>Scan apps with Play Protect</strong> for the install, then turn it back on.</li>
+    </ul>
+    <p class="text-secondary mb-0">Play Protect warns about any app it does not know. The AiSignX app only talks to your own server. If you are unsure, ask the person who gave you this link.</p>
+  </div>
+</details>

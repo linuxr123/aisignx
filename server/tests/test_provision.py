@@ -285,3 +285,14 @@ def test_qr_to_install_as_an_app_opens_a_page_that_pairs_a_phone_that_is_not_res
     assert b"/provision/apk/" in page.data
     assert client.get("/get/p/not-a-token").status_code == 404
     assert client.get("/get/p/" + token[:-3] + "xxx").status_code == 404                 # tampered
+
+
+def test_the_public_install_pages_explain_the_phones_warnings(app, configured, client, admin):
+    """A phone says "insecure download", "unknown apps" and "blocked by Play Protect" for an app from the server: the pages say what to press."""
+    _download(app)
+    code_page = admin.post("/provision/install-link", data={"csrf_token": _csrf(admin)}, follow_redirects=True)
+    from aisignx.models import Setting
+    with app.app_context():
+        code = Setting.get("install_link.code")
+    for html in (client.get(f"/get/{code}").get_data(as_text=True),):
+        assert "Insecure download blocked" in html and "Install anyway" in html and "Allow from this source" in html and "Keep" in html
