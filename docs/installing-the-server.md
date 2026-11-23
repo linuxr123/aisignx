@@ -19,6 +19,26 @@ you to create the administrator account.
 > folder (Python environment, database, ffmpeg and a browser). The `install-server` scripts install the real
 > thing as a service. Add `-Yes` (Windows) or `-y` (Linux) to skip the questions.
 
+## One command (downloads it for you)
+
+Windows, from an **administrator** PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/linuxr123/aisignx/v3/scripts/get-aisignx.ps1 | iex
+```
+
+Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/linuxr123/aisignx/v3/scripts/get-aisignx.sh | sudo bash
+```
+
+It downloads AiSignX from GitHub over HTTPS (checking the checksum when the release publishes one), runs the
+installer below, and deletes the download. To pass options, save the script and run it with `-Https`, `-Port`,
+`-Ref v3.0.0` (Windows) or `bash -s -- --https --port 8080` and `AISIGNX_REF=v3.0.0` (Linux).
+Only run a command like this if you trust the source: read the script first (it is short).
+These scripts have only been syntax-checked; a clean-machine run is still to do.
+
 ## Windows
 
 1. Get the AiSignX folder (download and unzip it, or clone the repository).
