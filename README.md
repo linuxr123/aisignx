@@ -18,6 +18,37 @@ for a home, a small business, or a company with a few dozen screens.
 > **Platforms:** Windows and Android are the main targets. Linux is best effort (the server
 > runs there; the Electron build has never been run on Linux). macOS is not supported.
 
+## Quick install (server)
+
+**Windows 10/11**: open **PowerShell as Administrator** and paste:
+
+```powershell
+irm https://raw.githubusercontent.com/linuxr123/aisignx/v3/scripts/get-aisignx.ps1 | iex
+```
+
+**Linux with systemd**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/linuxr123/aisignx/v3/scripts/get-aisignx.sh | sudo bash
+```
+
+It downloads AiSignX, installs Python and ffmpeg if missing, starts the server with your computer, and prints the
+address. Open it and create the admin account (there is no default password). Add HTTPS later with
+`scripts\setup-nginx.ps1` (or `scripts/setup-nginx.sh`). Docker: [docs/docker.md](docs/docker.md).
+
+> **Please read before you run it**
+> - **Pre-release.** It has not been run on a clean computer yet, and almost nothing has run on real hardware.
+>   Try it on a spare machine first.
+> - **You are running a script from the internet.** [Read it first](scripts/get-aisignx.ps1); it is short.
+>   It needs administrator permission because it installs a service and opens a firewall port (private networks only).
+> - **Windows may warn you** (SmartScreen "Windows protected your PC", or a blue/yellow "unknown publisher" prompt) when you
+>   install the player app. The app is signed with a self-made certificate until a paid or SignPath certificate is
+>   in place: choose **More info, Run anyway**.
+> - **Phones show "not secure" or "unsafe app"** for the Android app (it is not on Google Play, and the server is plain
+>   `http://` until you set up HTTPS). The install page lists exactly what to press (Keep, Allow from this source,
+>   Install anyway).
+> - Your data stays in `%ProgramData%\AiSignX` and is never touched by an upgrade.
+
 ## Requirements
 
 - Python 3.10 or newer
