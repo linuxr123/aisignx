@@ -216,7 +216,7 @@ function Invoke-Flask([string[]]$flaskArgs) {
         Push-Location $App
         $out = & (Join-Path $Venv 'Scripts\flask.exe') --app wsgi @flaskArgs 2>&1 | ForEach-Object { "$_" }
         $code = $LASTEXITCODE
-        $out
+        if ($code -ne 0) { $out | ForEach-Object { Write-Host "    $_" -ForegroundColor Red } } else { $out }
         if ($code -ne 0) { throw "flask $($flaskArgs -join ' ') failed (exit code $code)." }
     } finally {
         $ErrorActionPreference = $oldPref
@@ -232,7 +232,7 @@ Do-It "copy the server to $App" {
     $new = "$App.new"
     if (Test-Path $new) { Remove-Item $new -Recurse -Force }
     # robocopy exit codes below 8 are success.
-    & robocopy.exe $serverSrc $new /E /NFL /NDL /NJH /NJS /NP /XD .venv instance uploads backups downloads logs plugin-cache __pycache__ tests .pytest_cache /XF *.pyc *.db *.db-* .env | Out-Null
+    & robocopy.exe $serverSrc $new /E /NFL /NDL /NJH /NJS /NP /XD @((@('.venv', 'instance', 'uploads', 'backups', 'downloads', 'logs', 'plugin-cache', 'tests') | ForEach-Object { Join-Path $serverSrc $_ }) + @('__pycache__', '.pytest_cache')) /XF *.pyc *.db *.db-* .env | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "Copying the program failed (robocopy exit code $LASTEXITCODE)." }
     if (Test-Path "$App.prev") { Remove-Item "$App.prev" -Recurse -Force }
     if (Test-Path $App) { Rename-Item $App "$App.prev" }
