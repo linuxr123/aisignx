@@ -27,6 +27,12 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+$admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $admin) {
+    Write-Host 'Please run this in an ADMINISTRATOR PowerShell: right-click Start, choose "Terminal (Admin)" or "Windows PowerShell (Admin)", paste the command again.' -ForegroundColor Yellow
+    return
+}
+
 if ($Repo -notmatch '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' -or $Ref -notmatch '^[A-Za-z0-9._/-]+$') { throw 'Repo or Ref has characters that are not allowed.' }
 
 $work = Join-Path ([IO.Path]::GetTempPath()) ('aisignx-get-' + [guid]::NewGuid().ToString('N'))
