@@ -267,6 +267,26 @@ AISIGNX_LOG_DIR=$LogDir
         Write-Host '    Created' -ForegroundColor Green
     } else { Write-Host '    Kept your existing settings' -ForegroundColor Green }
 }
+# The service runs as LOCAL SERVICE: it has neither this session's PATH nor access to a user profile, where winget puts
+# ffmpeg. So copy ffmpeg and ffprobe next to the data and point the settings file at them.
+Do-It 'point the server at ffmpeg and ffprobe' {
+    $found = @{}
+    foreach ($n in 'ffmpeg', 'ffprobe') {
+        $c = Get-Command "$n.exe" -ErrorAction SilentlyContinue
+        $p = if ($c) { $c.Source } else {
+            Get-ChildItem -Path "$env:SystemDrive\Users\*\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg*" -Recurse -Filter "$n.exe" -ErrorAction SilentlyContinue |
+                Select-Object -First 1 -ExpandProperty FullName
+        }
+        if ($p) { $found[$n] = $p }
+    }
+    if ($found.Count -eq 2 -and (Test-Path $EnvFile) -and -not (Select-String -Path $EnvFile -Pattern '^AISIGNX_FFMPEG=' -Quiet)) {
+        $tools = Join-Path $DataDir 'tools'
+        New-Item -ItemType Directory -Force -Path $tools | Out-Null
+        foreach ($n in 'ffmpeg', 'ffprobe') { Copy-Item -Force $found[$n] (Join-Path $tools "$n.exe") }
+        Add-Content -Path $EnvFile -Encoding ASCII -Value "AISIGNX_FFMPEG=$tools\ffmpeg.exe`r`nAISIGNX_FFPROBE=$tools\ffprobe.exe"
+        Ok "ffmpeg copied to $tools and set in the settings file"
+    } elseif ($found.Count -lt 2) { Warn 'ffmpeg and ffprobe were not found; videos will upload without a length or thumbnail. Install ffmpeg, then run this installer again.' }
+}
 if (-not $NoService) {
     Do-It 'let LOCAL SERVICE read the program and write the data' {
         & icacls.exe $InstallDir /grant '*S-1-5-19:(OI)(CI)RX' /T /Q | Out-Null
