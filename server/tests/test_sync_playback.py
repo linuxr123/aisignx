@@ -201,3 +201,61 @@ def test_display_page_flags_an_outdated_app(app, configured, paired_display):
         db.session.commit()
     page = c.get(f"/displays/{paired_display[0]}").get_data(as_text=True)
     assert "Update available: 3.0.2" in page
+
+
+# ---- Group transport: a control on one screen moves the timeline of the whole group.
+
+def _transport(client, **body):
+    body = {"key": "0:1=4000,2=6000,3=5000", "offset_ms": 1_700_000_000_000, **body}
+    return client.post(f"{API}/group/transport", json=body, headers=bearer(DISPLAY_TOKEN))
+
+
+def test_transport_is_stored_numbered_and_carried_by_the_manifest(app, configured, client, paired_display):
+    _setup(app, paired_display)
+    assert "transport" not in _manifest(client)["sync"]
+    r = _transport(client)
+    assert r.status_code == 200
+    assert r.get_json()["transport"] == {"rev": 1, "key": "0:1=4000,2=6000,3=5000",
+                                         "offset_ms": 1_700_000_000_000, "paused_ms": None, "resume_at_ms": None}
+    r = _transport(client, paused_ms=7000, resume_at_ms=1_700_000_300_000)
+    state = r.get_json()["transport"]
+    assert state["rev"] == 2 and state["paused_ms"] == 7000 and state["resume_at_ms"] == 1_700_000_300_000
+    assert _manifest(client)["sync"]["transport"] == state
+
+
+def test_transport_tells_every_screen_of_the_group_and_nobody_else(app, configured, client, paired_display):
+    from aisignx.player.broker import get_broker
+    _setup(app, paired_display)
+    with app.app_context():
+        first = db.session.get(Display, paired_display[0])
+        other = Display(name="Second", group_id=first.group_id, token_hash="y" * 64)
+        stranger = Display(name="Elsewhere", token_hash="z" * 64)
+        db.session.add_all([other, stranger])
+        db.session.commit()
+        ids = (first.id, other.id, stranger.id)
+        broker = get_broker()
+        subs = [broker.subscribe(i) for i in ids]
+    assert _transport(client).status_code == 200
+    got = [s.queue.qsize() for s in subs]
+    assert got == [1, 1, 0]
+    assert subs[0].queue.get_nowait() == ("manifest", {})
+
+
+def test_transport_needs_a_synchronized_group(app, configured, client, paired_display):
+    _setup(app, paired_display, group_sync=False)
+    assert _transport(client).status_code == 409
+    with app.app_context():
+        db.session.get(Display, paired_display[0]).group_id = None
+        db.session.commit()
+    assert _transport(client).status_code == 409
+    assert client.post(f"{API}/group/transport", json={}).status_code == 401
+
+
+@pytest.mark.parametrize("bad", [
+    {"key": ""}, {"key": 5}, {"key": "k" * 4001}, {"offset_ms": "1"}, {"offset_ms": True},
+    {"offset_ms": 10**15}, {"paused_ms": 5000}, {"paused_ms": "x", "resume_at_ms": 1},
+])
+def test_transport_rejects_bad_input(app, configured, client, paired_display, bad):
+    _setup(app, paired_display)
+    assert _transport(client, **bad).status_code == 400
+    assert "transport" not in _manifest(client)["sync"]

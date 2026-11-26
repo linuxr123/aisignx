@@ -20,6 +20,9 @@ class DisplayGroup(db.Model):
     # Synchronized playback: the group's displays show the same slide at the same moment
     # (player/manifest.py "sync", static/player/sync.js). Player controls are off on them.
     sync_playback = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # The group's shared play/pause/skip state (JSON text, player/transport.py). Written with a Core
+    # UPDATE so a control press never broadcasts a manifest change to every screen.
+    transport = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
 
     displays = db.relationship("Display", back_populates="group", passive_deletes=True,

@@ -41,7 +41,8 @@
     scrub: null,   // {slide, t0, target, duration, wasPaused, timer}: a drag-scrub in progress
     skipTo: null,  // index a skip asked for while its slide is still loading
     manualDir: 0,  // +1/-1 while a hand-made next/previous is on its way (its slide moves left/right)
-    sync: null,    // {anchor, key}: this display's group plays in sync (the manifest's sync block)
+    sync: null,    // {anchor, key, transport}: this display's group plays in sync (the manifest's sync block)
+    syncRev: 0,    // rev of the group transport state (sync.js) this screen has applied
   };
   var manifestBackoff = net.Backoff(2000, 30000);
   var pairBackoff = net.Backoff(2000, 30000);
@@ -59,16 +60,17 @@
   function pop(fn, arg) { if (POP) { try { POP[fn](arg); } catch (e) { if (window.console) console.error(e); } } }
   function durationOf(item) { var d = Number(item.duration_ms); return d > 0 ? Math.max(1000, d) : DEFAULT_DURATION_MS; }
 
-  // ---- Synchronized playback. A viewer who uses a control (next, previous, fast forward, rewind, pause) leaves the
-  // shared timeline for `resume_after_s`; then the screen rejoins the group (see detach() and tick()).
-  // The slide that should be on screen is a function of the shared
+  // ---- Synchronized playback. The slide that should be on screen is a function of the shared
   // server clock, the playlist's durations and the anchor, so the group needs no coordination.
+  // A control (next, previous, fast forward, rewind, pause) on any screen moves that timeline for the
+  // whole group: see the "Group transport" section below and sync.js. Only when the server cannot be
+  // reached does a screen leave the shared timeline for `resume_after_s` (see detach() and tick()).
   function syncOn() { return !!S.sync && !S.detached; }
   function serverNow() { return SY ? SY.clock.now() : Date.now(); }
   // The schedule at server time `at` (default: now): {index, elapsedMs, remainingMs} or null.
   function syncAt(at) {
     if (!syncOn() || !SY) return null;
-    return SY.position(S.items.map(durationOf), S.sync.anchor, at === undefined ? serverNow() : at);
+    return SY.position(S.items.map(durationOf), S.sync.anchor, SY.effective(at === undefined ? serverNow() : at, S.sync.transport));
   }
   // Index of the slide that plays right after the one on screen ends (or now, if none is shown).
   function syncNextIndex() {
@@ -237,7 +239,13 @@
     // other durations) the whole group restarts on the new one at the same moment.
     var before = S.sync ? S.sync.key : "";
     var ms = m.sync && typeof m.sync === "object" && SY && typeof m.sync.anchor_ms === "number" ? m.sync : null;
-    S.sync = ms ? { anchor: ms.anchor_ms, key: ms.anchor_ms + ":" + S.items.map(function (it) { return it.id + "=" + durationOf(it); }).join(",") } : null;
+    S.sync = ms ? { anchor: ms.anchor_ms, key: ms.anchor_ms + ":" + S.items.map(function (it) { return it.id + "=" + durationOf(it); }).join(","), transport: null } : null;
+    // The group's shared play/pause/skip state counts only for the playlist it was made for.
+    var tr = ms && ms.transport && typeof ms.transport === "object" ? ms.transport : null;
+    if (S.sync && tr && tr.key === S.sync.key && typeof tr.rev === "number") S.sync.transport = tr;
+    var rev = S.sync && S.sync.transport ? S.sync.transport.rev : 0;
+    var moved = !!S.sync && rev !== S.syncRev && (S.sync.key === before);  // another screen used a control
+    S.syncRev = rev;
     if (SY) SY.active = !!S.sync;
     var resync = (S.sync ? S.sync.key : "") !== before && S.state === "PLAYING" && S.items.length;
     dropNext();
@@ -259,6 +267,7 @@
       tick();
     } else {
       cur.item = fresh;
+      if (moved) applyTransport();
     }
   }
 
@@ -354,7 +363,9 @@
       slideTimer(function () { if (S.nxt === n) { S.nxt = null; tick(); } }, FAIL_DWELL_MS, false);
     });
   }
-  function swapTo(n) {
+  // A slide swapped in while the group is paused stands still at once (see holdForGroup).
+  function swapTo(n) { swapIn(n); if (S.sync) holdForGroup(); }
+  function swapIn(n) {
     S.nxt = null; S.gen++; clearSlideTimers();
     S.forceSwap = false; S.failures = 0; S.pos = n.index; S.skipTo = null;
     clearControls();
@@ -556,9 +567,12 @@
       return true;
     }
     var base = S.skipTo !== null ? S.skipTo : S.pos;
-    var target = ((base + dir) % n + n) % n;
+    return goTo(((base + dir) % n + n) % n, dir);
+  }
+  // Shows slide `target` as soon as it is ready; the old slide stays until then.
+  function goTo(target, dir) {
+    var n = S.items.length, nx = S.nxt;
     S.manualDir = dir;
-    var nx = S.nxt;
     if (nx && nx.index === target && nx.state === "ready") { swapTo(nx); return true; }
     if (!(nx && nx.index === target && nx.state === "loading")) {
       dropNext();
@@ -566,10 +580,79 @@
     }
     S.skipTo = target;
     S.forceSwap = true;
-    cur.deadline = 0;
+    S.cur.deadline = 0;
     tick();
     return true;
   }
+
+  // ---- Group transport: in a synchronized group a control on any screen moves the timeline of the whole group.
+  // sync.js plan() works out the group's new state; the server numbers it and tells the other screens, whose manifest
+  // then carries it (applyManifest -> applyTransport). This screen applies it at once, without waiting.
+  function holdWanted() { return !!S.sync && !!SY && SY.isPaused(serverNow(), S.sync.transport); }
+  // The group is paused: stand still on this slide until the pause ends by itself (the display's "Resume after").
+  function holdForGroup() {
+    var cur = S.cur;
+    if (!cur || cur.failed || S.paused || !holdWanted()) return;
+    var p = syncAt(), t = now(), tr = S.sync.transport;
+    S.paused = { resumeAt: t + Math.max(0, tr.resume_at_ms - serverNow()), remaining: p ? p.remainingMs : Math.max(0, cur.deadline - t), video: curVideo() };
+    if (S.paused.video) R.pauseVideo(cur.slide); else if (R.pause) R.pause(cur.slide);
+    pop("pause");
+    CT.showPaused(S.paused.resumeAt);
+  }
+  // Brings what is on screen to the group's state: the right slide, at the right place, paused or playing.
+  function applyTransport() {
+    var cur = S.cur, p = syncAt();
+    if (!S.sync || S.state !== "PLAYING" || !S.items.length) return;
+    if (!p || !cur || cur.failed || EM.shownId !== null) { startPlaying(); return; }
+    var n = S.items.length;
+    if (p.index !== S.pos) {  // another slide: it slides in from the side the move went
+      goTo(p.index, (p.index - S.pos + n) % n <= n / 2 ? 1 : -1);
+      return;
+    }
+    if (curVideo()) R.setVideoTime(cur.slide, syncWant(cur.slide, cur.item, p.elapsedMs));
+    if (holdWanted()) {
+      if (S.paused) {
+        S.paused.remaining = p.remainingMs;
+        S.paused.resumeAt = now() + Math.max(0, S.sync.transport.resume_at_ms - serverNow());
+        CT.showPaused(S.paused.resumeAt);
+      } else holdForGroup();
+      return;
+    }
+    if (S.paused) {  // resumed
+      var video = S.paused.video;
+      S.paused = null;
+      CT.hidePaused();
+      pop("resume");
+      if (video) playCur(); else R.resume(cur.slide);
+    }
+    cur.deadline = now() + p.remainingMs;
+    dropNext();  // the slide after this one may have changed
+  }
+  // A control on a synchronized screen. Returns what the controls show, as the local control would
+  // (a pause or resume, next, previous, or the seconds moved), or null when nothing happens.
+  function groupControl(name) {
+    if (!canControl()) return null;
+    var cur = S.cur, step = (name === "forward" || name === "back") && curVideo() ? seekStep(cur.slide) * 1000 : 0;
+    var pl = SY.plan(name, { durations: S.items.map(durationOf), anchorMs: S.sync.anchor, key: S.sync.key, tr: S.sync.transport,
+      t: serverNow(), resumeMs: D.config().resume_after_s * 1000, seekMs: step });
+    if (!pl) return null;
+    var old = S.sync.transport, key = S.sync.key;
+    S.sync.transport = Object.assign({ rev: (old ? old.rev : 0) + 1 }, pl.state);  // the server's number replaces this one
+    S.syncRev = S.sync.transport.rev;
+    applyTransport();
+    net.api("/group/transport", { method: "POST", body: pl.state }).then(function (res) {
+      var t = res.kind === "ok" && res.data ? res.data.transport : null;
+      if (t && S.sync && S.sync.key === key) { S.sync.transport = t; S.syncRev = t.rev; return; }
+      if (!S.sync || S.sync.key !== key) return;
+      // The server could not be reached: this screen stays where it moved to and plays on alone,
+      // then rejoins the group after the reset time.
+      note("group control not delivered, this screen plays on its own for a while");
+      S.sync.transport = old; S.syncRev = old ? old.rev : 0;
+      detach();
+    });
+    return pl.result;
+  }
+  function control(name, local) { return S.sync && SY ? groupControl(name) : local(); }
   // A seek moves the end of a video that plays once; a looping video keeps its deadline.
   function shiftDeadline(cur, appliedS) {
     if (loops(cur.item) || !appliedS) return;
@@ -635,14 +718,15 @@
   A.playback = {
     enabled: canControl,
     kind: function () { var c = S.cur; return c && !c.failed && TYPES[c.item.type] ? c.item.type : null; },
-    toggle: function () { return S.paused ? doResume() : doPause(); },
-    play: function () { return S.paused ? doResume() : null; },
-    pause: function () { return S.paused ? null : doPause(); },
-    next: function () { return skip(1); },
-    prev: function () { return skip(-1); },
-    forward: function () { return seek(1); },
-    back: function () { return seek(-1); },
-    scrubBegin: scrubBegin,
+    toggle: function () { return control("toggle", function () { return S.paused ? doResume() : doPause(); }); },
+    play: function () { return control("play", function () { return S.paused ? doResume() : null; }); },
+    pause: function () { return control("pause", function () { return S.paused ? null : doPause(); }); },
+    next: function () { return control("next", function () { return skip(1); }); },
+    prev: function () { return control("prev", function () { return skip(-1); }); },
+    forward: function () { return control("forward", function () { return seek(1); }); },
+    back: function () { return control("back", function () { return seek(-1); }); },
+    // Dragging through a video moves one screen only: it is not offered on a synchronized one.
+    scrubBegin: function () { return S.sync ? null : scrubBegin(); },
     scrubTo: scrubTo,
     scrubEnd: scrubEnd,
     paused: function () { return !!S.paused; },

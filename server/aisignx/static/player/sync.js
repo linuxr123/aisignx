@@ -38,6 +38,61 @@
     return null;  // not reachable: t < total
   }
 
+  // ---- Group transport: next, previous, seek and pause move the timeline for the whole group.
+  // The server keeps one small state per group (player/transport.py):
+  //   {rev, key, offset_ms, paused_ms, resume_at_ms}
+  // The timeline position at server time T is effective(T, state): T - offset_ms while running,
+  // paused_ms while paused, and from resume_at_ms on it runs again from paused_ms (a pause ends by itself).
+  function effective(serverMs, tr) {
+    if (!tr) return serverMs;
+    if (typeof tr.paused_ms === "number") {
+      if (typeof tr.resume_at_ms === "number" && serverMs >= tr.resume_at_ms) return tr.paused_ms + (serverMs - tr.resume_at_ms);
+      return tr.paused_ms;
+    }
+    return serverMs - (Number(tr.offset_ms) || 0);
+  }
+  function isPaused(serverMs, tr) {
+    return !!tr && typeof tr.paused_ms === "number" && !(typeof tr.resume_at_ms === "number" && serverMs >= tr.resume_at_ms);
+  }
+
+  // plan(action, o) -> {state, result} or null: the group's new state for a control, worked out from
+  // o = {durations, anchorMs, key, tr (the current state or null), t (server now), resumeMs (pause length),
+  //      seekMs (video: the step of a fast forward, else 0)}.
+  // `result` is what the controls show: "paused", "playing", "next", "prev" or the seconds seeked.
+  function plan(action, o) {
+    var pos = position(o.durations, o.anchorMs, effective(o.t, o.tr));
+    if (!pos) return null;
+    var eff = effective(o.t, o.tr), paused = isPaused(o.t, o.tr), n = o.durations.length;
+    var start = eff - pos.elapsedMs;                       // timeline position where the slide on screen began
+    function state(target, hold) {
+      return {
+        key: o.key,
+        offset_ms: Math.round(o.t - target),               // running: the timeline is `target` right now
+        paused_ms: hold ? Math.round(target) : null,
+        resume_at_ms: hold ? Math.round(o.t + o.resumeMs) : null,
+      };
+    }
+    function slideMs(i) { return itemMs(o.durations[((i % n) + n) % n]); }
+    switch (action) {
+      case "toggle": case "play": case "pause":
+        if (paused) return action === "pause" ? null : { state: state(eff, false), result: "playing" };
+        return action === "play" ? null : { state: state(eff, true), result: "paused" };
+      case "next":   // the start of the next slide (a single slide restarts)
+        return { state: state(start + pos.elapsedMs + pos.remainingMs, false), result: "next" };
+      case "prev":
+        return { state: state(start - slideMs(pos.index - 1) + (n === 1 ? slideMs(0) : 0), false), result: "prev" };
+      case "forward": case "back": {
+        var step = o.seekMs || 0;
+        if (!(step > 0)) return plan(action === "forward" ? "next" : "prev", o);   // not a video: change the slide
+        var want = eff + (action === "forward" ? step : -step);
+        // never out of the slide: not before its start, and a moment before its end
+        want = Math.max(start, Math.min(start + pos.elapsedMs + pos.remainingMs - 250, want));
+        return { state: state(want, paused), result: Math.round((want - eff) / 100) / 10 };
+      }
+      default: return null;
+    }
+  }
+
   function Clock() {
     var samples = [], best = null;
     var self = {
@@ -61,5 +116,5 @@
     return self;
   }
 
-  A.sync = { position: position, Clock: Clock, clock: Clock(), active: false, MIN_ITEM_MS: MIN_ITEM_MS };
+  A.sync = { position: position, effective: effective, isPaused: isPaused, plan: plan, Clock: Clock, clock: Clock(), active: false, MIN_ITEM_MS: MIN_ITEM_MS };
 })();

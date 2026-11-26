@@ -38,8 +38,9 @@ this watchdog, and the drift check takes over again when it plays.
 
 ## What changes on a synced screen
 
-- **Player controls work as on any screen** (if the display has them on): pause, next, previous, fast forward, rewind. A screen whose viewer uses one **leaves the shared timeline** (the others do not move) and **rejoins the group by itself** after the display's *Resume after* time (Displays > the screen > Edit > Device agent / controls, default 5 min); every further use starts that time again. A fullscreen emergency waits to be shown first.
-  The display page says so.
+- **A control on any screen moves the whole group** (if that display has controls on, see Displays > the screen > Edit > Device agent / controls): next, previous, fast forward, rewind and pause or resume. Every other screen of the group follows within a moment (they learn of it from the server, then fetch the new state). The shared timeline simply moves: after "next" the whole group goes on from the start of the next slide. Fast forward and rewind move every video by 10 s (less in a short video), never out of the slide that is playing. **Pause** freezes every screen on its slide; the group plays on by itself after the display's *Resume after* time (default 5 min) so a wall is never left frozen, or at once when any screen resumes. Dragging through a video is not offered on a synchronized screen (it would move only that one). A fullscreen emergency waits to be shown first.
+  If a screen cannot reach the server when a control is used, it moves by itself, plays on alone, and rejoins the group after the *Resume after* time.
+  The group's state is stored on the server, so a screen that starts late or loses its connection joins the group where it is, including while it is paused. It applies only to screens that play the same playlist (with the same durations). Changing the playlist restarts the timeline as before.
 - **Slides always run for their set duration.** A video that is shorter than its slide plays again
   (a single-item playlist loops); a plugin cannot end its slide early. A YouTube video therefore
   **loops** for the whole slide (its "end the slide when the video ends" option does not apply).
@@ -100,7 +101,8 @@ plugins (YouTube) get `syncElapsed()` instead. See [plugins.md](plugins.md#synch
 - Web pages are loaded by each screen on its own, so what they show can differ.
 - A screen on a slow or very variable network estimates the server clock less well and can sit a little off.
 - Changing a playlist restarts the whole group's timeline; a screen that misses the change keeps its old
-  one until it hears of it, normally within the 30-second heartbeat.
+  one until it hears of it, normally within the 30-second heartbeat. The same holds for a control used on another screen.
+- Group controls have been tested with scripted screens and the server, not with several physical screens.
 
 ## Player API
 

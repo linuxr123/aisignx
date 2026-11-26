@@ -123,12 +123,27 @@ async function make(items, opts) {
     store: { KEYS: { manifest: "m", pairing: "p" }, local: { get: () => null, set() {}, remove() {} },
       session: { get: () => null, set() {}, remove() {} } },
     Backoff: () => ({ next: () => 1000, reset() {} }),
-    Events: (h) => { Object.assign(handlers, h); return { start() {}, stop() {}, status: "live" }; },
+    Events: (h) => { Object.assign(handlers, h); if (opts.group) opts.group.screens.push(handlers); return { start() {}, stop() {}, status: "live" }; },
     Heartbeat: () => ({ start() {}, stop() {}, now() {}, setSeconds() {} }),
     // The server stamps server_time_ms (true time) halfway through a 40 ms round trip; this screen's own
     // clock (Date.now) is wrong by opts.skew.
-    api: () => Promise.resolve({ kind: "ok", data: Object.assign({}, manifest, { server_time_ms: clock.t }),
-      sentAt: clock.t + (opts.skew || 0) - 20, recvAt: clock.t + (opts.skew || 0) + 20 }),
+    // opts.group: screens that share one group (the server's stored transport state, like player/transport.py).
+    // opts.offline: this screen cannot reach the server for group controls.
+    api: (path, o) => {
+      const stamp = { sentAt: clock.t + (opts.skew || 0) - 20, recvAt: clock.t + (opts.skew || 0) + 20 };
+      const grp = opts.group;
+      if (path === "/group/transport") {
+        if (!grp || opts.offline) return Promise.resolve(Object.assign({ kind: "retry", status: 0, data: null, retryAfter: 0 }, stamp));
+        grp.transport = Object.assign({ rev: (grp.transport ? grp.transport.rev : 0) + 1 }, o.body);
+        grp.posts = (grp.posts || 0) + 1;
+        // The server tells the other screens of the group to fetch the manifest.
+        grp.screens.forEach((h) => { if (h !== handlers && h.manifest) Promise.resolve().then(() => h.manifest({})); });
+        return Promise.resolve(Object.assign({ kind: "ok", data: { transport: grp.transport } }, stamp));
+      }
+      const m = Object.assign({}, manifest, { server_time_ms: clock.t });
+      if (m.sync && grp && grp.transport) { m.sync = Object.assign({}, m.sync, { transport: grp.transport }); m.version = "v1." + grp.transport.rev; }  // the server's version follows the state
+      return Promise.resolve(Object.assign({ kind: "ok", data: m }, stamp));
+    },
   };
   const POP = {};
   ["begin", "end", "pause", "resume"].forEach((k) => { POP[k] = (a) => calls.pop.push(k === "begin" ? "begin:" + a.id : k); });
@@ -496,26 +511,63 @@ async function main() {
     out.noSync = { cur: none.cur() };
   }
 
-  // Controls on a synchronized screen: the viewer leaves the shared timeline, the others do not move, and after the
-  // reset time (resume_after_s) the screen is back on the slide the shared clock says.
+  // Controls on a synchronized screen move the timeline of the whole group: next, previous and pause on one screen
+  // are followed by the others; a pause ends by itself after resume_after_s; fast forward moves every video; a
+  // screen that cannot reach the server plays on alone and rejoins after the reset time.
   {
     const items = [IMG(1, 10000), IMG(2, 10000), IMG(3, 10000)];   // slide k plays at T % 30 s in [10(k-1), 10k) s
     const at = (T) => 1 + Math.floor((T % 30000) / 10000);
-    const a = await make(items, { sync: true, resume_after_s: 60, t0: 3000 });
-    const b = await make(items, { sync: true, resume_after_s: 60, t0: 3000 });
-    await a.advance(1000); await b.advance(1000);
-    const start = a.cur();
-    a.key("ArrowDown");                                            // next
-    await a.advance(500); await b.advance(500);
-    const afterNext = { a: a.cur(), b: b.cur() };
-    a.key("ArrowUp"); await a.advance(500); await b.advance(500);  // previous: back where it was
-    a.key("ArrowDown"); await a.advance(500); await b.advance(500);
-    // Without further input it keeps its own slide cycle for the reset time, then joins the group again.
-    await a.advance(40000); await b.advance(40000);
-    const own = { a: a.cur(), b: b.cur(), want: at(a.clock.t) };
-    await a.advance(30000); await b.advance(30000);                // 60 s after the last control: rejoined
-    await a.advance(1500); await b.advance(1500);
-    out.syncControls = { start, afterNext, own, rejoined: { a: a.cur(), b: b.cur(), want: at(a.clock.t) } };
+    const group = { transport: null, screens: [] };
+    const mk = (o) => make(items, Object.assign({ sync: true, resume_after_s: 60, t0: 3000, group }, o));
+    const a = await mk(), b = await mk();
+    const both = async (ms) => { await a.advance(ms); await b.advance(ms); };
+    await both(1000);
+    const r = { start: a.cur(), startB: b.cur() };
+    a.key("ArrowDown"); await both(500);                              // next
+    r.afterNext = { a: a.cur(), b: b.cur() };
+    a.key("ArrowUp"); await both(500);                                // previous: back where it was
+    r.afterPrev = { a: a.cur(), b: b.cur() };
+    b.key("ArrowDown"); await both(500);                              // the other screen controls as well
+    r.fromB = { a: a.cur(), b: b.cur() };
+    await both(10000);                                                // the moved timeline keeps running, together
+    r.later = { a: a.cur(), b: b.cur(), want: at(a.clock.t - group.transport.offset_ms + 0) };
+    a.key(" "); await both(500);                                      // pause the whole group
+    const frozen = { a: a.cur(), b: b.cur() };
+    await both(20000);
+    r.paused = { frozen, a: a.cur(), b: b.cur(), pa: a.pb.paused(), pb: b.pb.paused() };
+    b.key(" "); await both(500);                                      // resume from the other screen
+    r.resumed = { pa: a.pb.paused(), pb: b.pb.paused(), a: a.cur(), b: b.cur() };
+    a.key(" "); await both(500);                                      // pause and leave it
+    await both(61000); await both(1500);                              // it ends by itself after the reset time
+    r.autoResume = { pa: a.pb.paused(), pb: b.pb.paused(), a: a.cur(), b: b.cur() };
+    r.posts = group.posts;
+    out.syncControls = r;
+
+    // Fast forward on a video moves the video on every screen of the group.
+    const vg = { transport: null, screens: [] };
+    const vitems = [VID(5, 100, 100000), IMG(6, 10000)];
+    const va = await make(vitems, { sync: true, group: vg, t0: 3000 }), vb = await make(vitems, { sync: true, group: vg, t0: 3000 });
+    await va.advance(2000); await vb.advance(2000);
+    const t0 = { a: va.video().currentTime, b: vb.video().currentTime };
+    va.key("ArrowRight"); await va.advance(500); await vb.advance(500);
+    out.syncSeek = { dA: va.video().currentTime - t0.a, dB: vb.video().currentTime - t0.b, hint: va.hint() };
+
+    // Cannot reach the server: this screen plays on alone, the other does not move, then it rejoins.
+    const og = { transport: null, screens: [] };
+    const oa = await make(items, { sync: true, group: og, offline: true, resume_after_s: 60, t0: 3000 });
+    const ob = await make(items, { sync: true, group: og, resume_after_s: 60, t0: 3000 });
+    await oa.advance(1000); await ob.advance(1000);
+    const s0 = oa.cur();
+    oa.key("ArrowDown"); await oa.advance(500); await ob.advance(500);
+    out.syncOffline = { start: s0, a: oa.cur(), b: ob.cur() };
+    await oa.advance(61000); await ob.advance(61000); await oa.advance(1500); await ob.advance(1500);
+    out.syncOffline.rejoined = { a: oa.cur(), b: ob.cur() };
+
+    // Another playlist: a state made for other durations is ignored.
+    const kg = { transport: { rev: 4, key: "0:other", offset_ms: 5000, paused_ms: null, resume_at_ms: null }, screens: [] };
+    const ka = await make(items, { sync: true, group: kg, t0: 3000 });
+    await ka.advance(1000);
+    out.syncOtherKey = { cur: ka.cur(), want: at(ka.clock.t) };
   }
 
   // Hand-made next/previous slide left/right, automatic changes keep the playlist's transition;
@@ -562,6 +614,42 @@ async function main() {
       short: pos([200, 6000], 0, 500), empty: pos([], 0, 5), zero: pos([0, 0], 0, 5), bad: pos([1000], 0, NaN),
       slowOnly, best: clock.offset(), rtt: clock.rtt(), ready: clock.ready(), now: clock.now(5000),
       junk: [clock.sample(NaN, 0, 1), clock.sample(1, 100, 50), clock.sample(1, 0, 20000)],
+    };
+  }
+
+  // sync.js: the group transport math (effective position, pause expiry, planning a control).
+  {
+    const c = { window: {}, Date, Math, Number, isFinite };
+    vm.createContext(c);
+    vm.runInContext(SYNC, c);
+    const SY = c.window.AiSignX.sync;
+    const d = [4000, 6000, 5000];                                  // slides start at 0, 4000, 10000 of a 15000 cycle
+    const base = { durations: d, anchorMs: 0, key: "k", tr: null, resumeMs: 60000, seekMs: 0 };
+    const at = (t, tr) => SY.position(d, 0, SY.effective(t, tr));
+    const next = SY.plan("next", Object.assign({}, base, { t: 5000 }));
+    const prev = SY.plan("prev", Object.assign({}, base, { t: 5000 }));
+    const pause = SY.plan("toggle", Object.assign({}, base, { t: 5000 }));
+    const resume = SY.plan("toggle", Object.assign({}, base, { t: 9000, tr: Object.assign({ rev: 1 }, pause.state) }));
+    const fwd = SY.plan("forward", Object.assign({}, base, { t: 5000, seekMs: 10000 }));    // 1 s into slide 2 (ends at 10000)
+    const back = SY.plan("back", Object.assign({}, base, { t: 5000, seekMs: 10000 }));
+    const single = SY.plan("next", { durations: [4000], anchorMs: 0, key: "k", tr: null, t: 1000, resumeMs: 1, seekMs: 0 });
+    out.transportUnit = {
+      none: SY.effective(7, null), shifted: SY.effective(7000, { offset_ms: 2000 }),
+      frozen: SY.effective(9000, { paused_ms: 5000, resume_at_ms: 20000 }),
+      afterEnd: SY.effective(25000, { paused_ms: 5000, resume_at_ms: 20000 }),
+      pausedNow: SY.isPaused(9000, { paused_ms: 5000, resume_at_ms: 20000 }), pausedLater: SY.isPaused(21000, { paused_ms: 5000, resume_at_ms: 20000 }),
+      nextIndex: at(5000, next.state).index, nextElapsed: at(5000, next.state).elapsedMs, nextResult: next.result,
+      prevIndex: at(5000, prev.state).index, prevElapsed: at(5000, prev.state).elapsedMs,
+      pauseState: pause.state, pausedAt: at(30000, Object.assign({}, pause.state, { resume_at_ms: 99999 })).index,
+      resumeState: resume.state, resumeResult: resume.result, resumeNow: at(9000, resume.state).elapsedMs,
+      pauseAgain: SY.plan("pause", Object.assign({}, base, { t: 9000, tr: Object.assign({ rev: 1 }, pause.state) })),
+      playWhenPlaying: SY.plan("play", Object.assign({}, base, { t: 5000 })),
+      fwdResult: fwd.result, fwdElapsed: at(5000, fwd.state).elapsedMs, fwdIndex: at(5000, fwd.state).index,
+      backResult: back.result, backElapsed: at(5000, back.state).elapsedMs,
+      noVideoStep: SY.plan("forward", Object.assign({}, base, { t: 5000 })).result,
+      singleElapsed: SY.position([4000], 0, SY.effective(1000, single.state)).elapsedMs,
+      empty: SY.plan("next", { durations: [], anchorMs: 0, key: "k", tr: null, t: 1, resumeMs: 1, seekMs: 0 }),
+      unknown: SY.plan("sideways", Object.assign({}, base, { t: 5000 })),
     };
   }
 

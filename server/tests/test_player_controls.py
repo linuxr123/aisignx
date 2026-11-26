@@ -187,12 +187,35 @@ def test_sync_position_math_and_the_clock_estimate(harness):
 
 
 @needs_node
-def test_a_synced_screen_accepts_controls_and_rejoins_the_group_after_the_reset_time(harness):
+def test_a_control_on_one_synced_screen_moves_the_whole_group(harness):
     r = harness["syncControls"]
-    assert r["afterNext"]["b"] == r["start"]                       # the other screen did not move
-    assert r["afterNext"]["a"] == r["start"] % 3 + 1               # this one went to the next slide
-    assert r["own"]["a"] != r["own"]["b"] and r["own"]["b"] == r["own"]["want"]   # still off the group inside the reset time
-    assert r["rejoined"]["a"] == r["rejoined"]["b"] == r["rejoined"]["want"], r
+    assert r["start"] == r["startB"] == 1
+    assert r["afterNext"] == {"a": 2, "b": 2}                       # next on A: B follows
+    assert r["afterPrev"] == {"a": 1, "b": 1}                       # previous
+    assert r["fromB"] == {"a": 2, "b": 2}                           # and the other way round
+    assert r["later"]["a"] == r["later"]["b"] == r["later"]["want"]   # the moved timeline goes on, together
+    assert r["paused"]["pa"] and r["paused"]["pb"]                  # pause: both stand still ...
+    assert r["paused"]["a"] == r["paused"]["frozen"]["a"] and r["paused"]["b"] == r["paused"]["frozen"]["b"]
+    assert r["resumed"]["pa"] is False and r["resumed"]["pb"] is False   # ... and resume from the other screen
+    assert r["autoResume"]["pa"] is False and r["autoResume"]["pb"] is False   # a pause ends by itself
+    assert r["autoResume"]["a"] == r["autoResume"]["b"]
+    assert r["posts"] == 6                                          # one request per control, nothing more
+
+
+@needs_node
+def test_fast_forward_moves_the_video_on_every_screen_of_the_group(harness):
+    r = harness["syncSeek"]
+    assert r["dA"] == r["dB"] and r["dA"] >= 10, r
+    assert r["hint"] == "Fast forward +10 s"
+
+
+@needs_node
+def test_a_screen_that_cannot_reach_the_server_plays_alone_and_rejoins(harness):
+    r = harness["syncOffline"]
+    assert r["a"] == r["start"] % 3 + 1 and r["b"] == r["start"]   # it moved itself; the other did not follow
+    assert r["rejoined"]["a"] == r["rejoined"]["b"]                 # back with the group after the reset time
+    # A group state made for another playlist is ignored.
+    assert harness["syncOtherKey"]["cur"] == harness["syncOtherKey"]["want"]
 
 
 @needs_node
@@ -232,3 +255,30 @@ def test_content_is_never_interactive_whatever_the_settings(configured, client):
     assert ".slide .media, .slide iframe" in css and "pointer-events: none !important" in css
     render = (STATIC / "render.js").read_text(encoding="utf-8")
     assert 'media.tagName === "IFRAME"' in render and "media.inert = true" in render
+
+
+def test_mouse_cursor_shows_only_while_the_mouse_moves():
+    css = (STATIC / "player.css").read_text(encoding="utf-8")
+    js = (STATIC / "controls.js").read_text(encoding="utf-8")
+    # Never a permanent cursor, even with controls on.
+    assert "body.input-on, body.input-on * { cursor: auto; }" not in css
+    assert "body.input-on.mouse-active" in css
+    assert '"mousemove"' in js and "mouse-active" in js
+
+
+@needs_node
+def test_group_transport_math(harness):
+    u = harness["transportUnit"]
+    assert u["none"] == 7 and u["shifted"] == 5000
+    assert u["frozen"] == 5000 and u["afterEnd"] == 5000 + (25000 - 20000)    # a pause ends by itself, the timeline goes on
+    assert u["pausedNow"] is True and u["pausedLater"] is False
+    assert (u["nextIndex"], u["nextElapsed"], u["nextResult"]) == (2, 0, "next")    # t=5000 is in slide 2; next = slide 3 start
+    assert (u["prevIndex"], u["prevElapsed"]) == (0, 0)
+    assert u["pauseState"]["paused_ms"] == 5000 and u["pauseState"]["resume_at_ms"] == 65000 and u["pausedAt"] == 1
+    assert u["resumeResult"] == "playing" and u["resumeState"]["paused_ms"] is None and u["resumeNow"] == 1000   # continues from the frozen spot
+    assert u["pauseAgain"] is None and u["playWhenPlaying"] is None                 # pause while paused / play while playing: nothing
+    assert u["fwdIndex"] == 1 and u["fwdElapsed"] == 5750        # +10 s is clamped to a moment before the slide ends
+    assert u["backElapsed"] == 0 and u["backResult"] < 0                                     # never before the slide's start
+    assert u["noVideoStep"] == "next"                                                         # not a video: forward changes the slide
+    assert u["singleElapsed"] == 0                                                            # a single slide restarts
+    assert u["empty"] is None and u["unknown"] is None

@@ -222,6 +222,11 @@ def build_manifest(display: Display, now: datetime | None = None, ctx=None) -> d
         # shared timeline, and the player rejoins it by itself after `settings.resume_after_s`.
         body["sync"] = {"group_id": group.id, "anchor_ms": 0,
                         "cycle_ms": sum(max(1000, int(e["duration_ms"])) for e in items)}
+        # Next, previous, seek and pause move the timeline for the whole group (player/transport.py).
+        from .transport import load as load_transport
+        transport = load_transport(group)
+        if transport is not None:
+            body["sync"]["transport"] = transport
     body["version"] = manifest_version(body)
     body["server_time_ms"] = int(time.time() * 1000)
     return body

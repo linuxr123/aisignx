@@ -199,7 +199,7 @@ Authenticated. Returns what the screen should play.
 | `heartbeat_s` | How often to send a heartbeat. |
 | `playlist` | `null` when nothing plays (`source.type` is `none`). Then `items` is `[]`: show a "no content" screen with the display name. |
 | `items` | Play in this order, then loop. |
-| `sync` | Only in manifests of screens in a group with synchronized playback: `{group_id, anchor_ms, cycle_ms}`. The slide at server time `T` comes from walking the items' `duration_ms` (each at least 1000) through `(T - anchor_ms) mod cycle_ms`; slides run for their duration, never ended early. The server clock is `server_time_ms` corrected by half the round trip. See [synced-playback.md](synced-playback.md). Clients that do not know it play normally. |
+| `sync` | Only in manifests of screens in a group with synchronized playback: `{group_id, anchor_ms, cycle_ms}`, plus `transport` once a screen of the group has used a control (see [`POST /group/transport`](#post-grouptransport)). The slide at server time `T` comes from walking the items' `duration_ms` (each at least 1000) through `(T - anchor_ms) mod cycle_ms`; slides run for their duration, never ended early. The server clock is `server_time_ms` corrected by half the round trip. See [synced-playback.md](synced-playback.md). Clients that do not know it play normally. |
 | `id` | Playlist item ID (report it as `current_item_id`). |
 | `type` | `image`, `video`, `web` or `plugin` (see [Plugin items](#plugin-items)). Skip types you don't support. |
 | `url` | Image and video: a path on this server; resolve it against the server base URL and fetch it with your token. Web: an absolute `http(s)://` URL to show in a web view, without your token. A web page that cannot be embedded (the server checks this) is sent as `type: "image"` with a `url` to its screenshot, a PNG fetched like any image; clients need no special case. |
@@ -242,7 +242,7 @@ auto-resume after 300 seconds. Clients ignore keys they don't know.
 | `orientation` | `0`, `90`, `180` or `270`: rotate the output clockwise by this many degrees. The browser player rotates with CSS unless the shell reports the `rotate` capability (it then rotates the device itself). |
 | `volume` | `0`-`100`. Applied to the player's own videos (not the OS volume, not inside web pages). `muted` items stay muted. |
 | `show_offline_banner` | Show a small "Offline" pill while the screen cannot reach the server. |
-| `allow_input` | `false`: touches, clicks, keys and the wheel are ignored. `true`: they become player controls (see [Player controls](#player-controls)); a transparent overlay covers every item, so web items cannot be clicked or scrolled either way. On a screen in a synchronized group, using a control leaves the shared timeline for `resume_after_s`, then the player rejoins it. |
+| `allow_input` | `false`: touches, clicks, keys and the wheel are ignored. `true`: they become player controls (see [Player controls](#player-controls)); a transparent overlay covers every item, so web items cannot be clicked or scrolled either way. On a screen in a synchronized group, a control moves the timeline of the whole group (see [`POST /group/transport`](#post-grouptransport)); a pause ends by itself after `resume_after_s`. |
 | `agent` | `{"watchdog", "restart", "logs", "reboot", "startup", "update"}`, all booleans: the admin's switches for the device agent (Edit > Device agent). See [Device commands](#device-commands). A client must not do what its switch forbids. |
 | `kiosk_lock` | `true`: the native apps cannot be left without the unlock PIN (window close and minimize blocked; Android lock task). The server only allows it while a PIN is set. A shell that sees `true` with no valid `unlock` hash stays locked but lets its admin exit through without a PIN, so a bad hash never bricks a screen. Missing (older server): `false`. The browser player never reads it. |
 | `resume_after_s` | `60`-`3600`: a paused player resumes on its own after this many seconds. A missing or bad value means `300`; clamp anything else to the range. |
@@ -660,6 +660,20 @@ press of OK is `toggle`.
 the time it was really on screen; a play under 500 ms is dropped.
 
 ## Screenshots
+
+### `POST /group/transport`
+
+Authenticated. A screen of a group with synchronized playback moved the group's timeline (next, previous, seek, pause or resume). The player works out the new state (it knows the item durations); the server numbers it, stores it on the group and sends a `manifest` hint to every screen of the group, whose manifest then carries it as `sync.transport`.
+
+```json
+{"key": "0:12=10000,15=8000", "offset_ms": 1790000000123, "paused_ms": null, "resume_at_ms": null}
+```
+
+- `key`: the player's sync key for the playlist (anchor and each item's id and duration). A screen whose own key differs ignores the state.
+- `offset_ms`: the timeline position at server time `T` is `T - offset_ms`.
+- `paused_ms` and `resume_at_ms`: both numbers while paused, else both `null`. The timeline stands at `paused_ms` until server time `resume_at_ms`, then runs on from there.
+
+`200 {"transport": {"rev": 7, "key": ..., "offset_ms": ..., "paused_ms": ..., "resume_at_ms": ...}}` with `rev` increasing by one each time. `409` when the screen has no group or the group does not play in sync; `400` for a bad body. A screen applies a state only when its `rev` differs from the one it applied last. The state is kept across server restarts.
 
 ### `POST /screenshot`
 

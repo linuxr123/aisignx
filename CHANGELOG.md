@@ -44,6 +44,14 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
+## Unreleased: Group controls, hidden cursor
+
+### Added
+- **One screen controls the whole group.** In a group with synchronized playback, next, previous, fast forward, rewind and pause on any screen (keyboard, mouse, touch or remote) now move the shared timeline, and every screen of the group follows. Before, the screen that used a control left the group for a while. A pause ends by itself after the display's *Resume after* time. New endpoint `POST /api/player/v1/group/transport`, new column `display_groups.transport` (migration 0027). Dragging through a video (scrubbing) is not offered on synchronized screens. Covered by automated tests (server and a scripted browser player with several screens); **not tried on real screens**.
+
+### Changed
+- **The mouse cursor hides itself.** With player controls on, the cursor shows only while the mouse moves and disappears 2 seconds after it stops (it used to stay on screen).
+
 ## Unreleased: Media picker, Android backlight
 
 ### Changed
