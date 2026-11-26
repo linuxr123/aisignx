@@ -247,9 +247,11 @@ body.rot-90 #emergency.layout-banner, body.rot-270 #emergency.layout-banner { ma
   user-select: none;
 }
 
-/* ---- Input lock (device.js): web items cannot be touched or clicked; input-on shows a cursor. */
+/* ---- Input lock (device.js): web items cannot be touched or clicked. With controls on, the mouse
+   cursor shows only while the mouse moves (controls.js adds mouse-active, and removes it after a
+   moment), so it never stays on a screen nobody is using. */
 body.no-input .slide.active { pointer-events: none; }
-body.input-on, body.input-on * { cursor: auto; }
+body.input-on.mouse-active, body.input-on.mouse-active * { cursor: auto; }
 
 /* ---- Player controls (controls.js): a transparent layer over the slides catches taps, swipes,
    clicks and the wheel, so web items cannot be used while controls are on. Above the slides

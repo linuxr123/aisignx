@@ -29,7 +29,8 @@
   var enabled = false, state = "", started = false;
   var lastStepAt = -1e9, last = null, lastWheelAt = -1e9, lastPointer = "";
   var g = null;                                    // the gesture in progress
-  var clickTimer = null, hintTimer = null, fadeTimer = null, pausedTimer = null;
+  var clickTimer = null, hintTimer = null, fadeTimer = null, pausedTimer = null, cursorTimer = null;
+  var CURSOR_HIDE_MS = 2000;
 
   var overlay = byId("controls"), pausedEl = byId("paused"), hintEl = byId("hint");
   var pSub = pausedEl && typeof pausedEl.querySelector === "function" ? pausedEl.querySelector(".p-sub") : null;
@@ -209,6 +210,19 @@
   }
   function onAux(ev) { if (enabled && (ev.button === 3 || ev.button === 4)) ev.preventDefault(); }
 
+  // The mouse cursor shows while the mouse moves and hides CURSOR_HIDE_MS after it stops (player.css, mouse-active).
+  function onMouseMove() {
+    if (!enabled || !doc || !doc.body) return;
+    doc.body.classList.add("mouse-active");
+    clearTimeout(cursorTimer);
+    cursorTimer = setTimeout(hideCursor, CURSOR_HIDE_MS);
+  }
+  function hideCursor() {
+    clearTimeout(cursorTimer);
+    cursorTimer = null;
+    if (doc && doc.body) doc.body.classList.remove("mouse-active");
+  }
+
   // ---- Media Session (media keys and OS media controls in Chrome).
   function mediaSession(on) {
     var ms = typeof navigator !== "undefined" && navigator ? navigator.mediaSession : null;
@@ -229,6 +243,7 @@
     var on = !!(cfg && cfg.allow_input);
     if (on !== enabled) mediaSession(on);
     enabled = on;
+    if (!on) hideCursor();
     syncOverlay();
   }
   function onState(s) { state = s; syncOverlay(); }
@@ -243,6 +258,7 @@
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("mouseup", onMouseUp, true);
     window.addEventListener("auxclick", onAux, true);
+    window.addEventListener("mousemove", onMouseMove, true);
     if (overlay) {
       overlay.addEventListener("pointerdown", onDown);
       overlay.addEventListener("pointermove", onMove);
