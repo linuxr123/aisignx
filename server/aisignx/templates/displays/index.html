@@ -19,7 +19,7 @@
   {% endif %}
   {% if u.ahead %}
   A screen already runs {{ u.label }} <strong>{{ u.ahead }}</strong>, newer than what the
-  <a href="{{ url_for('downloads.index') }}">Downloads page</a> has{% if u.latest %} ({{ u.latest }}){% endif %}.
+  <a href="{{ url_for('downloads.index') }}">Downloads page</a> has for it{% if u.ahead_has %} ({{ u.ahead_has }}){% endif %}.
   Upload the {{ u.ahead }} installer there, and the others can be updated to it.
   {% endif %}
 </div>

@@ -158,8 +158,9 @@ def validate_params(display: Display, action: str, params) -> tuple[dict | None,
 
 
 def update_package(display: Display):
-    """The Download this display would be updated with: the newest installer of its app's kind, or None."""
-    from ..downloads.service import SHELL_KINDS, latest_download
+    """The Download this display would be updated with: the newest installer of its app's kind (Android: signed with
+    the key the app reported, when the page has one; see downloads.service.installer_for), or None."""
+    from ..downloads.service import SHELL_KINDS, display_signer, installer_for, latest_download
 
     if display.agent_token_hash:   # the privileged agent is Windows; the unprivileged player does not choose
         return latest_download(SHELL_KINDS["electron"])
@@ -168,7 +169,7 @@ def update_package(display: Display):
     except (TypeError, ValueError, AttributeError):
         shell = {}
     kind = SHELL_KINDS.get(str(shell.get("name") or ""))
-    return latest_download(kind) if kind else None
+    return installer_for(kind, display_signer(display)) if kind else None
 
 
 def signer_problem(display: Display, package) -> str | None:

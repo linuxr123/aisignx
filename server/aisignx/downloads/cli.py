@@ -10,8 +10,9 @@ from flask.cli import with_appcontext
 
 from ..audit import service as audit
 from ..extensions import db
-from ..models import DOWNLOAD_KINDS, Download
-from . import meta
+from ..models import DOWNLOAD_KINDS, DeviceCommand, Download
+from ..models.device_command import ACTION_UPDATE_APP, OPEN_STATES
+from . import apksign, meta
 from .routes import ALLOWED, _clean_name, downloads_dir
 
 
@@ -26,7 +27,8 @@ def downloads_cli():
               help="auto reads it from the file.")
 @click.option("--version", default="", help="Shown next to the file (default: read from the file).")
 @click.option("--notes", default="")
-@click.option("--replace/--keep", default=True, help="Remove older files of the same kind and name (default).")
+@click.option("--replace/--keep", default=True,
+              help="Remove older files of the same kind and name, and for an APK those signed with the same key (default).")
 @with_appcontext
 def add(file: Path, kind: str, version: str, notes: str, replace: bool):
     """Copy FILE into the downloads folder and list it."""
@@ -48,9 +50,20 @@ def add(file: Path, kind: str, version: str, notes: str, replace: bool):
         kind = guessed_kind
     version = version.strip() or guessed_version
     if replace:
-        for old in Download.query.filter_by(kind=kind, filename=name).all():
-            (downloads_dir() / old.stored_name).unlink(missing_ok=True)
-            db.session.delete(old)
+        # An APK also replaces the older APKs signed with the same key, so the page keeps one Android installer per key
+        # (a debug and a release build can be listed side by side; each screen gets the one with its own key).
+        # A file that an open update_app command still names (by sha256) stays until that update is over.
+        signer = apksign.signer_sha256(downloads_dir() / stored) if ext == "apk" else None
+        in_use = {str((c.params or {}).get("sha256") or "") for c in
+                  DeviceCommand.query.filter(DeviceCommand.action == ACTION_UPDATE_APP, DeviceCommand.state.in_(OPEN_STATES)).all()}
+        for old in Download.query.filter_by(kind=kind).all():
+            same_key = signer is not None and old.filename.lower().endswith(".apk") and \
+                apksign.signer_sha256(downloads_dir() / old.stored_name) == signer
+            if (old.filename == name or same_key) and old.sha256 in in_use:
+                click.echo(f"Kept {old.filename}: an update that is still open uses it. Delete it on the Downloads page later.")
+            elif old.filename == name or same_key:
+                (downloads_dir() / old.stored_name).unlink(missing_ok=True)
+                db.session.delete(old)
     row = Download(kind=kind, version=version.strip()[:32], filename=name, stored_name=stored, size=size,
                    sha256=digest.hexdigest(), notes=notes.strip()[:400], uploaded_by="cli")
     db.session.add(row)

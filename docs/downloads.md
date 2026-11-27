@@ -3,8 +3,10 @@
 **Downloads** (in the menu, and in the user menu) lists the Windows player, the Android app and the PowerPoint
 add-in, with version, size, date added and SHA-256. Anyone signed in can download (any role); admins add and remove
 files. The page is also where the server gets the installers it hands to screens: the Android provisioning QR code
-and install link use the newest Android app listed here, and **Push the update** on a screen uses the newest
-installer of its kind ([updates.md](updates.md)).
+and install link use the newest **release** build of the Android app listed here (the newest Android app when there
+is no release build), and **Push the update** on a screen uses the newest installer of its kind; for an Android app
+that reported its signing key, the newest one signed with that key ([updates.md](updates.md)). So a debug and a
+release build can be listed side by side, and each screen updates from its own.
 
 ## Files for the Windows set-up script
 
@@ -21,9 +23,10 @@ usual: the kind is detected from the file name. See [windows-agent.md](windows-a
 - **From the command line** (after building):
   `flask --app wsgi downloads add path\to\AiSignX-Player.apk --kind android-player --version 3.0.3`
   `--kind` is `auto` (the default) or one of `windows-player`, `android-player`, `powerpoint-addin`, `other`;
-  `--version` and `--notes` are optional. A file of the same kind and name replaces the older entry
-  (`--keep` keeps both). The browser upload never replaces anything: a new entry is added, and the newest
-  version is the one that counts.
+  `--version` and `--notes` are optional. A file of the same kind and name replaces the older entry, and an APK
+  also replaces the older APKs signed with the same key (`--keep` keeps them all). A file that an update still in
+  progress is downloading is kept, with a note; delete it later. The browser upload never replaces anything: a new
+  entry is added, and the newest version is the one that counts.
 
 How the kind and version are found:
 
@@ -54,7 +57,8 @@ tablet QR code on the same page needs a factory-reset device; see [android-kiosk
 [android-tv.md](android-tv.md).
 
 Android only lets an update replace an app that was signed with the same key, so keep using the same build
-type (debug or release) on a device; to switch, uninstall first.
+type (debug or release) on a device; to switch, uninstall first. A fleet with both kinds updates fine as long as
+both builds of a version are on this page ([android-kiosk.md](android-kiosk.md), "Signing keys").
 
 Only the owner's own Galaxy Tab and a Shield have been used to try these steps. Other devices are untested.
 

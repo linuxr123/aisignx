@@ -201,7 +201,7 @@ Manual, uploaded and pre-restore backups are never deleted automatically.
 
 - **Displays list:** tick screens (first column), then **Edit selected together** to change the same settings on all of them, or **App updates**.
   In the bulk edit every field starts at *No change*; the kiosk lock, names, notes and PINs stay per screen.
-- **App updates (admin):** lists each screen's app version against the newest installer on the Downloads page, lets you tick which screens to update, and shows each
+- **App updates (admin):** lists each screen's app version against the newest installer on the Downloads page (for an Android app, the newest signed with its key), lets you tick which screens to update, and shows each
   one's progress (waiting, installing, installed, failed with the reason). The table and the display page refresh by themselves; leave the tab open while an update runs.
   A screen is updated only if its *Allow installing updates* switch is on and its app can do it; otherwise it is refused with the reason.
 - The display's **Edit** page words its settings for the screen's system (Windows, Android, Linux, browser) once the player has reported what it is.

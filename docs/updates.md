@@ -32,7 +32,9 @@ Updating the Windows or Android **app** on a screen from the admin is built:
    installer. The page reads the version from the file (exactly for an APK, from the file name for the
    Windows installer); type one if it could not.
 2. The **Displays** list shows a note when screens run an app older than the newest installer of their kind,
-   and a screen's page shows **Update available** with the version it runs.
+   and a screen's page shows **Update available** with the version it runs. An Android app that reported its
+   signing key is compared with the newest installer signed with that key, so a debug and a release build can
+   both be listed (see [downloads.md](downloads.md)).
 3. An admin opens the screen and presses **Push the update**. This needs the **Update** switch on the screen's
    edit page (Edit > Device agent) and an app that reports it can update itself. On Windows only the
    **privileged agent** ([windows-agent.md](windows-agent.md)) can update the player; the player alone reports that

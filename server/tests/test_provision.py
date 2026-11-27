@@ -67,6 +67,17 @@ def test_package_detection_release_debug_and_encodings(tmp_path):
         assert service.detect_package(real) == "com.aisignx.player.debug"
 
 
+def test_new_devices_get_the_release_build_when_the_page_has_one(app):
+    from aisignx.provision.routes import _installer
+    debug_only, _ = _download(app, "com.aisignx.player.debug", "3.0.9")
+    with app.app_context():
+        assert _installer().id == debug_only                       # no release build: the newest app, as before
+    release, _ = _download(app, "com.aisignx.player", "3.0.8")
+    _download(app, "com.aisignx.player.debug", "3.0.10", wide=False)   # another file than the 3.0.9 one
+    with app.app_context():
+        assert _installer().id == release                          # a debug device could never update to release later
+
+
 def test_payload_has_what_android_needs(app):
     did, data = _download(app)
     with app.test_request_context():

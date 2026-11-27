@@ -399,7 +399,7 @@ free-form commands); each only works when its switch is on for that display and 
 | `collect_logs` | plain | Upload the app's redacted log | 5 minutes |
 | `reboot_device` | signed | Reboot the device (not more than once per 10 minutes) | 2 minutes |
 | `set_startup` | signed | Autostart on or off, app or shell mode (Windows) | 5 minutes |
-| `update_app` | signed | Install the newest installer of the app's kind from Downloads | 15 minutes |
+| `update_app` | signed | Install the newest installer of the app's kind from Downloads (Android: the newest signed with the app's reported key, when there is one) | 15 minutes |
 | `set_autologin` | signed, agent only | Set or undo automatic Windows sign-in | 5 minutes |
 
 A display gets at most 10 commands per hour and one open command per action. A command is handed out **once**

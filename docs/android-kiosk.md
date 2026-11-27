@@ -275,6 +275,10 @@ The app then reports `last_update_error: "invalid package"` on the display page,
 
 - From app 3.0.7 the app reports the SHA-256 of its signing key, checks a downloaded installer **before** it says "installing" (a different key is
   reported as a failure with the reason), and the server **refuses to push** an installer signed with another key than the screen's app, in words.
-- **Keep one key for the whole fleet.** Upload only installers signed with that key. To move a screen from the debug key to the release key, reinstall
-  the app once (uninstall, then the install link or QR code); a Device Owner tablet has to be factory reset first.
+- **A mixed fleet works:** the Downloads page can hold one Android installer per key (for example `AiSignX-Player-3.0.11-debug.apk` and
+  `AiSignX-Player-3.0.11.apk`). Each screen that reported its key is offered, and pushed, the newest installer signed with **its** key; a screen
+  that reported no key gets the newest installer, as before. `flask downloads add` removes the older APKs signed with the same key (`--keep`
+  keeps them). Upload both builds of each version, or the screens on the other key stay on their version.
+- One key for the whole fleet is still simpler. To move a screen from the debug key to the release key, reinstall the app once (uninstall, then
+  the install link or QR code); a Device Owner tablet has to be factory reset first.
 - Check a file: `apksigner verify --print-certs app.apk` (Android SDK build-tools) prints its signer's SHA-256.

@@ -4,7 +4,7 @@ command (displays/agent.py), so every rule that applies to one screen applies he
 command at a time."""
 from __future__ import annotations
 
-from ..downloads.service import KIND_LABELS, SHELL_KINDS, _parse, latest_download
+from ..downloads.service import KIND_LABELS, SHELL_KINDS, _parse
 from ..models import DeviceCommand, Display
 from ..models.device_command import ACTION_UPDATE_APP, OPEN_STATES, STATE_DELIVERED, STATE_DONE, STATE_EXPIRED, STATE_FAILED, STATE_PENDING
 from . import agent, options, platform
@@ -36,14 +36,13 @@ def rows(displays) -> list[dict]:
     if ids:
         for c in DeviceCommand.query.filter(DeviceCommand.display_id.in_(ids), DeviceCommand.action == ACTION_UPDATE_APP).order_by(DeviceCommand.id).all():
             last[c.display_id] = c                                     # the highest id wins
-    published = {kind: latest_download(kind) for kind in set(SHELL_KINDS.values())}
     for d in displays:
         shell = _shell(d)
         kind = SHELL_KINDS.get(str(shell.get("name") or ""))
         if not kind or not d.is_paired:
             continue
         running = _parse(shell.get("version"))
-        pub = published.get(kind)
+        pub = agent.update_package(d)                                  # this screen's own installer (Android: its signing key)
         pub_v = _parse(pub.version) if pub else None
         cmd = last.get(d.id)
         if running is None or pub_v is None:

@@ -80,7 +80,7 @@
 {% if not problem %}
 <div class="card" style="max-width: 44rem"><div class="card-body">
   <h2 class="h5 mb-3">{{ "Make another QR code" if result else "Make a QR code for one device" }}</h2>
-  <p class="small text-secondary">App to install: <strong>{{ download.filename }}</strong>{% if download.version %} {{ download.version }}{% endif %} ({{ package }}), the newest Android app on the Downloads page.</p>
+  <p class="small text-secondary">App to install: <strong>{{ download.filename }}</strong>{% if download.version %} {{ download.version }}{% endif %} ({{ package }}), the newest release build of the Android app on the Downloads page (or the newest Android app, when there is no release build).</p>
   <form method="post" novalidate>
     {{ form.hidden_tag() }}
     {{ field(form.name) }}

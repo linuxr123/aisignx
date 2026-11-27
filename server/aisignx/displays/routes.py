@@ -15,7 +15,7 @@ from ..player.broker import get_broker
 from ..player.manifest import build_manifest
 from ..pop import service as pop_service
 from ..schedules.resolve import load_context, resolve, split_by_day, week_segments
-from ..downloads.service import app_update, fleet_updates
+from ..downloads.service import app_update, display_signer, fleet_updates
 from . import agent, agent_request, bp, enroll, options, pairing, platform, screenshots, service
 from .agent import RUN_MODES  # noqa: F401  (tests also import it from here)
 from .agent_admin_forms import AutologinForm
@@ -134,7 +134,7 @@ def detail(display_id: int):
                            awaiting=(not display.is_paired
                                      and pairing.awaiting_claim(display)),
                            diag=diag, support=_support_rows(diag),
-                           app_update=app_update(diag.get("shell") if isinstance(diag, dict) else None),
+                           app_update=app_update(diag.get("shell") if isinstance(diag, dict) else None, display_signer(display)),
                            agent_caps=agent.capabilities(display),
                            priv=dict(enroll.summary(display), requests=agent_request.pending_for(display)), autologin_form=AutologinForm(),
                            agent_cmds=DeviceCommand.query.filter_by(display_id=display.id)

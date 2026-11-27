@@ -2,6 +2,7 @@
 from flask import abort, current_app, flash, make_response, redirect, render_template, request, send_file, url_for
 from flask_login import current_user
 from flask_wtf import FlaskForm
+from packaging.version import Version
 from wtforms import BooleanField, PasswordField, SelectField, StringField
 from wtforms.fields.choices import SelectChoice
 from wtforms.validators import DataRequired, Length, Optional
@@ -10,7 +11,7 @@ from ..audit import service as audit
 from ..auth.decorators import admin_required
 from ..displays import pairing
 from ..downloads.routes import downloads_dir
-from ..downloads.service import latest_download
+from ..downloads.service import _parse, latest_download
 from ..extensions import db
 from ..models import Download, Playlist
 from ..timeutil import org_tz
@@ -39,7 +40,18 @@ class ProvisionForm(FlaskForm):
 
 
 def _installer():
-    return latest_download("android-player")
+    """The APK a new device is given: the newest release build when the page has one, else the newest Android app.
+    The page may list a debug and a release build side by side (each screen updates from the one with its own key),
+    and a device installed from one can never update to the other, so new devices get the release build."""
+    best = None
+    zero = Version("0")
+    for row in Download.query.filter_by(kind="android-player").all():
+        if not row.filename.lower().endswith(".apk") or service.detect_package(downloads_dir() / row.stored_name) != service.PACKAGES[0]:
+            continue
+        key = (_parse(row.version) or zero, row.id)
+        if best is None or key > best[0]:
+            best = (key, row)
+    return best[1] if best else latest_download("android-player")
 
 
 @bp.route("/android", methods=["GET", "POST"])

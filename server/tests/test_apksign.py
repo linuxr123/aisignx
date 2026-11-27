@@ -77,9 +77,9 @@ def test_a_garbled_block_gives_none(tmp_path):
     assert apksign.signer_sha256(f) is None
 
 
-def _display(app, signer):
+def _display(app, signer, token="t" * 40):
     with app.app_context():
-        d = Display(name="Tab", token_hash=hash_token("t" * 40), paired_at=utcnow(), agent_allow_update=True)
+        d = Display(name="Tab", token_hash=hash_token(token), paired_at=utcnow(), agent_allow_update=True)
         d.diagnostics = json.dumps({"shell": {"name": "android", "version": "3.0.5"},
                                     "agent": {"version": "3.0.5", "can_update": True, "tier": "plain", "signer": signer} if signer else
                                     {"version": "3.0.5", "can_update": True, "tier": "plain"}})
@@ -126,6 +126,98 @@ def test_the_reported_key_must_be_64_hex_characters():
     from aisignx.player.diag import _agent
     assert _agent({"signer": "AB" * 32})["signer"] == "ab" * 32
     assert _agent({"signer": "zz"}) is None and _agent({"signer": 5}) is None                      # nothing valid left: dropped
+
+
+def _publish_as(app, cert, version, filename):
+    from aisignx.downloads.routes import downloads_dir
+    with app.app_context():
+        data = _apk(cert) + version.encode()          # trailing bytes after the zip: another file, same key
+        name = "apk" + hashlib.sha256(data).hexdigest()[:20]
+        (downloads_dir() / name).write_bytes(data)
+        row = Download(kind="android-player", filename=filename, stored_name=name, version=version,
+                       size=len(data), sha256=hashlib.sha256(data).hexdigest())
+        db.session.add(row)
+        db.session.commit()
+        return row.id
+
+
+def test_each_screen_gets_the_installer_signed_with_its_own_key(app, configured):
+    from aisignx.displays import updates
+    from aisignx.downloads.service import app_update, fleet_updates
+    a_id = _publish_as(app, CERT_A, "3.0.7", "AiSignX-Player-3.0.7-debug.apk")
+    b_id = _publish_as(app, CERT_B, "3.0.9", "AiSignX-Player-3.0.9.apk")
+    key_a, key_b = hashlib.sha256(CERT_A).hexdigest(), hashlib.sha256(CERT_B).hexdigest()
+    on_a, on_b, unknown = _display(app, key_a, "a" * 40), _display(app, key_b.upper(), "b" * 40), _display(app, None, "u" * 40)
+    on_c = _display(app, hashlib.sha256(b"another key").hexdigest(), "c" * 40)
+    with app.app_context():
+        d = lambda i: db.session.get(Display, i)
+        assert agent.update_package(d(on_a)).id == a_id                 # the older installer, but the only one Android accepts
+        assert agent.update_package(d(on_b)).id == b_id                 # the reported key is compared without case
+        assert agent.update_package(d(unknown)).id == b_id              # no key reported: the newest, as before
+        assert agent.update_package(d(on_c)).id == b_id                 # no installer with its key: the newest, refused in words
+        cmd, reason = agent.create(d(on_a), "update_app", None)
+        assert reason is None and cmd.params["version"] == "3.0.7"
+        cmd, reason = agent.create(d(on_c), "update_app", None)
+        assert cmd is None and "different signing key" in reason
+        shell = {"name": "android", "version": "3.0.5"}
+        assert app_update(shell, key_a)["latest"] == "3.0.7" and app_update(shell, None)["latest"] == "3.0.9"
+        assert app_update({"name": "android", "version": "3.0.7"}, key_a) is None
+        by_name = {r["display"].id: r for r in updates.rows(Display.query.all())}
+        assert by_name[on_a]["latest"] == "3.0.7" and by_name[on_b]["latest"] == "3.0.9"
+        fleet = fleet_updates(Display.query.all())
+        assert fleet[0]["latest"] == "3.0.7, 3.0.9" and len(fleet[0]["outdated"]) == 4 and fleet[0]["ahead"] is None
+
+
+def test_the_displays_banner_finds_a_screen_newer_than_its_own_installer(app, configured):
+    from aisignx.downloads.service import fleet_updates
+    _publish_as(app, CERT_A, "3.0.7", "AiSignX-Player-3.0.7-debug.apk")
+    _publish_as(app, CERT_B, "3.0.9", "AiSignX-Player-3.0.9.apk")
+    newer = _display(app, hashlib.sha256(CERT_A).hexdigest(), "a" * 40)
+    _display(app, hashlib.sha256(CERT_B).hexdigest(), "b" * 40)
+    with app.app_context():
+        d = db.session.get(Display, newer)
+        d.diagnostics = d.diagnostics.replace('"version": "3.0.5"}, "agent"', '"version": "3.0.8"}, "agent"')
+        db.session.commit()
+        fleet = fleet_updates(Display.query.all())[0]
+        assert fleet["ahead"] == "3.0.8" and fleet["ahead_has"] == "3.0.7"     # 3.0.8 < the other key's 3.0.9, still reported
+        assert fleet["latest"] == "3.0.9" and len(fleet["outdated"]) == 1
+
+
+def test_adding_an_apk_replaces_the_older_one_with_the_same_key_only(app, configured, tmp_path):
+    runner = app.test_cli_runner()
+    files = {}
+    for name, cert, version in (("AiSignX-Player-3.0.7-debug.apk", CERT_A, "3.0.7"), ("AiSignX-Player-3.0.8.apk", CERT_B, "3.0.8"),
+                                ("AiSignX-Player-3.0.9-debug.apk", CERT_A, "3.0.9")):
+        f = tmp_path / name
+        f.write_bytes(_apk(cert) + version.encode())
+        files[name] = f
+        result = runner.invoke(args=["downloads", "add", str(f), "--kind", "android-player", "--version", version])
+        assert result.exit_code == 0, result.output
+    with app.app_context():
+        assert sorted(r.filename for r in Download.query.all()) == ["AiSignX-Player-3.0.8.apk", "AiSignX-Player-3.0.9-debug.apk"]
+    result = runner.invoke(args=["downloads", "add", str(files["AiSignX-Player-3.0.8.apk"]), "--kind", "android-player",
+                                 "--version", "3.0.8", "--keep"])
+    with app.app_context():
+        assert Download.query.count() == 3                               # --keep removes nothing
+
+
+def test_adding_an_apk_keeps_the_one_an_open_update_still_downloads(app, configured, tmp_path):
+    from aisignx.models import DeviceCommand
+    runner = app.test_cli_runner()
+    old = tmp_path / "AiSignX-Player-3.0.7-debug.apk"
+    old.write_bytes(_apk(CERT_A) + b"3.0.7")
+    assert runner.invoke(args=["downloads", "add", str(old), "--kind", "android-player", "--version", "3.0.7"]).exit_code == 0
+    did = _display(app, hashlib.sha256(CERT_A).hexdigest())
+    with app.app_context():
+        cmd, reason = agent.create(db.session.get(Display, did), "update_app", None)
+        assert reason is None
+        db.session.commit()
+    new = tmp_path / "AiSignX-Player-3.0.8-debug.apk"
+    new.write_bytes(_apk(CERT_A) + b"3.0.8")
+    result = runner.invoke(args=["downloads", "add", str(new), "--kind", "android-player", "--version", "3.0.8"])
+    assert result.exit_code == 0 and "Kept AiSignX-Player-3.0.7-debug.apk" in result.output
+    with app.app_context():
+        assert Download.query.count() == 2 and DeviceCommand.query.count() == 1
 
 
 def test_the_updates_page_shows_the_refusal_reason(app, configured):
