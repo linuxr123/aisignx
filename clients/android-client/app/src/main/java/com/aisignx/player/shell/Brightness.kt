@@ -42,20 +42,19 @@ data class Brightness(val base: Int, val dim: Dim?) {
         /** The value for WindowManager.LayoutParams.screenBrightness: -1 (the system's own setting) at 100 %, else 0.1..0.99. */
         fun windowValue(level: Int): Float = if (level >= 100) -1f else (level / 100f).coerceIn(0.1f, 0.99f)
 
-        /** Settings.System.SCREEN_BRIGHTNESS (0..255) for a level; never fully dark. */
-        fun systemValue(level: Int): Int = Math.round(level.coerceIn(10, 100) * 255 / 100f)
-
         /**
-         * What a Device Owner does with the system brightness setting for [level]. Some devices (a Samsung tablet on
-         * Android 16) ignore the window's brightness, so the app also sets the device's own setting. [managed]: the app
-         * changed the setting and keeps the user's own value to put back. Null: leave the setting alone (at 100 % on a
-         * device the app never dimmed, the user's own setting stays as it is).
+         * Settings.System.SCREEN_BRIGHTNESS (1..255) for a level, so the device's own brightness slider shows the same
+         * percent. The slider is perceptual: Android maps it to the linear 0..255 value with the HLG curve
+         * (BrightnessUtils.convertGammaToLinear), so 50 % on the slider is about 21/255, not 128. 100 % is 255.
          */
-        fun systemStep(level: Int, managed: Boolean): SystemStep? = when {
-            level < 100 -> SystemStep.Set(systemValue(level), saveOwn = !managed)
-            managed -> SystemStep.Restore
-            else -> null
+        fun systemValue(level: Int): Int {
+            val v = level.coerceIn(10, 100) / 100.0
+            val linear = if (v <= 0.5) v * v / 3.0 else (Math.exp((v - HLG_C) / HLG_A) + HLG_B) / 12.0
+            return Math.round(linear * 255).toInt().coerceIn(1, 255)
         }
+        private const val HLG_A = 0.17883277
+        private const val HLG_B = 0.28466892
+        private const val HLG_C = 0.55991073
 
         fun toPref(b: Brightness): String = JSONObject().put("brightness", b.base).apply {
             b.dim?.let { put("dim", JSONObject().put("level", it.level).put("from", "%02d:%02d".format(it.fromMin / 60, it.fromMin % 60))
@@ -66,12 +65,5 @@ data class Brightness(val base: Int, val dim: Dim?) {
             if (text == null) return DEFAULT
             return try { parse(JSONObject(text)) } catch (_: Exception) { DEFAULT }
         }
-    }
-
-    sealed class SystemStep {
-        /** Manual mode at [value]; [saveOwn]: first keep the user's own mode and value. */
-        data class Set(val value: Int, val saveOwn: Boolean) : SystemStep()
-        /** Put the user's own mode and value back. */
-        object Restore : SystemStep()
     }
 }

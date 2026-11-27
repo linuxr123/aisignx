@@ -43,13 +43,14 @@ class BrightnessTest {
         assertEquals(0.1f, Brightness.windowValue(1), 0.001f)
     }
 
-    @Test fun `the system setting is dimmed, kept and put back, and left alone on a device never dimmed`() {
-        assertEquals(Brightness.SystemStep.Set(26, saveOwn = true), Brightness.systemStep(10, managed = false))
-        assertEquals(Brightness.SystemStep.Set(128, saveOwn = false), Brightness.systemStep(50, managed = true))
-        assertEquals(Brightness.SystemStep.Restore, Brightness.systemStep(100, managed = true))
-        assertNull(Brightness.systemStep(100, managed = false))
-        assertEquals(26, Brightness.systemValue(1))
+    @Test fun `the system value matches the device's brightness slider, full at 100 and never dark`() {
         assertEquals(255, Brightness.systemValue(100))
+        assertEquals(21, Brightness.systemValue(50))      // the slider's halfway point is 1/12 of full
+        assertEquals(87, Brightness.systemValue(80))
+        assertEquals(1, Brightness.systemValue(10))
+        assertEquals(1, Brightness.systemValue(1))
+        val values = (10..100).map { Brightness.systemValue(it) }
+        assertEquals(values.sorted(), values)             // brighter never gives a lower value
     }
 
     @Test fun `the saved form survives a round trip`() {
