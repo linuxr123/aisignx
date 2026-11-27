@@ -727,6 +727,8 @@ brightness), `holdBrightness(false)` when it is gone. Android: the page posts
 `AiSignXShell.holdBrightness(full)`. The Windows app reports the cap only when its probe found a
 screen it can set (WMI for built-in panels, DDC/CI for monitors); otherwise the page keeps its
 darkening layer. It does not touch a PC's brightness until a display asks for less than 100 %.
+The Android app does not report the cap on Android TV (3.0.11+): a TV box sends HDMI and has no
+backlight, so the page darkens the picture there.
 
 **Capture.** `capture()` resolves to a JPEG `Blob` of the real screen, or `null`; the page then
 falls back to drawing its own media on a canvas. Electron: `AiSignXShell.capture()` returns

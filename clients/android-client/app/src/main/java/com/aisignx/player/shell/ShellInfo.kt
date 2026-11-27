@@ -64,7 +64,9 @@ class ShellInfo(
         /**
          * Capabilities: settings and capture requests arrive through the port, so
          * without it the shell can do neither. TVs never rotate natively; the page
-         * rotates with CSS there.
+         * rotates with CSS there. TVs do not report brightness either: a TV box
+         * (NVIDIA Shield) sends HDMI and has no backlight to set, so the page draws
+         * its darkening layer.
          */
         fun caps(portAttached: Boolean, isTv: Boolean): List<String> = buildList {
             if (portAttached) {
@@ -74,7 +76,7 @@ class ShellInfo(
                 add(CAP_CONTROLS)
                 add(CAP_KIOSK_LOCK)
                 add(CAP_AGENT)
-                add(CAP_BRIGHTNESS)
+                if (!isTv) add(CAP_BRIGHTNESS)   // a TV box has no backlight (HDMI): the page darkens the picture there
             }
         }
 

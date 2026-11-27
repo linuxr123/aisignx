@@ -226,6 +226,7 @@ class PlayerActivity : AppCompatActivity() {
     private var systemLevel = -1  // the level last given to SystemBrightness (-1: none yet, so the first call always runs)
 
     private fun applyBrightness(b: Brightness = AiSignXApp.from(this).config.brightness) {
+        if (isTv) return  // no backlight to set (HDMI); the page darkens the picture instead (ShellInfo.caps)
         val level = if (emergencyBright) 100 else b.levelAt(System.currentTimeMillis())
         if (level != systemLevel) { systemLevel = level; SystemBrightness.apply(this, level) }  // Device Owner only
         val value = Brightness.windowValue(level)
