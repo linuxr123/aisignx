@@ -59,7 +59,7 @@ async function make(items, opts) {
   els.paused.sub = element("p-sub");
   const body = element("body");
   const winListeners = {};
-  const calls = { pop: [], swaps: [], trans: [], commands: [], hints: [], alive: [], prepares: [], teardowns: [], seeks: [], fails: [] };
+  const calls = { pop: [], swaps: [], trans: [], commands: [], hints: [], alive: [], prepares: [], teardowns: [], seeks: [], fails: [], reloads: [] };
   const handlers = {};
   const cfg = { allow_input: opts.allow_input !== false, group_controls: opts.group_controls !== false, resume_after_s: opts.resume_after_s || 300 };
 
@@ -165,13 +165,17 @@ async function make(items, opts) {
   };
   const ctx = {
     window, document, console: quiet, navigator: { userAgent: "" },
-    location: { search: opts.debug ? "?debug=1" : "", origin: "http://x", host: "x", pathname: "/player/" },
+    location: { search: opts.debug ? "?debug=1" : "", origin: "http://x", host: "x", pathname: "/player/",
+      reload() { calls.reloads.push(clock.t); } },
+    // opts.session: a sessionStorage (a plain object store) shared by the "page loads" of one test.
+    fetch: () => Promise.resolve({ status: 200 }),
     performance: { now: () => clock.t },
     setTimeout: (fn, ms) => addTimer(fn, ms, false), clearTimeout: clearTimer,
     setInterval: (fn, ms) => addTimer(fn, ms, true), clearInterval: clearTimer,
     Promise, JSON, Object, Array, Math, Number, RegExp, isFinite, String,
   };
   ctx.Date = { now: () => clock.t + (opts.skew || 0) };
+  if (opts.session) ctx.sessionStorage = { getItem: (k) => (k in opts.session ? opts.session[k] : null), setItem: (k, v) => { opts.session[k] = String(v); } };
   window.performance = ctx.performance;
   vm.createContext(ctx);
   vm.runInContext(SYNC, ctx);
@@ -600,6 +604,15 @@ async function main() {
     for (let i = 0; i < 70; i++) await fa.advance(1000);
     const fts = fa.calls.fails;
     out.syncFail = { fails: fts.length, gaps: fts.slice(1).map((t, i) => Math.round((t - fts[i]) / 1000)), seeks: fa.calls.seeks.length, cur: fa.cur() };
+    // ... and with sessionStorage: the second failure in a row reloads the page once (a stuck decoder), not again
+    // within ten minutes even when the video keeps failing after the reload.
+    const session = {};
+    const ra = await make(fitems, { sync: true, t0: 3000, failVideo: 4, session, skew: 3600000 });  // a wall clock past its guards
+    for (let i = 0; i < 30; i++) await ra.advance(1000);
+    const rb = await make(fitems, { sync: true, t0: 3000, failVideo: 4, session, skew: 3600000 + ra.clock.t });  // the page after the reload
+    for (let i = 0; i < 30; i++) await rb.advance(1000);
+    out.syncFailReload = { first: ra.calls.reloads.length, firstAt: ra.calls.reloads.map((t) => t - ra.calls.fails[1]),
+      second: rb.calls.reloads.length, fails: ra.calls.fails.length };
 
     // "Group controls" off on one screen: its controls move only itself (it rejoins after the reset time),
     // while a control on the other screen still moves both.

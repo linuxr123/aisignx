@@ -238,6 +238,16 @@ def test_a_video_that_keeps_failing_is_retried_slowly_and_never_seeked_into(harn
 
 
 @needs_node
+def test_a_video_that_fails_again_from_its_start_reloads_the_page_once(harness):
+    # The tablet case: a stuck decoder fails every new video element; only a fresh page frees it.
+    r = harness["syncFailReload"]
+    assert r["first"] >= 1, r                             # a reload at the slide change after the second failure
+                                                          # (the harness page does not really reload, so it asks again)
+    assert 0 < r["firstAt"][0] <= 5000, r
+    assert r["second"] == 0, r                            # still failing after the reload: no reload loop
+
+
+@needs_node
 def test_group_controls_off_moves_only_that_screen_and_it_still_follows_the_group(harness):
     r = harness["syncLocal"]
     assert r["a"] == r["start"] % 3 + 1 and r["b"] == r["start"]       # A moved itself; B stayed

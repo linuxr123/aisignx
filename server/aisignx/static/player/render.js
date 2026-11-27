@@ -382,8 +382,10 @@
   function runVideo(slide, ctx) {
     if (!isVideo(slide)) return;
     var v = slide.media;
-    var retried = false;
-    var alive = function () { return !slide.dead && active === slide; };
+    var retried = false, failed = false;
+    // A failed video is left alone: no more play() nudges into a decoder that has given up.
+    var alive = function () { return !failed && !slide.dead && active === slide; };
+    var fail = function (reason) { failed = true; ctx.fail(reason); };
     var onError = function (err) {
       if (!alive()) return;
       var name = err && err.name;
@@ -396,7 +398,7 @@
         playVideo(v, onError);
         return;
       }
-      ctx.fail("play() failed: " + (name || err));
+      fail("play() failed: " + (name || err));
     };
     v.addEventListener("ended", function () {
       if (!alive()) return;
@@ -408,7 +410,7 @@
       }
     });
     v.addEventListener("error", function () {
-      if (alive()) ctx.fail("video error " + (v.error ? v.error.code : ""));
+      if (alive()) fail("video error " + (v.error ? v.error.code : ""));
     });
     var held = function () { return typeof ctx.isHeld === "function" && !!ctx.isHeld(); };
     // A browser can leave a video paused after a seek or while the file is still loading (seen on the
@@ -433,7 +435,7 @@
         try { v.currentTime = v.currentTime; } catch (e) { /* ignore */ }
         playVideo(v, function () { /* the watchdog decides */ });
       } else if (act === "fail") {
-        ctx.fail("video stalled");
+        fail("video stalled");
       }
     }, 1000);
     playVideo(v, onError);

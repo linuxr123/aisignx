@@ -22,6 +22,10 @@
   var CLIENT_ID = net.clientId();
 
   var TICK_MS = 250, PRELOAD_MS = 3000, FAIL_DWELL_MS = 2000, MAX_FAIL_DWELL_MS = 16000, DEFAULT_DURATION_MS = 10000;
+  // The same video failing again after it was restarted from its start: the device's video decoder is stuck (seen
+  // on a tablet after quick seeks), and every new video element fails too. Only a fresh page frees it: reload, at
+  // most once per DECODER_RELOAD_GAP_MS.
+  var DECODER_STUCK_AFTER = 2, DECODER_RELOAD_GAP_MS = 10 * 60000, DECODER_RELOAD_KEY = "aisignx.decoder_reload_at";
   var PROBE_MS = 10000;  // heartbeat this often while the live connection is down
   var RETRY_AFTER_FAIL_MS = 10000;  // all other items failed: try them again this soon
   var NO_CONTENT_RETRY_MS = 30000, SETUP_RETRY_MS = 10000, PAIRED_SHOW_MS = 2000, DIAG_EVERY = 10;
@@ -449,6 +453,7 @@
       var n = S.vfail && S.vfail.id === cur.item.id ? S.vfail.n + 1 : 1;
       S.vfail = { id: cur.item.id, n: n };
       dwell = Math.min(MAX_FAIL_DWELL_MS, FAIL_DWELL_MS * Math.pow(2, n - 1));
+      if (n >= DECODER_STUCK_AFTER) decoderReload(cur.item.id);
     }
     cur.deadline = Math.min(cur.deadline, Math.max(now(), cur.shownAt + dwell));
     tick();
@@ -773,6 +778,21 @@
     }
     if (hasLock) CT.hint(d.action === "unlock" ? "Unlocked for " + m + " min" : "Locked");
     else if (DEBUG) CT.hint(d.action === "unlock" ? "No app to unlock" : "No app to lock");
+  }
+
+  // A stuck video decoder: reload the page at the next slide change (requestReload waits for it). The time of the
+  // last such reload is kept for the tab (sessionStorage survives the reload), so a decoder that is still stuck
+  // afterwards does not reload the page over and over; without sessionStorage there is no reload at all.
+  function decoderReload(id) {
+    var t = Date.now(), last;
+    try {
+      last = sessionStorage.getItem(DECODER_RELOAD_KEY);
+      last = last === null ? NaN : Number(last);
+      if (t >= last && t - last < DECODER_RELOAD_GAP_MS) return;  // a clock that went back counts as long ago
+      sessionStorage.setItem(DECODER_RELOAD_KEY, String(t));
+    } catch (e) { return; }
+    note("video " + id + " keeps failing: reloading the page to free the video decoder");
+    requestReload();
   }
 
   // ---- Guarded reload: never reload into a browser error page.
