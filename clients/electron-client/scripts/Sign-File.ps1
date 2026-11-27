@@ -20,8 +20,10 @@ if (-not $cert.HasPrivateKey) { throw 'The certificate has no private key here.'
 if (($cert.EnhancedKeyUsageList | ForEach-Object { $_.ObjectId }) -notcontains '1.3.6.1.5.5.7.3.3') { throw 'The certificate is not a code-signing certificate.' }
 # Already signed with this certificate (electron-builder can ask for the same helper file twice at the same moment): nothing to do.
 $existing = Get-AuthenticodeSignature -LiteralPath $Path
-if ($existing.Status -eq 'Valid' -and $existing.SignerCertificate -and $existing.SignerCertificate.Thumbprint -eq $Thumbprint -and $existing.TimeStamperCertificate) {
-    Write-Host ('Signed ' + (Split-Path -Leaf $Path) + ' (already signed and timestamped)')
+# A self-signed certificate reads back as UnknownError (see above), and re-signing without a timestamp gives the same bytes.
+$intact = $existing.Status -notin @('NotSigned', 'HashMismatch', 'NotSupportedFileFormat', 'Incompatible')
+if ($intact -and $existing.SignerCertificate -and $existing.SignerCertificate.Thumbprint -eq $Thumbprint -and ($existing.TimeStamperCertificate -or -not $TimestampUrl)) {
+    Write-Host ('Signed ' + (Split-Path -Leaf $Path) + ' (already signed with this certificate)')
     return
 }
 $before = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
