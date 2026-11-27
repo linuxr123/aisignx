@@ -40,7 +40,7 @@ def _manifest(client):
 def test_synced_group_gets_a_sync_block_and_controls_off(app, configured, client, paired_display):
     gid = _setup(app, paired_display)
     m = _manifest(client)
-    assert m["sync"] == {"group_id": gid, "anchor_ms": 0, "cycle_ms": 15000}
+    assert m["sync"] == {"group_id": gid, "anchor_ms": 0, "cycle_ms": 15000, "controls": True}
     assert m["settings"]["allow_input"] is True         # controls follow the display's setting; the player rejoins after resume_after_s
 
 
@@ -259,3 +259,24 @@ def test_transport_rejects_bad_input(app, configured, client, paired_display, ba
     _setup(app, paired_display)
     assert _transport(client, **bad).status_code == 400
     assert "transport" not in _manifest(client)["sync"]
+
+
+def test_group_controls_is_a_display_option_in_the_manifest(app, configured, client, paired_display):
+    _setup(app, paired_display)
+    assert _manifest(client)["settings"]["group_controls"] is True        # on unless switched off
+    with app.app_context():
+        db.session.get(Display, paired_display[0]).group_controls = False
+        db.session.commit()
+    assert _manifest(client)["settings"]["group_controls"] is False
+
+
+def test_group_option_controls_off_is_in_the_manifest_and_stops_group_transport(app, configured, client, paired_display):
+    gid = _setup(app, paired_display)
+    body = {"key": "0:1=5000", "offset_ms": 5, "paused_ms": None, "resume_at_ms": None}
+    assert client.post(f"{API}/group/transport", json=body, headers=bearer(DISPLAY_TOKEN)).status_code == 200
+    with app.app_context():
+        db.session.get(DisplayGroup, gid).sync_controls = False
+        db.session.commit()
+    assert _manifest(client)["sync"]["controls"] is False
+    resp = client.post(f"{API}/group/transport", json=body, headers=bearer(DISPLAY_TOKEN))
+    assert resp.status_code == 409

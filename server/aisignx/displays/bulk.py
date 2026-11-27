@@ -14,6 +14,7 @@ from .forms import FIT_CHOICES, ORIENTATION_CHOICES, group_choices, playlist_cho
 KEEP = ""
 YES_NO = [SelectChoice(KEEP, "No change"), SelectChoice("1", "On"), SelectChoice("0", "Off")]
 ADMIN_SWITCHES = (("allow_input", "Player controls (touch, mouse, keyboard, remote)"),
+                  ("group_controls", "Controls move the whole group (synchronized playback)"),
                   ("agent_watchdog", "Watchdog: restart the player when it stops responding"),
                   ("agent_allow_restart", 'Allow "Restart the player" from the display page'),
                   ("agent_allow_logs", 'Allow "Collect logs" from the display page'),

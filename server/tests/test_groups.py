@@ -222,11 +222,33 @@ def test_display_form_group_select(configured, admin_client):
     assert 'name="group"' in html and "No group" in html and "Lobby" in html
     resp = admin_client.post(f"/displays/{display_id}/edit",
                              data={"name": "Front desk", "playlist": 0, "group": group_id,
-                                   "volume": 100})
+                                   "volume": 100, "brightness": 100})
     assert resp.status_code == 302
     with configured.app_context():
         assert db.session.get(Display, display_id).group_id == group_id
     admin_client.post(f"/displays/{display_id}/edit",
-                      data={"name": "Front desk", "playlist": 0, "group": 0, "volume": 100})
+                      data={"name": "Front desk", "playlist": 0, "group": 0, "volume": 100, "brightness": 100})
     with configured.app_context():
         assert db.session.get(Display, display_id).group_id is None
+
+
+def test_group_form_has_the_controls_option_on_by_default_and_saves_it(configured, admin_client):
+    html = admin_client.get("/groups/new").get_data(as_text=True)
+    assert "checked" in _checkbox(html, "sync_controls")
+    resp = admin_client.post("/groups/new", data={"name": "Wall", "sync_playback": "y", "sync_controls": "y"})
+    assert resp.status_code == 302
+    with configured.app_context():
+        group = DisplayGroup.query.filter_by(name="Wall").one()
+        assert (group.sync_playback, group.sync_controls) == (True, True)
+        gid = group.id
+    resp = admin_client.post(f"/groups/{gid}/edit", data={"name": "Wall", "sync_playback": "y"})   # box unticked
+    assert resp.status_code == 302
+    with configured.app_context():
+        assert db.session.get(DisplayGroup, gid).sync_controls is False
+    assert "checked" not in _checkbox(admin_client.get(f"/groups/{gid}/edit").get_data(as_text=True), "sync_controls")
+
+
+def _checkbox(html: str, name: str) -> str:
+    """The <input> tag of a checkbox, to look for `checked` in it."""
+    start = html.index(f'name="{name}"')
+    return html[html.rfind("<input", 0, start): html.index(">", start)]

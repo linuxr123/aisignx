@@ -68,6 +68,9 @@ class Display(db.Model):
                                     server_default=sa.true())
     allow_input = db.Column(db.Boolean, nullable=False, default=False,
                             server_default=sa.false())
+    # In a group with synchronized playback: a control used on this screen moves the whole group (on), or only
+    # this screen, which rejoins the group after resume_after_s (off). See player/transport.py.
+    group_controls = db.Column(db.Boolean, nullable=False, default=True, server_default=sa.true())
     # pbkdf2-sha256$<iter>$<salt hex>$<hash hex>; guards leaving the native apps.
     unlock_pin_hash = db.Column(db.String(200), nullable=True)
     # Lock player: the native apps cannot be left without the unlock PIN.

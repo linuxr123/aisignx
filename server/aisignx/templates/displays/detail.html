@@ -60,7 +60,7 @@
     <dt class="col-sm-4">Default playlist</dt>
     <dd class="col-sm-8">{% if display.playlist %}<a href="{{ url_for('playlists.detail', playlist_id=display.playlist.id) }}">{{ display.playlist.name }}</a>{% else %}&mdash;{% endif %}</dd>
     <dt class="col-sm-4">Group</dt>
-    <dd class="col-sm-8">{% if display.group %}<a href="{{ url_for('groups.index') }}">{{ display.group.name }}</a>{% if display.group.sync_playback %} <span class="badge text-bg-info" title="This screen plays in sync with the group; player controls are off">Synced playback</span>{% endif %}{% else %}&mdash;{% endif %}</dd>
+    <dd class="col-sm-8">{% if display.group %}<a href="{{ url_for('groups.index') }}">{{ display.group.name }}</a>{% if display.group.sync_playback %} <span class="badge text-bg-info" title="This screen plays in sync with the group; a control used here moves the whole group">Synced playback</span>{% endif %}{% else %}&mdash;{% endif %}</dd>
     <dt class="col-sm-4">Current item</dt>
     <dd class="col-sm-8">{{ text(current_item) }}</dd>
     <dt class="col-sm-4">Content</dt>

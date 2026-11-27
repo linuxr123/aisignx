@@ -62,7 +62,7 @@ def test_editor_and_admin_can_manage(configured, client, paired_display, playlis
     assert client.get(f"/displays/{display_id}/edit").status_code == 200
 
     resp = client.post(f"/displays/{display_id}/edit",
-                       data={"name": "Front desk", "playlist": playlist_id, "volume": 100})
+                       data={"name": "Front desk", "playlist": playlist_id, "volume": 100, "brightness": 100})
     assert resp.status_code == 302
     with configured.app_context():
         display = db.session.get(Display, display_id)

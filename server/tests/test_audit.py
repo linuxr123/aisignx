@@ -102,7 +102,7 @@ def test_display_actions(app, admin_client, paired_display):
     did = paired_display[0]
     admin_client.post(f"/displays/{did}/edit", data={
         "name": "Lobby 2", "playlist": 0, "group": 0, "orientation": 0, "fit_override": "",
-        "volume": 50, "show_offline_banner": "y", "allow_input": "y", "unlock_pin": "2468"})
+        "volume": 50, "brightness": 100, "dim_level": 100, "group_controls": "y", "show_offline_banner": "y", "allow_input": "y", "unlock_pin": "2468"})
     row = _one(app, "display.update")
     _check(row, "display", did)
     assert set(_detail(row)["changed"]) == {"name", "volume", "allow_input", "unlock_pin"}

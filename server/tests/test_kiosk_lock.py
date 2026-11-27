@@ -23,7 +23,7 @@ RID = re.compile(r"[0-9a-f]{16}")
 
 def _form(**overrides) -> dict:
     data = {"name": "Lobby", "playlist": 0, "group": 0, "orientation": 0, "fit_override": "",
-            "volume": 100, "show_offline_banner": "y", "resume_after_min": 5}
+            "volume": 100, "brightness": 100, "show_offline_banner": "y", "resume_after_min": 5}
     data.update(overrides)
     return {k: v for k, v in data.items() if v is not None}
 

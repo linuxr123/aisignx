@@ -97,6 +97,7 @@ class DisplayForm(FlaskForm):
     # Kiosk lock: admins only. Removed from the form for everyone else, so an editor
     # posting these fields changes nothing.
     allow_input = BooleanField("Player controls (touch, mouse, keyboard, remote)")
+    group_controls = BooleanField("Controls move the whole group (synchronized playback)")
     # Optional so a post without it (an older form or script) keeps the stored value.
     resume_after_min = IntegerField("Resume after a pause (minutes)", default=5,
                                     validators=[Optional(), NumberRange(1, 60)],
@@ -120,7 +121,7 @@ class DisplayForm(FlaskForm):
     agent_allow_startup = BooleanField("Allow changing the startup settings from this page (signed command)")
     agent_allow_update = BooleanField("Allow pushing app updates from this page (signed command)")
 
-    KIOSK_FIELDS = ("allow_input", "unlock_pin", "clear_pin", "kiosk_lock",
+    KIOSK_FIELDS = ("allow_input", "group_controls", "unlock_pin", "clear_pin", "kiosk_lock",
                     "resume_after_min", "agent_watchdog", "agent_allow_restart",
                     "agent_allow_logs", "agent_allow_reboot", "agent_allow_startup", "agent_allow_update")
 

@@ -42,6 +42,7 @@ def _save(group: DisplayGroup, form: GroupForm) -> int:
     group.name = form.name.data.strip()
     group.description = (form.description.data or "").strip() or None
     group.sync_playback = bool(form.sync_playback.data)
+    group.sync_controls = bool(form.sync_controls.data)
     wanted = set(form.members.data or [])
     moved = 0
     for display in form.displays:
@@ -65,7 +66,7 @@ def _saved(group: DisplayGroup, moved: int, verb: str):
     action = "group.create" if verb == "created" else "group.update"
     audit.record(action, _target(group),
                  detail={"members": len(group.displays), "moved_from_other_groups": moved,
-                         "sync_playback": group.sync_playback})
+                         "sync_playback": group.sync_playback, "sync_controls": group.sync_controls})
     db.session.commit()
     current_app.logger.info("group %s (%s) %s by user %s", group.id, group.name, verb,
                             current_user.id)

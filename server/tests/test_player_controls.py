@@ -199,7 +199,12 @@ def test_a_control_on_one_synced_screen_moves_the_whole_group(harness):
     assert r["resumed"]["pa"] is False and r["resumed"]["pb"] is False   # ... and resume from the other screen
     assert r["autoResume"]["pa"] is False and r["autoResume"]["pb"] is False   # a pause ends by itself
     assert r["autoResume"]["a"] == r["autoResume"]["b"]
-    assert r["posts"] == 6                                          # one request per control, nothing more
+    nw, pw = r["nextWhilePaused"], r["prevWhilePaused"]
+    assert nw["a"] == nw["b"] == nw["before"]["a"] % 3 + 1, r       # next while paused: both move at once ...
+    assert nw["pa"] is False and nw["pb"] is False                  # ... and play on
+    assert pw["a"] == pw["b"] == pw["want"] and pw["pa"] is False and pw["pb"] is False, r
+    assert r["afterPausedMoves"]["a"] == r["afterPausedMoves"]["b"] != pw["a"]   # and the slides change again by themselves
+    assert r["posts"] == 10                                         # one request per control, nothing more
 
 
 @needs_node
@@ -207,6 +212,38 @@ def test_fast_forward_moves_the_video_on_every_screen_of_the_group(harness):
     r = harness["syncSeek"]
     assert r["dA"] == r["dB"] and r["dA"] >= 10, r
     assert r["hint"] == "Fast forward +10 s"
+
+
+@needs_node
+def test_a_group_with_controls_off_moves_only_the_screen_used(harness):
+    r = harness["syncGroupOff"]
+    assert r["a"] == r["start"] % 3 + 1 and r["b"] == r["start"] and r["posts"] == 0, r
+
+
+@needs_node
+def test_quick_controls_do_not_load_the_same_slide_twice(harness):
+    r = harness["syncChurn"]
+    assert r["a"] == r["b"] == r["want"]                  # both screens end on the moved timeline
+    # Four quick controls, four slides loaded. The server's hint reaches the screen that used the control as well; it
+    # must not throw away the slide being loaded and start it again (that stalled a tablet's video decoder).
+    assert r["prepares"] <= 4 and r["teardowns"] <= 6, r
+
+
+@needs_node
+def test_a_video_that_keeps_failing_is_retried_slowly_and_never_seeked_into(harness):
+    r = harness["syncFail"]
+    assert r["fails"] == 4 and r["gaps"] == [2, 4, 8], r  # 2 s, 4 s, 8 s between the attempts
+    assert r["seeks"] <= 2, r                             # joined once part-way in; the retries play from the start
+    assert r["cur"] == 7                                  # and it still plays in the end
+
+
+@needs_node
+def test_group_controls_off_moves_only_that_screen_and_it_still_follows_the_group(harness):
+    r = harness["syncLocal"]
+    assert r["a"] == r["start"] % 3 + 1 and r["b"] == r["start"]       # A moved itself; B stayed
+    assert r["posts"] == 0                                              # nothing was sent to the group
+    assert r["rejoined"]["a"] == r["rejoined"]["b"]                     # back with the group after the reset time
+    assert r["fromB"]["moved"] and r["fromB"]["a"] == r["fromB"]["b"]   # a control on B still moves A
 
 
 @needs_node

@@ -52,7 +52,7 @@ def test_diag_keeps_only_valid_agent_facts():
 def test_agent_settings_reach_the_manifest_and_only_admins_change_them(app, configured, client, paired_display, admin):
     did = paired_display[0]
     r = admin.post(f"/displays/{did}/edit", data={"name": "Lobby", "playlist": "0", "group": "0", "orientation": "0",
-        "fit_override": "", "volume": "100", "show_offline_banner": "y", "resume_after_min": "5",
+        "fit_override": "", "volume": "100", "brightness": "100", "show_offline_banner": "y", "resume_after_min": "5",
         "agent_watchdog": "y", "agent_allow_restart": "y"})
     assert r.status_code in (302, 303)
     m = client.get(f"{API}/manifest", headers=bearer(DISPLAY_TOKEN)).get_json()
@@ -62,7 +62,7 @@ def test_agent_settings_reach_the_manifest_and_only_admins_change_them(app, conf
     ed = app.test_client()
     login(ed, "ed")
     ed.post(f"/displays/{did}/edit", data={"name": "Lobby", "playlist": "0", "group": "0", "orientation": "0",
-        "fit_override": "", "volume": "100", "agent_allow_logs": "y", "agent_watchdog": ""})
+        "fit_override": "", "volume": "100", "brightness": "100", "agent_allow_logs": "y", "agent_watchdog": ""})
     with app.app_context():
         d = db.session.get(Display, did)
         assert (d.agent_watchdog, d.agent_allow_restart, d.agent_allow_logs) == (True, True, False)  # unchanged

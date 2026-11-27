@@ -31,6 +31,8 @@
     <dd class="col-sm-8">{{ "Shown" if display.show_offline_banner else "Hidden" }}</dd>
     <dt class="col-sm-4">Player controls</dt>
     <dd class="col-sm-8">{{ "On" if display.allow_input else "Off" }}</dd>
+    <dt class="col-sm-4">Group controls</dt>
+    <dd class="col-sm-8">{{ "Move the whole group" if display.group_controls else "This screen only" }}</dd>
     <dt class="col-sm-4">Resume after pause</dt>
     <dd class="col-sm-8">{{ (display.resume_after_s or 300) // 60 }} min</dd>
     <dt class="col-sm-4">Lock player</dt>

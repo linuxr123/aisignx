@@ -221,7 +221,8 @@ def build_manifest(display: Display, now: datetime | None = None, ctx=None) -> d
         # with nothing to store. Player controls follow the display's own setting: a viewer who uses one leaves the
         # shared timeline, and the player rejoins it by itself after `settings.resume_after_s`.
         body["sync"] = {"group_id": group.id, "anchor_ms": 0,
-                        "cycle_ms": sum(max(1000, int(e["duration_ms"])) for e in items)}
+                        "cycle_ms": sum(max(1000, int(e["duration_ms"])) for e in items),
+                        "controls": group.sync_controls is not False}  # controls move the whole group (the group's option)
         # Next, previous, seek and pause move the timeline for the whole group (player/transport.py).
         from .transport import load as load_transport
         transport = load_transport(group)

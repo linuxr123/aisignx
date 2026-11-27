@@ -21,15 +21,15 @@ VECTORS = [
     ("2468", 200_000, "37cff31b6ad22b037e276408739e6702ab1a83eca9924fef485e1089b3c3ce2d"),
     ("12345678", 1000, "42b99a197a7d9cafa9fa5b60091da410edb6f3c1cc4e159a5f901b5348abb716"),
 ]
-DEFAULTS = {"orientation": 0, "volume": 100, "show_offline_banner": True,
-            "allow_input": False, "kiosk_lock": False, "resume_after_s": 300, "unlock": None,
+DEFAULTS = {"orientation": 0, "volume": 100, "show_offline_banner": True, "brightness": 100, "dim": None,
+            "allow_input": False, "group_controls": True, "kiosk_lock": False, "resume_after_s": 300, "unlock": None,
             "agent": {"watchdog": False, "restart": False, "logs": False,
                       "reboot": False, "startup": False, "update": False}}
 
 
 def _form(**overrides) -> dict:
     data = {"name": "Lobby", "playlist": 0, "group": 0, "orientation": 0, "fit_override": "",
-            "volume": 100, "show_offline_banner": "y"}
+            "volume": 100, "brightness": 100, "show_offline_banner": "y"}
     data.update(overrides)
     return {k: v for k, v in data.items() if v is not None}
 

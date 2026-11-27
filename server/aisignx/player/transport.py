@@ -62,6 +62,8 @@ def set_transport():
     group = g.display.group
     if group is None or not group.sync_playback:
         return api_error(409, "conflict", "This screen is not in a group with synchronized playback.")
+    if group.sync_controls is False:
+        return api_error(409, "conflict", "Controls do not move the whole group: this group's option is off.")
     body = _body()
     if body is None:
         return _bad("Expected a JSON object.")

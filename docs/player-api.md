@@ -186,7 +186,7 @@ Authenticated. Returns what the screen should play.
  "source": {"type": "schedule", "id": 7, "name": "Mornings"},
  "emergency": null,
  "settings": {"orientation": 0, "volume": 100, "show_offline_banner": true,
-              "allow_input": false, "kiosk_lock": false, "resume_after_s": 300,
+              "allow_input": false, "group_controls": true, "kiosk_lock": false, "resume_after_s": 300,
               "unlock": null,
               "agent": {"watchdog": true, "restart": true, "logs": true,
                         "reboot": false, "startup": false, "update": false}}}
@@ -199,7 +199,7 @@ Authenticated. Returns what the screen should play.
 | `heartbeat_s` | How often to send a heartbeat. |
 | `playlist` | `null` when nothing plays (`source.type` is `none`). Then `items` is `[]`: show a "no content" screen with the display name. |
 | `items` | Play in this order, then loop. |
-| `sync` | Only in manifests of screens in a group with synchronized playback: `{group_id, anchor_ms, cycle_ms}`, plus `transport` once a screen of the group has used a control (see [`POST /group/transport`](#post-grouptransport)). The slide at server time `T` comes from walking the items' `duration_ms` (each at least 1000) through `(T - anchor_ms) mod cycle_ms`; slides run for their duration, never ended early. The server clock is `server_time_ms` corrected by half the round trip. See [synced-playback.md](synced-playback.md). Clients that do not know it play normally. |
+| `sync` | Only in manifests of screens in a group with synchronized playback: `{group_id, anchor_ms, cycle_ms, controls}` (`controls`: `false` when the group's option "Controls move the whole group" is off; then `POST /group/transport` answers 409), plus `transport` once a screen of the group has used a control (see [`POST /group/transport`](#post-grouptransport)). The slide at server time `T` comes from walking the items' `duration_ms` (each at least 1000) through `(T - anchor_ms) mod cycle_ms`; slides run for their duration, never ended early. The server clock is `server_time_ms` corrected by half the round trip. See [synced-playback.md](synced-playback.md). Clients that do not know it play normally. |
 | `id` | Playlist item ID (report it as `current_item_id`). |
 | `type` | `image`, `video`, `web` or `plugin` (see [Plugin items](#plugin-items)). Skip types you don't support. |
 | `url` | Image and video: a path on this server; resolve it against the server base URL and fetch it with your token. Web: an absolute `http(s)://` URL to show in a web view, without your token. A web page that cannot be embedded (the server checks this) is sent as `type: "image"` with a `url` to its screenshot, a PNG fetched like any image; clients need no special case. |
@@ -242,6 +242,7 @@ auto-resume after 300 seconds. Clients ignore keys they don't know.
 | `orientation` | `0`, `90`, `180` or `270`: rotate the output clockwise by this many degrees. The browser player rotates with CSS unless the shell reports the `rotate` capability (it then rotates the device itself). |
 | `volume` | `0`-`100`. Applied to the player's own videos (not the OS volume, not inside web pages). `muted` items stay muted. |
 | `show_offline_banner` | Show a small "Offline" pill while the screen cannot reach the server. |
+| `group_controls` | Only matters on a screen of a synchronized group with `allow_input` on. `true` (default): a control moves the timeline of the whole group. `false`: it moves this screen only, which rejoins the group after `resume_after_s`. The screen follows the group's state either way. Missing: `true`. |
 | `allow_input` | `false`: touches, clicks, keys and the wheel are ignored. `true`: they become player controls (see [Player controls](#player-controls)); a transparent overlay covers every item, so web items cannot be clicked or scrolled either way. On a screen in a synchronized group, a control moves the timeline of the whole group (see [`POST /group/transport`](#post-grouptransport)); a pause ends by itself after `resume_after_s`. |
 | `agent` | `{"watchdog", "restart", "logs", "reboot", "startup", "update"}`, all booleans: the admin's switches for the device agent (Edit > Device agent). See [Device commands](#device-commands). A client must not do what its switch forbids. |
 | `kiosk_lock` | `true`: the native apps cannot be left without the unlock PIN (window close and minimize blocked; Android lock task). The server only allows it while a PIN is set. A shell that sees `true` with no valid `unlock` hash stays locked but lets its admin exit through without a PIN, so a bad hash never bricks a screen. Missing (older server): `false`. The browser player never reads it. |

@@ -21,7 +21,7 @@
   var DEBUG = /[?&]debug=1(&|$)/.test(location.search);
   var CLIENT_ID = net.clientId();
 
-  var TICK_MS = 250, PRELOAD_MS = 3000, FAIL_DWELL_MS = 2000, DEFAULT_DURATION_MS = 10000;
+  var TICK_MS = 250, PRELOAD_MS = 3000, FAIL_DWELL_MS = 2000, MAX_FAIL_DWELL_MS = 16000, DEFAULT_DURATION_MS = 10000;
   var PROBE_MS = 10000;  // heartbeat this often while the live connection is down
   var RETRY_AFTER_FAIL_MS = 10000;  // all other items failed: try them again this soon
   var NO_CONTENT_RETRY_MS = 30000, SETUP_RETRY_MS = 10000, PAIRED_SHOW_MS = 2000, DIAG_EVERY = 10;
@@ -42,6 +42,8 @@
     skipTo: null,  // index a skip asked for while its slide is still loading
     manualDir: 0,  // +1/-1 while a hand-made next/previous is on its way (its slide moves left/right)
     sync: null,    // {anchor, key, transport}: this display's group plays in sync (the manifest's sync block)
+    itemsSig: "",  // the item list of the last manifest: a manifest that does not change it keeps the slide being prepared
+    vfail: null,   // {id, n}: the video that failed to play n times in a row (see slideFailed)
     syncRev: 0,    // rev of the group transport state (sync.js) this screen has applied
   };
   var manifestBackoff = net.Backoff(2000, 30000);
@@ -233,13 +235,15 @@
     S.items = (Array.isArray(m.items) ? m.items : []).filter(function (it) {
       return it && TYPES[it.type] && typeof it.url === "string" && it.url;
     });
+    var sig = JSON.stringify(S.items), sameList = sig === S.itemsSig;
+    S.itemsSig = sig;
     if (m.heartbeat_s) hb.setSeconds(m.heartbeat_s);
     if (D.mediaSupport) D.mediaSupport(S.items);  // does this screen decode the videos smoothly?
     // Synchronized playback: when the timeline changes (turned on or off, another playlist or
     // other durations) the whole group restarts on the new one at the same moment.
     var before = S.sync ? S.sync.key : "";
     var ms = m.sync && typeof m.sync === "object" && SY && typeof m.sync.anchor_ms === "number" ? m.sync : null;
-    S.sync = ms ? { anchor: ms.anchor_ms, key: ms.anchor_ms + ":" + S.items.map(function (it) { return it.id + "=" + durationOf(it); }).join(","), transport: null } : null;
+    S.sync = ms ? { anchor: ms.anchor_ms, controls: ms.controls !== false, key: ms.anchor_ms + ":" + S.items.map(function (it) { return it.id + "=" + durationOf(it); }).join(","), transport: null } : null;
     // The group's shared play/pause/skip state counts only for the playlist it was made for.
     var tr = ms && ms.transport && typeof ms.transport === "object" ? ms.transport : null;
     if (S.sync && tr && tr.key === S.sync.key && typeof tr.rev === "number") S.sync.transport = tr;
@@ -248,8 +252,13 @@
     S.syncRev = rev;
     if (SY) SY.active = !!S.sync;
     var resync = (S.sync ? S.sync.key : "") !== before && S.state === "PLAYING" && S.items.length;
-    dropNext();
-    S.skipTo = null;  // indexes of the old list mean nothing in the new one
+    // A manifest that only carries the group's new state (every control used in a synchronized group sends one to every
+    // screen, the one that used it included) must not throw away the slide this screen is already loading for it:
+    // loading a big video twice in a row is what stalled a tablet's decoder.
+    if (!sameList || resync) {
+      dropNext();
+      S.skipTo = null;  // indexes of the old list mean nothing in the new one
+    }
     if (!S.items.length) { showNoContent(false); return; }
     if (S.state !== "PLAYING" || resync) { startPlaying(); return; }
     var cur = S.cur;
@@ -377,7 +386,13 @@
     var elapsed = 0;  // in sync: how far into this slide the shared clock says we already are
     var sp = syncOn() ? syncAt() : null;
     if (sp) elapsed = sp.index === n.index ? sp.elapsedMs : -sp.remainingMs;  // a hair early: start at the boundary
-    if (sp && elapsed > 500 && R.isVideo(n.slide)) syncSeekWhenReady(n.slide, item, elapsed);
+    // The same video again after it failed: play it from its start and leave it alone (no seek into it, no drift
+    // corrections). A seek is the likeliest thing to make a tablet's decoder fail again, and a video that plays a
+    // little out of step beats a frozen picture. Any other slide ends the run of failures.
+    var retry = !!(S.vfail && S.vfail.id === item.id);
+    if (!retry) S.vfail = null;
+    else note("video " + item.id + " failed before: playing it from the start");
+    if (sp && elapsed > 500 && R.isVideo(n.slide) && !retry) syncSeekWhenReady(n.slide, item, elapsed);
     R.swap(n.slide, trans);
     screenEl.hidden = true;
     pop("end", true); pop("begin", item);
@@ -408,7 +423,7 @@
       return;
     }
     if (!R.isVideo(n.slide)) return;
-    if (S.sync) every(function () { syncDrift(n.slide, item); }, SYNC_CHECK_MS);
+    if (S.sync && !retry) every(function () { syncDrift(n.slide, item); }, SYNC_CHECK_MS);
     R.runVideo(n.slide, {
       isHeld: function () { return !!S.paused; },  // the viewer paused it on purpose
       loop: function () { return loops(item); },
@@ -427,7 +442,15 @@
     clearControls();
     pop("end", false);  // failed slides are not counted as plays
     if (countFailure()) return;
-    cur.deadline = Math.min(cur.deadline, Math.max(now(), cur.shownAt + FAIL_DWELL_MS));
+    // A video that keeps failing is tried again after 2 s, 4 s, 8 s ... (at most 16 s), not every 2 s: a decoder that
+    // is in trouble needs a rest, and a new video element every 2 s keeps it in trouble.
+    var dwell = FAIL_DWELL_MS;
+    if (R.isVideo(cur.slide)) {
+      var n = S.vfail && S.vfail.id === cur.item.id ? S.vfail.n + 1 : 1;
+      S.vfail = { id: cur.item.id, n: n };
+      dwell = Math.min(MAX_FAIL_DWELL_MS, FAIL_DWELL_MS * Math.pow(2, n - 1));
+    }
+    cur.deadline = Math.min(cur.deadline, Math.max(now(), cur.shownAt + dwell));
     tick();
   }
   // Where a synced video should be `elapsedMs` into its slide: it loops only where it would loop
@@ -606,6 +629,10 @@
     if (!p || !cur || cur.failed || EM.shownId !== null) { startPlaying(); return; }
     var n = S.items.length;
     if (p.index !== S.pos) {  // another slide: it slides in from the side the move went
+      // A pause on the slide being left must go, or tick() keeps waiting for its end and the screen stands still for the
+      // whole "Resume after" time (next or previous while the group was paused). If the group is still paused, the new
+      // slide is held again as soon as it is shown (swapTo -> holdForGroup).
+      unpause(false);
       goTo(p.index, (p.index - S.pos + n) % n <= n / 2 ? 1 : -1);
       return;
     }
@@ -652,7 +679,10 @@
     });
     return pl.result;
   }
-  function control(name, local) { return S.sync && SY ? groupControl(name) : local(); }
+  // The group's and the display's "group controls" options: if either is off, a control moves this screen only (it rejoins
+  // the group after the reset time).
+  function groupControls() { return !!S.sync && !!SY && S.sync.controls && D.config().group_controls !== false; }
+  function control(name, local) { return groupControls() ? groupControl(name) : local(); }
   // A seek moves the end of a video that plays once; a looping video keeps its deadline.
   function shiftDeadline(cur, appliedS) {
     if (loops(cur.item) || !appliedS) return;
@@ -726,7 +756,7 @@
     forward: function () { return control("forward", function () { return seek(1); }); },
     back: function () { return control("back", function () { return seek(-1); }); },
     // Dragging through a video moves one screen only: it is not offered on a synchronized one.
-    scrubBegin: function () { return S.sync ? null : scrubBegin(); },
+    scrubBegin: function () { return groupControls() ? null : scrubBegin(); },
     scrubTo: scrubTo,
     scrubEnd: scrubEnd,
     paused: function () { return !!S.paused; },

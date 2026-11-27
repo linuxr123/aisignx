@@ -13,6 +13,7 @@ class GroupForm(FlaskForm):
     description = TextAreaField("Description", validators=[Optional(), Length(max=255)],
                                 render_kw={"rows": 2})
     sync_playback = BooleanField("Synchronized playback")
+    sync_controls = BooleanField("Controls move the whole group (next, previous, fast forward, rewind, pause)", default=True)
     # Rendered as a checkbox list in groups/form.html.
     members = SelectMultipleField("Members", coerce=int, default=[])
 

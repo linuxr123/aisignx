@@ -332,11 +332,11 @@ def test_display_edit_sets_and_clears_group(admin_client, app, world):
     assert "Default playlist" in page and "No group" in page and "Lobby screens" in page
     admin_client.post(f"/displays/{world['other']}/edit",
                       data={"name": "Back office", "playlist": 0, "group": world["group"],
-                            "volume": 100})
+                            "volume": 100, "brightness": 100})
     with app.app_context():
         assert db.session.get(Display, world["other"]).group_id == world["group"]
     admin_client.post(f"/displays/{world['other']}/edit",
-                      data={"name": "Back office", "playlist": 0, "group": 0, "volume": 100})
+                      data={"name": "Back office", "playlist": 0, "group": 0, "volume": 100, "brightness": 100})
     with app.app_context():
         assert db.session.get(Display, world["other"]).group_id is None
 

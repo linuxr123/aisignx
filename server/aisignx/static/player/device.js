@@ -14,15 +14,15 @@
 
   var ORIENTATIONS = [0, 90, 180, 270];
   // A settings object with a bad field falls back to these.
-  var DEFAULTS = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: false, resume_after_s: 300, brightness: 100, dim: null };
+  var DEFAULTS = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: false, group_controls: true, resume_after_s: 300, brightness: 100, dim: null };
   // No settings key at all (older server or cached manifest): keep the old behaviour.
-  var LEGACY = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: true, resume_after_s: 300, brightness: 100, dim: null };
+  var LEGACY = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: true, group_controls: true, resume_after_s: 300, brightness: 100, dim: null };
   var RESUME_MIN_S = 60, RESUME_MAX_S = 3600;
   var BLOCKED = ["keydown", "keyup", "keypress", "contextmenu", "wheel", "dragstart"];
   var MAX_SIDE = 1920, JPEG_QUALITY = 0.8, MAX_ERRORS = 10, DIAG_MAX = 4000;
   var RID = /^[0-9a-f]{16}$/;
 
-  var cfg = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: true, resume_after_s: 300, brightness: 100, dim: null };
+  var cfg = { orientation: 0, volume: 100, show_offline_banner: true, allow_input: true, group_controls: true, resume_after_s: 300, brightness: 100, dim: null };
   var ctx = { manifest: function () { return null; } };
   var errors = [];
   var idTimer = null, shotRid = null;
@@ -97,6 +97,7 @@
       volume: typeof s.volume === "number" && s.volume >= 0 && s.volume <= 100 ? Math.round(s.volume) : d.volume,
       show_offline_banner: isBool(s.show_offline_banner) ? s.show_offline_banner : d.show_offline_banner,
       allow_input: isBool(s.allow_input) ? s.allow_input : d.allow_input,
+      group_controls: isBool(s.group_controls) ? s.group_controls : d.group_controls,
       resume_after_s: typeof s.resume_after_s === "number" && Math.floor(s.resume_after_s) === s.resume_after_s
         ? Math.max(RESUME_MIN_S, Math.min(RESUME_MAX_S, s.resume_after_s)) : d.resume_after_s,
       brightness: pct(s.brightness, d.brightness),

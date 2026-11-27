@@ -178,6 +178,7 @@ def edit(display_id: int):
         pin_changed = False
         if form.is_admin_form:
             display.allow_input = bool(form.allow_input.data)
+            display.group_controls = bool(form.group_controls.data)
             display.kiosk_lock = bool(form.kiosk_lock.data)
             display.agent_watchdog = bool(form.agent_watchdog.data)
             display.agent_allow_restart = bool(form.agent_allow_restart.data)
@@ -209,7 +210,7 @@ def edit(display_id: int):
 
 
 _AUDITED_FIELDS = ("name", "playlist_id", "group_id", "location", "description", "orientation",
-                   "fit_override", "volume", "show_offline_banner", "brightness", "dim_level", "dim_from", "dim_to", "allow_input",
+                   "fit_override", "volume", "show_offline_banner", "brightness", "dim_level", "dim_from", "dim_to", "allow_input", "group_controls",
                    "kiosk_lock", "resume_after_s", "agent_watchdog", "agent_allow_restart",
                    "agent_allow_logs",
                    "agent_allow_reboot", "agent_allow_startup", "agent_allow_update")
@@ -235,6 +236,7 @@ def _prefill(form: DisplayForm, display: Display) -> None:
     form.dim_to.data = display.dim_to or ""
     if form.is_admin_form:
         form.allow_input.data = display.allow_input  # the PIN is never prefilled
+        form.group_controls.data = display.group_controls
         form.kiosk_lock.data = display.kiosk_lock
         form.agent_watchdog.data = display.agent_watchdog
         form.agent_allow_restart.data = display.agent_allow_restart

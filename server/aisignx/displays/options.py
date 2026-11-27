@@ -93,6 +93,7 @@ def settings_payload(display: Display) -> dict:
         "volume": max(0, min(100, volume)),
         "show_offline_banner": bool(display.show_offline_banner),
         "allow_input": bool(display.allow_input),
+        "group_controls": display.group_controls is not False,  # None: not saved yet, on like the column default
         "kiosk_lock": bool(display.kiosk_lock),
         "resume_after_s": resume_seconds(display.resume_after_s),
         "unlock": unlock_payload(display),

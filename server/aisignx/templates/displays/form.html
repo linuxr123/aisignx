@@ -50,6 +50,8 @@
         {% if form.is_admin_form %}
         {{ field(form.allow_input) }}
         <p class="form-text mt-n2">Tap or Space pauses; arrows seek 10 s in videos or change item; swipe or PageUp/PageDown change item. Content itself (web pages, YouTube, plugins) is never clickable, with this on or off.</p>
+        {{ field(form.group_controls) }}
+        <p class="form-text mt-n2">Only for a screen in a group with synchronized playback. On: next, previous, fast forward, rewind and pause on this screen move every screen of the group. Off: they move this screen only, and it rejoins the group after the time below. The screen follows the group either way.</p>
         {{ field(form.resume_after_min) }}
         <p class="form-text mt-n2">A paused screen always resumes after this time.</p>
         {{ field(form.kiosk_lock) }}
@@ -58,7 +60,7 @@
         <p class="form-text mt-n2">{{ pf.pin_help }} Blank keeps the current PIN ({{ "set" if pin_set else "none set" }}).</p>
         {% if pin_set %}{{ field(form.clear_pin) }}{% endif %}
         {% else %}
-        <p class="text-body-secondary mb-0">Controls: {{ "on" if display.allow_input else "off" }} &middot; Lock: {{ "on" if display.kiosk_lock else "off" }} &middot; Resume after: {{ (display.resume_after_s or 300) // 60 }} min &middot; Unlock PIN: {{ "set" if pin_set else "not set" }} &middot; admins only</p>
+        <p class="text-body-secondary mb-0">Controls: {{ "on" if display.allow_input else "off" }} &middot; Group controls: {{ "on" if display.group_controls else "off" }} &middot; Lock: {{ "on" if display.kiosk_lock else "off" }} &middot; Resume after: {{ (display.resume_after_s or 300) // 60 }} min &middot; Unlock PIN: {{ "set" if pin_set else "not set" }} &middot; admins only</p>
         {% endif %}
       </div></div>
       {% if form.is_admin_form %}

@@ -59,9 +59,9 @@ async function make(items, opts) {
   els.paused.sub = element("p-sub");
   const body = element("body");
   const winListeners = {};
-  const calls = { pop: [], swaps: [], trans: [], commands: [], hints: [], alive: [] };
+  const calls = { pop: [], swaps: [], trans: [], commands: [], hints: [], alive: [], prepares: [], teardowns: [], seeks: [], fails: [] };
   const handlers = {};
-  const cfg = { allow_input: opts.allow_input !== false, resume_after_s: opts.resume_after_s || 300 };
+  const cfg = { allow_input: opts.allow_input !== false, group_controls: opts.group_controls !== false, resume_after_s: opts.resume_after_s || 300 };
 
   // Fake video media.
   const videos = [];
@@ -74,23 +74,29 @@ async function make(items, opts) {
   let active = null;
   const isVideo = (s) => !!(s && s.media && s.media.tagName === "VIDEO");
   const R = {
-    init() {}, clear() { active = null; }, teardown() {}, resume() {},
+    init() {}, clear() { active = null; }, teardown(s) { calls.teardowns.push(s && s.item ? s.item.id : null); }, resume() {},
     prepare(item) {
+      calls.prepares.push(item.id);
       if (opts.failIds && opts.failIds.includes(item.id) && opts.failNow && opts.failNow()) {
         const bad = Promise.reject(new Error("offline"));
         bad.slide = null;
         return bad;
       }
       const slide = { item, media: item.type === "video" ? video(item.media_duration_ms / 1000) : { tagName: "IMG" } };
-      const p = Promise.resolve(slide);
+      // opts.loadMs: a slide takes this long to load (a big video).
+      const p = opts.loadMs ? new Promise((res) => addTimer(() => res(slide), opts.loadMs, false)) : Promise.resolve(slide);
       p.slide = slide;
       return p;
     },
     swap(slide, transition) { active = slide; calls.swaps.push(slide.item.id); calls.trans.push(transition); },
-    runVideo(slide) { slide.media.play(); },
+    // opts.failVideo: the first n showings of a video fail (a decoder error), as ctx.fail says.
+    runVideo(slide, c) {
+      slide.media.play();
+      if (opts.failVideo && calls.fails.length < opts.failVideo) { calls.fails.push(clock.t); addTimer(() => c.fail("video error 3"), 50, false); }
+    },
     isVideo,
     videoOf: (s) => (isVideo(s) ? s.media : null),
-    setVideoTime(s, t) { const v = s.media; v.currentTime = Math.max(0, Math.min(v.duration - 0.25, t)); return v.currentTime; },
+    setVideoTime(s, t) { calls.seeks.push(s.item.id); const v = s.media; v.currentTime = Math.max(0, Math.min(v.duration - 0.25, t)); return v.currentTime; },
     seekVideo(s, d) {
       const v = s.media, want = v.currentTime + d;
       if (d > 0 && want > v.duration - 0.25) return { applied: 0, atEnd: true };
@@ -117,7 +123,7 @@ async function make(items, opts) {
     onControl(fn) { shell.control = fn; },
   } : null;
   const manifest = { version: "v1", items, settings: {} };
-  if (opts.sync) manifest.sync = { anchor_ms: 0, cycle_ms: items.reduce((a, i) => a + i.duration_ms, 0), group_id: 1 };
+  if (opts.sync) manifest.sync = { anchor_ms: 0, cycle_ms: items.reduce((a, i) => a + i.duration_ms, 0), group_id: 1, controls: opts.sync_controls !== false };
   const net = {
     shell: () => shell, clientId: () => "c",
     store: { KEYS: { manifest: "m", pairing: "p" }, local: { get: () => null, set() {}, remove() {} },
@@ -137,7 +143,8 @@ async function make(items, opts) {
         grp.transport = Object.assign({ rev: (grp.transport ? grp.transport.rev : 0) + 1 }, o.body);
         grp.posts = (grp.posts || 0) + 1;
         // The server tells the other screens of the group to fetch the manifest.
-        grp.screens.forEach((h) => { if (h !== handlers && h.manifest) Promise.resolve().then(() => h.manifest({})); });
+        // The server's hint goes to every screen of the group, the one that sent the control included.
+        grp.screens.forEach((h) => { if (h.manifest) Promise.resolve().then(() => h.manifest({})); });
         return Promise.resolve(Object.assign({ kind: "ok", data: { transport: grp.transport } }, stamp));
       }
       const m = Object.assign({}, manifest, { server_time_ms: clock.t });
@@ -540,6 +547,17 @@ async function main() {
     a.key(" "); await both(500);                                      // pause and leave it
     await both(61000); await both(1500);                              // it ends by itself after the reset time
     r.autoResume = { pa: a.pb.paused(), pb: b.pb.paused(), a: a.cur(), b: b.cur() };
+    // Next and previous while the group is paused: every screen moves at once and plays on (it used to stand still
+    // until the pause ran out).
+    a.key(" "); await both(500);
+    const before = { a: a.cur(), b: b.cur() };
+    a.key("ArrowDown"); await both(800);
+    r.nextWhilePaused = { before, a: a.cur(), b: b.cur(), pa: a.pb.paused(), pb: b.pb.paused() };
+    b.key(" "); await both(500);
+    b.key("ArrowUp"); await both(800);                                // from the other screen, the other way
+    r.prevWhilePaused = { a: a.cur(), b: b.cur(), pa: a.pb.paused(), pb: b.pb.paused(), want: r.nextWhilePaused.a === 1 ? 3 : r.nextWhilePaused.a - 1 };
+    await both(10500);
+    r.afterPausedMoves = { a: a.cur(), b: b.cur() };
     r.posts = group.posts;
     out.syncControls = r;
 
@@ -562,6 +580,49 @@ async function main() {
     out.syncOffline = { start: s0, a: oa.cur(), b: ob.cur() };
     await oa.advance(61000); await ob.advance(61000); await oa.advance(1500); await ob.advance(1500);
     out.syncOffline.rejoined = { a: oa.cur(), b: ob.cur() };
+
+    // Churn: quick controls on a screen that loads slowly. Every slide it needs is loaded once; the server's hint (which
+    // reaches the screen that used the control as well) must not throw away the slide being loaded and start again.
+    const cg = { transport: null, screens: [] };
+    const citems = [IMG(1, 10000), IMG(2, 10000), IMG(3, 10000), IMG(4, 10000), IMG(5, 10000)];
+    const ca = await make(citems, { sync: true, group: cg, t0: 3000, loadMs: 400, resume_after_s: 60 });
+    const cb = await make(citems, { sync: true, group: cg, t0: 3000, loadMs: 400, resume_after_s: 60 });
+    await ca.advance(1500); await cb.advance(1500);
+    const base = { prepares: ca.calls.prepares.length, teardowns: ca.calls.teardowns.length };
+    for (const k of ["ArrowDown", "ArrowDown", "ArrowUp", "ArrowDown"]) { ca.key(k); await ca.advance(120); await cb.advance(120); }
+    await ca.advance(3000); await cb.advance(3000);
+    out.syncChurn = { prepares: ca.calls.prepares.length - base.prepares, teardowns: ca.calls.teardowns.length - base.teardowns,
+      a: ca.cur(), b: cb.cur(), want: 1 + Math.floor(((ca.clock.t - cg.transport.offset_ms) % 50000) / 10000) };
+
+    // A video that keeps failing: retried after longer and longer waits, never seeked into again.
+    const fitems = [VID(7, 50, 50000), IMG(2)];
+    const fa = await make(fitems, { sync: true, t0: 3000, failVideo: 4 });
+    for (let i = 0; i < 70; i++) await fa.advance(1000);
+    const fts = fa.calls.fails;
+    out.syncFail = { fails: fts.length, gaps: fts.slice(1).map((t, i) => Math.round((t - fts[i]) / 1000)), seeks: fa.calls.seeks.length, cur: fa.cur() };
+
+    // "Group controls" off on one screen: its controls move only itself (it rejoins after the reset time),
+    // while a control on the other screen still moves both.
+    const lg = { transport: null, screens: [] };
+    const la = await make(items, { sync: true, group: lg, group_controls: false, resume_after_s: 60, t0: 3000 });
+    const lb = await make(items, { sync: true, group: lg, resume_after_s: 60, t0: 3000 });
+    await la.advance(1000); await lb.advance(1000);
+    const l0 = la.cur();
+    la.key("ArrowDown"); await la.advance(500); await lb.advance(500);
+    out.syncLocal = { start: l0, a: la.cur(), b: lb.cur(), posts: lg.posts || 0 };
+    await la.advance(61000); await lb.advance(61000); await la.advance(1500); await lb.advance(1500);
+    out.syncLocal.rejoined = { a: la.cur(), b: lb.cur() };
+    lb.key("ArrowDown"); await la.advance(500); await lb.advance(500);
+    out.syncLocal.fromB = { a: la.cur(), b: lb.cur(), moved: lb.cur() !== out.syncLocal.rejoined.b };
+
+    // The group's option "controls move the whole group" off: a control moves only the screen it is used on.
+    const xg = { transport: null, screens: [] };
+    const xa = await make(items, { sync: true, group: xg, sync_controls: false, resume_after_s: 60, t0: 3000 });
+    const xb = await make(items, { sync: true, group: xg, sync_controls: false, resume_after_s: 60, t0: 3000 });
+    await xa.advance(1000); await xb.advance(1000);
+    const x0 = xa.cur();
+    xa.key("ArrowDown"); await xa.advance(500); await xb.advance(500);
+    out.syncGroupOff = { start: x0, a: xa.cur(), b: xb.cur(), posts: xg.posts || 0 };
 
     // Another playlist: a state made for other durations is ignored.
     const kg = { transport: { rev: 4, key: "0:other", offset_ms: 5000, paused_ms: null, resume_at_ms: null }, screens: [] };

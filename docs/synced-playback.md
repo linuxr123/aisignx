@@ -39,6 +39,7 @@ this watchdog, and the drift check takes over again when it plays.
 ## What changes on a synced screen
 
 - **A control on any screen moves the whole group** (if that display has controls on, see Displays > the screen > Edit > Device agent / controls): next, previous, fast forward, rewind and pause or resume. Every other screen of the group follows within a moment (they learn of it from the server, then fetch the new state). The shared timeline simply moves: after "next" the whole group goes on from the start of the next slide. Fast forward and rewind move every video by 10 s (less in a short video), never out of the slide that is playing. **Pause** freezes every screen on its slide; the group plays on by itself after the display's *Resume after* time (default 5 min) so a wall is never left frozen, or at once when any screen resumes. Dragging through a video is not offered on a synchronized screen (it would move only that one). A fullscreen emergency waits to be shown first.
+  The group has the option too (**Groups > Edit > Controls move the whole group**, on by default): off, no screen of the group moves the others. Per display, **Displays > Edit > Controls move the whole group** (admins) chooses whether a screen's controls move the group (the default) or only that screen, which then rejoins the group after *Resume after*. The screen follows the group either way.
   If a screen cannot reach the server when a control is used, it moves by itself, plays on alone, and rejoins the group after the *Resume after* time.
   The group's state is stored on the server, so a screen that starts late or loses its connection joins the group where it is, including while it is paused. It applies only to screens that play the same playlist (with the same durations). Changing the playlist restarts the timeline as before.
 - **Slides always run for their set duration.** A video that is shorter than its slide plays again
@@ -106,7 +107,8 @@ plugins (YouTube) get `syncElapsed()` instead. See [plugins.md](plugins.md#synch
 
 ## Player API
 
-Manifests of synced screens carry a `sync` block and `settings.allow_input: false`:
+Manifests of synced screens carry a `sync` block (and, once a control has been used, `sync.transport`; see
+[`POST /group/transport`](player-api.md#post-grouptransport)):
 
 ```json
 "sync": {"group_id": 3, "anchor_ms": 0, "cycle_ms": 15000}
