@@ -30,6 +30,8 @@ if (shell && shell.port && location.origin === 'http://127.0.0.1:' + shell.port)
     alive: (json) => {
       if (typeof json === 'string' && json.length < 2048) ipcRenderer.send('shell-alive', json);
     },
+    // An emergency message is on screen (true) or gone (false): the app shows full brightness meanwhile.
+    holdBrightness: (full) => { ipcRenderer.send('shell-bright', full === true); },
     // `unlock` / `lock` SSE commands, as JSON; main validates them.
     onCommand: (json) => {
       if (typeof json === 'string' && json.length < 1024) ipcRenderer.send('shell-command', json);

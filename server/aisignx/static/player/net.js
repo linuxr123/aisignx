@@ -123,6 +123,7 @@
         command = function (o) { if (typeof es.onCommand === "function") es.onCommand(JSON.stringify(o)); };
         control = function (fn) { if (typeof es.onControl === "function") es.onControl(controlCallback(fn)); };
         alive = function (o) { if (typeof es.alive === "function") es.alive(JSON.stringify(o)); };
+        bright = function (full) { if (typeof es.holdBrightness === "function") es.holdBrightness(!!full); };
       } else if (window.AiSignXShellInfo && typeof window.AiSignXShellInfo.info === "function") {
         var si = window.AiSignXShellInfo;
         raw = JSON.parse(si.info());
@@ -185,7 +186,7 @@
       alive: function (obj) { try { if (alive) alive(obj); } catch (e) { /* ignore */ } },
       // Admin commands for the shell itself (unlock, lock). A no-op for an old shell.
       onCommand: function (obj) { try { if (command) command(obj); } catch (e) { /* ignore */ } },
-      // Android only: ask the app to show the screen at full brightness (an emergency message) or back at its setting.
+      // Ask the app (Android, Windows) to show the screen at full brightness (an emergency message) or back at its setting.
       holdBrightness: function (full) { try { if (bright) bright(full); } catch (e) { /* ignore */ } },
       // Keys and remote buttons the shell turns into control actions.
       onControl: function (fn) {

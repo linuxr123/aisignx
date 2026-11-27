@@ -210,7 +210,8 @@ Manual, uploaded and pre-restore backups are never deleted automatically.
 
 Displays > Edit > Screen: **Brightness** (10 to 100 %) and an optional **night window** (a lower level between two local times, in the organization's time zone).
 - **Android app 3.0.8 and newer:** the app sets the real screen backlight (the window's brightness), so it saves power too. At 100 % the device's own brightness setting applies. An emergency message is shown at full brightness. Android TV boxes usually ignore app brightness.
-- **Windows app and browsers:** the player darkens its picture with a black layer; the monitor's own backlight is not touched (set it on the monitor).
+- **Windows app 3.6.0 and newer:** the app sets the screen's own brightness: built-in panels (laptops, all-in-ones, tablets) through Windows, external monitors through DDC/CI if the monitor supports it (often an on-screen menu option; some monitors, TVs and adapters do not pass it through). The app leaves the brightness alone until a display asks for less than 100 %; after that, 100 % sets the screen back to full. An emergency message is shown at full brightness. When no screen can be set, the app darkens the picture instead, as before. Tried on a built-in panel; DDC/CI not yet tried on a real monitor.
+- **Older Windows apps and browsers:** the player darkens its picture with a black layer; the monitor's own backlight is not touched (set it on the monitor).
 
 ## Adding media to a playlist
 

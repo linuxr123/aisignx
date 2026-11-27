@@ -26,6 +26,7 @@ const { Readable } = require('stream');
 const agentClaim = require('./agent-claim');
 const { createClaimer } = agentClaim;
 const firstrun = require('./firstrun');
+const { createBrightness } = require('./brightness');
 
 function argValue(name) {
   const hit = process.argv.find((a) => a.startsWith('--' + name + '='));
@@ -59,6 +60,7 @@ const S = {
   proxy: null, upstream: null, pageCache: null, mediaCache: null,
   player: null, setup: null, cookie: '', retryTimer: null, quitting: false,
   gate: null, unlockWin: null, lock: null, agent: null, sessionEnd: false,
+  bright: null, brightCap: null, // brightness.js; brightCap: what the loaded page was told
 };
 
 function origin() {
@@ -66,13 +68,15 @@ function origin() {
 }
 
 function shellInfo() {
+  // 'brightness' only when this PC can set a screen's own brightness (the cached probe); otherwise the page darkens the picture.
+  S.brightCap = !!S.bright && S.bright.canControl();
   return {
     name: 'electron',
     version: app.getVersion(),
     device: (os.hostname() + ' / ' + os.version()).slice(0, 120),
     client_id: S.clientId,
     admin_url: S.cfg.serverUrl,
-    caps: ['capture', 'pin-exit', 'controls', 'kiosk-lock'].concat(S.agent ? ['agent'] : []),
+    caps: ['capture', 'pin-exit', 'controls', 'kiosk-lock'].concat(S.agent ? ['agent'] : [], S.brightCap ? ['brightness'] : []),
   };
 }
 
@@ -221,6 +225,10 @@ function registerIpc() {
   ipcMain.on('shell-alive', (event, json) => {
     if (fromPlayer(event) && S.agent) S.agent.onAlive(json);
   });
+  // An emergency message is on screen (true) or gone (false): full brightness meanwhile.
+  ipcMain.on('shell-bright', (event, full) => {
+    if (fromPlayer(event) && S.bright && S.brightCap) S.bright.hold(full === true);
+  });
   ipcMain.handle('shell-capture', async (event) => (fromPlayer(event) ? capture() : null));
   ipcMain.on('shell-stats', (event) => {
     event.returnValue = fromPlayer(event) ? stats() : null;
@@ -245,6 +253,7 @@ function applySettings(json) {
   if (SMOKE || !S.cfg.serverUrl) return;
   let settings;
   try { settings = JSON.parse(json).settings; } catch (e) { return; }
+  if (S.bright && S.brightCap) S.bright.update(settings || null);
   const patch = config.settingsPatch(S.cfg, settings);
   if (!Object.keys(patch).length) return;
   if ('unlock' in patch) log.info(patch.unlock ? 'unlock PIN set by the server' : 'unlock PIN removed by the server');
@@ -327,6 +336,24 @@ function startAgent() {
   startAgentClaims();
 }
 
+// The screen's own brightness (Windows: WMI for built-in panels, DDC/CI for monitors). The cached probe
+// answers at once; a fresh one runs in the background, and a changed answer reloads the page so it
+// switches between the real brightness and its darkening layer.
+function startBrightness() {
+  if (process.platform !== 'win32') return;
+  const recheck = () => {
+    const can = S.bright.canControl();
+    if (S.brightCap === null || S.brightCap === can) return;
+    log.info('screen brightness control', can ? 'available' : 'gone', '- reloading the player');
+    if (!can) { S.brightCap = false; S.bright.release(); } // the old page's late settings must not dim the screen too
+    const w = S.player && S.player.win;
+    if (w && !w.isDestroyed() && w.webContents.getURL().startsWith(origin() + '/')) S.player.loadPlayer();
+  };
+  S.bright = createBrightness({ log, dataDir: DATA, onLost: recheck });
+  S.bright.start();
+  S.bright.probe().then(recheck).catch((e) => log.warn('brightness probe', e.message));
+}
+
 // A newly installed privileged agent asks the server for approval; tell the server which agent is on this PC (agent-claim.js).
 function startAgentClaims() {
   if (process.platform !== 'win32' || S.claimTimer) return;
@@ -353,7 +380,7 @@ async function main() {
   registerIpc();
   S.clientId = config.clientId(DATA);
   S.gate = unlock.createGate({ dataDir: DATA });
-  if (!SMOKE) startAgent();
+  if (!SMOKE) { startAgent(); startBrightness(); }
   S.lock = createLock();
   S.lock.onChange((state) => {
     log.info('lock state', state);

@@ -718,7 +718,15 @@ Every call into the shell is wrapped in `try/catch`; a broken shell never stops 
 | `device` | Device name sent with `POST /pair` (up to 120 characters), for example `HOSTNAME / Windows`. |
 | `client_id` | 32 lowercase hex characters. If valid, the player stores and uses it as its `client_id`. |
 | `admin_url` | The server URL configured in the client (`http(s)://host[:port]`). Used for the pairing hint `<admin_url>/displays/pair`, because behind the Electron proxy `location.origin` is a loopback address. |
-| `caps` | Optional list of capabilities: `capture` (the shell can take a real screenshot), `rotate` (the shell rotates the device itself, so the page does not rotate with CSS), `pin-exit` (leaving the app asks for the unlock PIN), `controls` (the shell forwards keys and remote buttons as control actions), `kiosk-lock` (the shell honours `kiosk_lock` and the `unlock`/`lock` commands). Unknown values are ignored. |
+| `caps` | Optional list of capabilities: `capture` (the shell can take a real screenshot), `rotate` (the shell rotates the device itself, so the page does not rotate with CSS), `pin-exit` (leaving the app asks for the unlock PIN), `controls` (the shell forwards keys and remote buttons as control actions), `kiosk-lock` (the shell honours `kiosk_lock` and the `unlock`/`lock` commands), `agent` (the device agent runs in the shell), `brightness` (the shell sets the screen's own brightness from `settings.brightness` and `settings.dim`, so the page draws no darkening layer). Unknown values are ignored. |
+
+**Brightness.** With the `brightness` cap the shell applies the level itself and the page only
+reports emergencies: `holdBrightness(true)` while an emergency message is on screen (full
+brightness), `holdBrightness(false)` when it is gone. Android: the page posts
+`{"t":"bright","full":true|false}` through the port. Electron (3.6.0+):
+`AiSignXShell.holdBrightness(full)`. The Windows app reports the cap only when its probe found a
+screen it can set (WMI for built-in panels, DDC/CI for monitors); otherwise the page keeps its
+darkening layer. It does not touch a PC's brightness until a display asks for less than 100 %.
 
 **Capture.** `capture()` resolves to a JPEG `Blob` of the real screen, or `null`; the page then
 falls back to drawing its own media on a canvas. Electron: `AiSignXShell.capture()` returns

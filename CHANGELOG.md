@@ -44,6 +44,16 @@ Done since the last plan: the device agent and watchdog, signed commands, the Wi
 ### Fixed 2026-11-14
 - Videos whose MP4 index is at the end of the file (e.g. "sample-10s") stalled on Android and Windows. Uploads are now rewritten with the index at the front (lossless), and the existing file was fixed.
 
+## Unreleased: Windows brightness
+
+### Changed
+- **Windows brightness is now real** (Windows app 3.6.0): the app sets the screen's own brightness from the display's brightness and night window, like the Android app 3.0.8. Built-in panels (laptops, all-in-ones, tablets) are set through Windows (WMI); external monitors through DDC/CI where the monitor supports it. An emergency message is shown at full brightness. A PC where no screen can be set keeps the old darkening layer. The app leaves a PC's brightness alone until a display asks for less than 100 %. Tried on the owner's Windows PC with a built-in panel (10 % and back to 100 %); DDC/CI has **not been tried on an external monitor** yet (the rules around it are unit-tested).
+- **Android 3.0.9: the tablet's own brightness.** A Samsung tablet on Android 16 ignored the app's window brightness (the log showed "brightness 10%" with no visible change; a phone did dim). As Device Owner the app now also sets the device's brightness setting (manual mode), keeps the user's own setting and puts it back at 100 %. Not a Device Owner: the window brightness only, as before. Tried on the owner's Samsung tablet (the log shows the setting applied; whether it looked right is for the owner to confirm).
+
+### Fixed
+- **Collect logs never worked on a real device:** the player API's 8 KB request limit also applied to the log upload, so every real log got HTTP 413 ("upload failed"). The upload now has its own 1 MB limit.
+- **A video that played and stopped over and over** (a tablet, after next/previous and fast forward): the device's video decoder got stuck, and every new try of the video failed about 3 s in (decode error 3), even from its start. The player now reloads the page once when the same video fails again after being restarted from its start (at most once every 10 minutes), which frees the decoder; and a failed video is no longer nudged with play() over and over. Unit-tested; not yet seen on the tablet.
+
 ## Unreleased: Group controls, hidden cursor
 
 ### Added

@@ -162,6 +162,7 @@ Use a spare Windows PC with the installed app (not `npm start`). Edit the displa
 | K5 | Startup form: Run as = An app | The normal desktop returns after the next sign-in | |
 | K6 | Upload a newer installer, **Push the update** | The app installs it and comes back; in shell mode the Explorer desktop does not appear | |
 | K7 | Press Reboot twice within 10 minutes | The second is refused | |
+| K8 | Windows app 3.6.0, external monitor with DDC/CI on: Displays > Edit > Screen, Brightness 40 %, then a night window a few minutes from now | The monitor's own brightness changes (its on-screen menu shows the new value), no darkening layer; an emergency shows at full brightness; 100 % sets it back. A monitor without DDC/CI: the picture is darkened instead | |
 
 ## L. Windows: privileged agent (docs/windows-agent.md)
 
