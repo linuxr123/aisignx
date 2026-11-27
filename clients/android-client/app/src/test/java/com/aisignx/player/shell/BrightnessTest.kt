@@ -43,6 +43,15 @@ class BrightnessTest {
         assertEquals(0.1f, Brightness.windowValue(1), 0.001f)
     }
 
+    @Test fun `the system setting is dimmed, kept and put back, and left alone on a device never dimmed`() {
+        assertEquals(Brightness.SystemStep.Set(26, saveOwn = true), Brightness.systemStep(10, managed = false))
+        assertEquals(Brightness.SystemStep.Set(128, saveOwn = false), Brightness.systemStep(50, managed = true))
+        assertEquals(Brightness.SystemStep.Restore, Brightness.systemStep(100, managed = true))
+        assertNull(Brightness.systemStep(100, managed = false))
+        assertEquals(26, Brightness.systemValue(1))
+        assertEquals(255, Brightness.systemValue(100))
+    }
+
     @Test fun `the saved form survives a round trip`() {
         assertEquals(night, Brightness.fromPref(Brightness.toPref(night)))
         assertEquals(Brightness.DEFAULT, Brightness.fromPref(null))

@@ -42,6 +42,21 @@ data class Brightness(val base: Int, val dim: Dim?) {
         /** The value for WindowManager.LayoutParams.screenBrightness: -1 (the system's own setting) at 100 %, else 0.1..0.99. */
         fun windowValue(level: Int): Float = if (level >= 100) -1f else (level / 100f).coerceIn(0.1f, 0.99f)
 
+        /** Settings.System.SCREEN_BRIGHTNESS (0..255) for a level; never fully dark. */
+        fun systemValue(level: Int): Int = Math.round(level.coerceIn(10, 100) * 255 / 100f)
+
+        /**
+         * What a Device Owner does with the system brightness setting for [level]. Some devices (a Samsung tablet on
+         * Android 16) ignore the window's brightness, so the app also sets the device's own setting. [managed]: the app
+         * changed the setting and keeps the user's own value to put back. Null: leave the setting alone (at 100 % on a
+         * device the app never dimmed, the user's own setting stays as it is).
+         */
+        fun systemStep(level: Int, managed: Boolean): SystemStep? = when {
+            level < 100 -> SystemStep.Set(systemValue(level), saveOwn = !managed)
+            managed -> SystemStep.Restore
+            else -> null
+        }
+
         fun toPref(b: Brightness): String = JSONObject().put("brightness", b.base).apply {
             b.dim?.let { put("dim", JSONObject().put("level", it.level).put("from", "%02d:%02d".format(it.fromMin / 60, it.fromMin % 60))
                 .put("to", "%02d:%02d".format(it.toMin / 60, it.toMin % 60)).put("tz", it.tz)) }
@@ -51,5 +66,12 @@ data class Brightness(val base: Int, val dim: Dim?) {
             if (text == null) return DEFAULT
             return try { parse(JSONObject(text)) } catch (_: Exception) { DEFAULT }
         }
+    }
+
+    sealed class SystemStep {
+        /** Manual mode at [value]; [saveOwn]: first keep the user's own mode and value. */
+        data class Set(val value: Int, val saveOwn: Boolean) : SystemStep()
+        /** Put the user's own mode and value back. */
+        object Restore : SystemStep()
     }
 }

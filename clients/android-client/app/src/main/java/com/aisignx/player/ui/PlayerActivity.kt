@@ -31,6 +31,7 @@ import com.aisignx.player.R
 import com.aisignx.player.databinding.ActivityPlayerBinding
 import com.aisignx.player.shell.Agent
 import com.aisignx.player.shell.Brightness
+import com.aisignx.player.shell.SystemBrightness
 import com.aisignx.player.shell.Capture
 import com.aisignx.player.shell.DisplaySettings
 import com.aisignx.player.shell.ShellInfo
@@ -222,8 +223,11 @@ class PlayerActivity : AppCompatActivity() {
         override fun run() { applyBrightness(); main.postDelayed(this, 60_000L) }
     }
 
+    private var systemLevel = -1  // the level last given to SystemBrightness (-1: none yet, so the first call always runs)
+
     private fun applyBrightness(b: Brightness = AiSignXApp.from(this).config.brightness) {
         val level = if (emergencyBright) 100 else b.levelAt(System.currentTimeMillis())
+        if (level != systemLevel) { systemLevel = level; SystemBrightness.apply(this, level) }  // Device Owner only
         val value = Brightness.windowValue(level)
         val lp = window.attributes
         if (lp.screenBrightness != value) {
