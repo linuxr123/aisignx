@@ -30,7 +30,8 @@ MAX_BODY = 8192
 SCREENSHOT_MAX = 4 * 1024 * 1024  # POST /screenshot only
 PLAYS_MAX = 64 * 1024  # POST /plays only
 # Request body limit per endpoint; everything else gets MAX_BODY.
-_BODY_LIMITS = {"player_api.screenshot": SCREENSHOT_MAX, "player_api.plays": PLAYS_MAX}
+_BODY_LIMITS = {"player_api.screenshot": SCREENSHOT_MAX, "player_api.plays": PLAYS_MAX,
+                "player_api.command_logs": agent.MAX_LOG_BYTES}
 _SCREENSHOT_TYPES = ("image/jpeg", "image/png")
 _REQUEST_ID = re.compile(r"^[0-9a-f]{16}$")
 POLL_AFTER_S = 3

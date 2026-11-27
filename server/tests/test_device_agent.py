@@ -242,3 +242,13 @@ def test_log_upload_accepts_the_content_type_the_apps_send(app, configured, clie
     r = client.post(f"{API}/commands/{rid}/logs", headers=bearer(DISPLAY_TOKEN), data=gzip.compress(b"x" * 100),
                     content_type="application/gzip")
     assert r.status_code == 200
+
+
+def test_a_real_sized_log_is_accepted(app, configured, client, paired_display, admin):
+    # A device log is hundreds of KB; the player API's small default body limit must not apply to it.
+    import os
+    did, rid = _log_command(app, admin, client, paired_display)
+    log = gzip.compress(os.urandom(600 * 1024))
+    assert len(log) < agent.MAX_LOG_BYTES
+    r = client.post(f"{API}/commands/{rid}/logs", headers=bearer(DISPLAY_TOKEN), data=log, content_type="application/gzip")
+    assert r.status_code == 200
